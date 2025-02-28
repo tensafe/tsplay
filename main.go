@@ -53,7 +53,10 @@ func createReadlineCompleter() *readline.PrefixCompleter {
 
 func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
-
+	err := playwright.Install()
+	if err != nil {
+		log.Println("could not install playwright browsers: %v", err)
+	}
 	// 解析命令行参数
 	flag.Parse()
 	switch *action {
