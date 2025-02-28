@@ -4,11 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"github.com/c-bata/go-prompt"
+	"github.com/chzyer/readline"
 	"github.com/playwright-community/playwright-go"
 	"github.com/yuin/gopher-lua"
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"tsplay/tsplay"
@@ -24,6 +26,17 @@ func completer(d prompt.Document) []prompt.Suggest {
 		s = append(s, sug)
 	}
 	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
+}
+
+func createReadlineCompleter() *readline.PrefixCompleter {
+	var items []readline.PrefixCompleterInterface
+	for _, fn := range tsplay.GlobalPlayWrightFunc {
+		items = append(items, readline.PcItem(fn.Name))
+	}
+	items = append(items, readline.PcItem("start"))
+	items = append(items, readline.PcItem("reset"))
+	items = append(items, readline.PcItem("exit"))
+	return readline.NewPrefixCompleter(items...)
 }
 
 func main() {
@@ -44,6 +57,18 @@ func main() {
 }
 
 func cli_mode() {
+	os_type := "windows"
+	switch runtime.GOOS {
+	case "windows":
+		os_type = "windows"
+	case "darwin":
+		os_type = "darwin"
+	case "linux":
+		os_type = "linux"
+	default:
+		os_type = "windows"
+	}
+
 	L := lua.NewState()
 	defer L.Close()
 
@@ -97,6 +122,19 @@ func cli_mode() {
 		L.SetGlobal("page", ud_p)
 		fmt.Println("Playwright started. Browser and page objects are now available in Lua.")
 	}
+	fmt.Println("Please input the 'start' command to run and launch tsplay")
+
+	var rl *readline.Instance
+	if os_type == "windows" {
+		rl, err = readline.NewEx(&readline.Config{
+			Prompt:       "> ",
+			AutoComplete: createReadlineCompleter(),
+		})
+	}
+
+	if rl != nil {
+		defer rl.Close()
+	}
 
 	for {
 		// 动态 CLI 提示符
@@ -105,9 +143,17 @@ func cli_mode() {
 			prefix = "(playwright) > "
 		}
 
-		// 启动 prompt
-		input := prompt.Input(prefix, completer)
-
+		input := ""
+		if os_type == "windows" {
+			line, err := rl.Readline()
+			if err != nil { // 处理 Ctrl+D 或 Ctrl+C
+				break
+			}
+			input = line
+		} else {
+			// 启动 prompt
+			input = prompt.Input(prefix, completer)
+		}
 		// 检查输入是否为 exit
 		if input == "exit" {
 			fmt.Println("Exiting the shell. Goodbye!")
@@ -125,7 +171,8 @@ func cli_mode() {
 				page = nil
 			}
 			if err := initPlaywright(); err != nil {
-				fmt.Printf("Failed to reset Playwright: %v\n", err)
+				log.Printf("Failed to reset Playwright: %v\n", err)
+				continue
 			}
 			startPlaywright()
 			continue
