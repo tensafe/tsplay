@@ -69,11 +69,14 @@
 ---
 
 ## **7. 上传文件 / File Upload/Download**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `upload_file` | 上传单个文件到指定元素 | `upload_file('#file-input', 'file.txt')` | `selector` (string): 文件输入框选择器；`file_path` (string): 要上传的文件路径。 |
+| **函数名** | **说明**      | **使用示例**                                                         | **参数**                                                        |
+| --- |-------------|------------------------------------------------------------------|---------------------------------------------------------------|
+| `upload_file` | 上传单个文件到指定元素 | `upload_file('#file-input', 'file.txt')`                         | `selector` (string): 文件输入框选择器；`file_path` (string): 要上传的文件路径。 |
 | `upload_multiple_files` | 上传多个文件到指定元素 | `upload_multiple_files('#file-input', 'file1.txt', 'file2.txt')` | `selector` (string): 文件输入框选择器；`files` (string[]): 要上传的文件路径列表。 |
-| `download_file` | 下载文件到本地 | `download_file('https://example.com/file.txt', 'file.txt')` | `url` (string): 文件 URL；`save_path` (string): 保存文件的路径。 |
+| `download_file` | 下载文件到本地     | `download_file('#download', 'file.txt')`                         | `selector` (string): 下载选择器 L；`save_path` (string): 保存文件的路径。   |
+| `download_url` | 下载Url到本地    | `download_url('https://example.com/file.txt', 'file.txt')`       | `url` (string): 文件 URL；`save_path` (string): 保存文件的路径。         |
+
+
 
 
 ---

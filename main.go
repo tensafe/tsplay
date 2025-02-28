@@ -51,7 +51,7 @@ func createReadlineCompleter() *readline.PrefixCompleter {
 	return readline.NewPrefixCompleter(items...)
 }
 
-func main() {
+func main_cli() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
 	err := playwright.Install()
 	if err != nil {
@@ -216,7 +216,7 @@ func cli_mode() {
 	}
 }
 
-func main_old() {
+func main() {
 	// 初始化 Playwright
 	pw, err := playwright.Run()
 	if err != nil {
@@ -260,33 +260,52 @@ func main_old() {
 
 	// 执行 Lua 脚本
 	script := `
-        navigate("https://www.baidu.com")
-		type_text("#kw","山东")
-        click("#su")
-		wait_for_network_idle()
-		html = get_html()
-		print(html)
+function tableToString(tbl, indent)
+    indent = indent or 0
+    local result = "{\n"
+    local prefix = string.rep("  ", indent)
+
+    for key, value in pairs(tbl) do
+        local keyString = tostring(key)
+        if type(value) == "table" then
+            -- 递归处理嵌套表
+            result = result .. prefix .. "  " .. keyString .. " = " .. tableToString(value, indent + 1) .. ",\n"
+        else
+            -- 处理其他类型
+            local valueString = type(value) == "string" and '"' .. value .. '"' or tostring(value)
+            result = result .. prefix .. "  " .. keyString .. " = " .. valueString .. ",\n"
+        end
+    end
+
+    result = result .. prefix .. "}"
+    return result
+end
+	navigate("http://localhost:63342/tsplay/demo/tables.html?_ijt=uorcglga812t7bid9l1h3qkqmt&_ij_reload=RELOAD_ON_SAVE")
+	wait_for_network_idle()
+	local tbl = capture_table("#myTable")
+	for i = 1, #tbl do
+		print("Link " .. i .. ": " .. tableToString(tbl[i]))
+	end
     `
-	script = `-- 打开百度首页
-navigate("https://www.baidu.com")
-
--- 等待搜索框加载完成
-wait_for_selector("#kw")
-
--- 在搜索框中输入“山东”
-type_text("#kw", "山东")
-
--- 点击“百度一下”按钮
-click("#su")
-
--- 等待搜索结果页面加载完成
-wait_for_network_idle()
-
-screenshot("./data.png")
-
-print(get_storage_state())
-
-`
+	//	script = `-- 打开百度首页
+	//navigate("https://www.baidu.com")
+	//
+	//-- 等待搜索框加载完成
+	//wait_for_selector("#kw")
+	//
+	//-- 在搜索框中输入“山东”
+	//type_text("#kw", "山东")
+	//
+	//-- 点击“百度一下”按钮
+	//click("#su")
+	//
+	//-- 等待搜索结果页面加载完成
+	//wait_for_network_idle()
+	//
+	//screenshot("./data.png")
+	//
+	//print(get_storage_state())
+	//`
 	if err := L.DoString(script); err != nil {
 		log.Fatalf("error running Lua script: %v", err)
 	}

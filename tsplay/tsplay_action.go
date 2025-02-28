@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/playwright-community/playwright-go"
 	lua "github.com/yuin/gopher-lua"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -56,7 +58,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	// 上传文件 / File Upload/Download
 	{"upload_file", upload_file, "上传单个文件到指定元素", "Upload a single file. Example: upload_file('#file-input', 'file.txt'). Parameters: selector (string) - The selector of the file input; file_path (string) - The path to the file to upload."},
 	{"upload_multiple_files", upload_multiple_files, "上传多个文件到指定元素", "Upload multiple files. Example: upload_multiple_files('#file-input', 'file1.txt', 'file2.txt'). Parameters: selector (string) - The selector of the file input; files (string[]) - A list of file paths to upload."},
-	{"download_file", download_file, "下载文件到本地", "Download a file from the page. Example: download_file('https://example.com/file.txt', 'file.txt'). Parameters: url (string) - The file URL; save_path (string) - The path to save the downloaded file."},
+	{"download_file", download_file, "下载文件到本地", "Download a file from the page. Example: download_file('#dlfile', 'file.txt'). Parameters: selector (string) - The file URL; save_path (string) - The path to save the downloaded file."},
+	{"download_url", download_url, "下载Url链接本地", "Download a url to file. Example: download_url('http://host/sabc.txt', 'file.txt'). Parameters: url (string) - The file URL; save_path (string) - The path to save the downloaded file."},
 
 	// 提取数据 / Data Extraction
 	{"get_attribute", get_attribute, "获取指定元素的属性值", "Get the value of a specified attribute of an element. Example: get_attribute('#element-id', 'href'). Parameters: selector (string) - The selector of the element; attribute (string) - The attribute name."},
@@ -300,11 +303,36 @@ func get_text(L *lua.LState) int {
 
 	// 如果只有一个元素，返回其文本内容
 	if len(elements) == 1 {
-		text, err := elements[0].TextContent()
+		element := elements[0]
+
+		// 获取元素标签名
+		tagName, err := element.Evaluate("el => el.tagName.toLowerCase()")
 		if err != nil {
-			L.RaiseError("Failed to get text from element: %v", err)
+			L.RaiseError("获取标签名失败: %v", err)
 			return 0
 		}
+
+		// 类型断言确保结果为字符串
+		tagStr, ok := tagName.(string)
+		if !ok {
+			L.RaiseError("意外的标签名类型: %T", tagName)
+			return 0
+		}
+
+		var text string
+		// 判断表单元素类型
+		switch tagStr {
+		case "input", "textarea", "select":
+			text, err = element.InputValue()
+		default:
+			text, err = element.TextContent()
+		}
+
+		if err != nil {
+			L.RaiseError("内容获取失败: %v", err)
+			return 0
+		}
+
 		L.Push(lua.LString(text))
 		return 1
 	}
@@ -312,11 +340,34 @@ func get_text(L *lua.LState) int {
 	// 如果有多个元素，返回文本内容列表
 	textsTable := L.NewTable()
 	for i, element := range elements {
-		text, err := element.TextContent()
+		// 获取元素标签名
+		tagName, err := element.Evaluate("el => el.tagName.toLowerCase()")
 		if err != nil {
-			L.RaiseError("Failed to get text from element %d: %v", i+1, err)
+			L.RaiseError("获取标签名失败: %v", err)
 			return 0
 		}
+
+		// 类型断言确保结果为字符串
+		tagStr, ok := tagName.(string)
+		if !ok {
+			L.RaiseError("意外的标签名类型: %T", tagName)
+			return 0
+		}
+
+		var text string
+		// 判断表单元素类型
+		switch tagStr {
+		case "input", "textarea", "select":
+			text, err = element.InputValue()
+		default:
+			text, err = element.TextContent()
+		}
+
+		if err != nil {
+			L.RaiseError("内容获取失败: %v", err)
+			return 0
+		}
+
 		L.RawSetInt(textsTable, i+1, lua.LString(text))
 	}
 	L.Push(textsTable)
@@ -361,7 +412,9 @@ func select_option(L *lua.LState) int {
 	}
 
 	// 从下拉菜单中选择指定选项
-	_, err := page.SelectOption(selector, playwright.SelectOptionValues{Values: &[]string{value}})
+	_, err := page.SelectOption(selector, playwright.SelectOptionValues{
+		Values: &[]string{value},
+		Labels: &[]string{value}})
 	if err != nil {
 		L.RaiseError("Failed to select option '%s' for selector '%s': %v", value, selector, err)
 		return 0
@@ -844,13 +897,15 @@ func upload_multiple_files(L *lua.LState) int {
 	fmt.Printf("Files '%v' uploaded to element '%s'\n", files, selector)
 	return 0
 }
-func download_file(L *lua.LState) int {
+
+func download_url(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {
+		L.RaiseError("Playwright page is not initialized")
 		return 0
 	}
 
-	// 从 Lua 获取 URL 和保存路径
+	// Get URL and save path from Lua
 	url := L.CheckString(1)
 	savePath := L.CheckString(2)
 	if url == "" {
@@ -862,24 +917,101 @@ func download_file(L *lua.LState) int {
 		return 0
 	}
 
-	// 启用下载功能并捕获下载事件
-	download, err := page.ExpectDownload(func() error {
-		_, err := page.Goto(url)
-		return err
-	})
+	// Get cookies from the Playwright page
+	cookies, err := page.Context().Cookies(url)
 	if err != nil {
-		L.RaiseError("Failed to download file from URL '%s': %v", url, err)
+		L.RaiseError("Failed to get cookies from Playwright: %v", err)
 		return 0
 	}
 
-	// 保存文件到指定路径
+	// Build the Cookie header
+	var cookieHeader strings.Builder
+	for _, cookie := range cookies {
+		cookieHeader.WriteString(fmt.Sprintf("%s=%s; ", cookie.Name, cookie.Value))
+	}
+
+	// Create an HTTP client
+	client := &http.Client{}
+
+	// Create a new HTTP GET request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		L.RaiseError("Failed to create HTTP request: %v", err)
+		return 0
+	}
+
+	// Add the Cookie header to the request
+	req.Header.Set("Cookie", cookieHeader.String())
+
+	// Perform the HTTP request
+	resp, err := client.Do(req)
+	if err != nil {
+		L.RaiseError("Failed to perform HTTP request: %v", err)
+		return 0
+	}
+	defer resp.Body.Close()
+
+	// Check if the response status is 200
+	if resp.StatusCode != http.StatusOK {
+		L.RaiseError("Failed to download file: HTTP status %d", resp.StatusCode)
+		return 0
+	}
+
+	// Create the file to save the response
+	file, err := os.Create(savePath)
+	if err != nil {
+		L.RaiseError("Failed to create file: %v", err)
+		return 0
+	}
+	defer file.Close()
+
+	// Write the response body to the file
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		L.RaiseError("Failed to save file: %v", err)
+		return 0
+	}
+
+	fmt.Printf("File downloaded from '%s' to '%s'\n", url, savePath)
+	return 0
+}
+
+func download_file(L *lua.LState) int {
+	page := safe_page(L)
+	if page == nil {
+		return 0
+	}
+
+	// 从 Lua 获取下载链接或按钮选择器
+	selector := L.CheckString(1)
+	savePath := L.CheckString(2)
+	if selector == "" {
+		L.RaiseError("Selector cannot be empty")
+		return 0
+	}
+	if savePath == "" {
+		L.RaiseError("Save path cannot be empty")
+		return 0
+	}
+
+	// 捕获下载事件
+	download, err := page.ExpectDownload(func() error {
+		// 触发下载操作，例如点击按钮或链接
+		return page.Click(selector)
+	})
+	if err != nil {
+		L.RaiseError("Failed to trigger download: %v", err)
+		return 0
+	}
+
+	// 保存下载的文件
 	err = download.SaveAs(savePath)
 	if err != nil {
 		L.RaiseError("Failed to save downloaded file: %v", err)
 		return 0
 	}
 
-	fmt.Printf("File downloaded from '%s' to '%s'\n", url, savePath)
+	fmt.Printf("File downloaded to '%s'\n", savePath)
 	return 0
 }
 
