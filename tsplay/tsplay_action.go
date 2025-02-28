@@ -11,72 +11,79 @@ import (
 )
 
 type LuaFunction struct {
-	Name string                  // 函数名
-	Func func(L *lua.LState) int // 函数实现
+	Name           string                  // Function name
+	Func           func(L *lua.LState) int // Function implementation
+	Description_cn string                  // Function description (Chinese)
+	Description_en string                  // Function description (English)
 }
 
 var GlobalPlayWrightFunc = []LuaFunction{
-	//导航类
-	{"navigate", navigate},
-	{"click", click},
-	{"reload", reload},
-	{"go_back", go_back},
-	{"go_forward", go_forward},
-	//行为类
-	{"type_text", type_text},
-	{"get_text", get_text},
-	{"set_value", set_value},
-	{"select_option", select_option},
-	{"hover", hover},
-	{"scroll_to", scroll_to},
-	//等待操作
-	{"wait_for_network_idle", wait_for_network_idle},
-	{"wait_for_selector", wait_for_selector},
-	{"wait_for_text", wait_for_text},
-	{"wait_for_navigation", wait_for_navigation},
-	{"sleep", sleep},
-	//页面截图
-	{"screenshot", screenshot},
-	{"screenshot_element", screenshot_element},
-	{"save_html", save_html},
-	//处理弹窗和对话框
-	{"accept_alert", accept_alert},
-	{"dismiss_alert", dismiss_alert},
-	{"set_alert_text", set_alert_text},
-	//执行 JavaScript
-	{"execute_script", execute_script},
-	{"evaluate", evaluate},
-	//上传文件
-	{"upload_file", upload_file},
-	{"upload_multiple_files", upload_multiple_files},
-	{"download_file", download_file},
-	//提取数据
-	{"get_attribute", get_attribute},
-	{"get_html", get_html},
-	{"get_all_links", get_all_links},
-	{"capture_table", capture_table},
+	// 导航类 / Navigation
+	{"navigate", navigate, "导航到指定的 URL", "Navigate to a specified URL. Example: navigate('https://example.com'). Parameters: url (string) - The URL to navigate to."},
+	{"click", click, "点击页面上的元素", "Click on an element on the page. Example: click('#button-id'). Parameters: selector (string) - The selector of the element to click."},
+	{"reload", reload, "重新加载当前页面", "Reload the current page. Example: reload(). No parameters."},
+	{"go_back", go_back, "返回到上一个页面", "Go back to the previous page. Example: go_back(). No parameters."},
+	{"go_forward", go_forward, "前进到下一个页面", "Go forward to the next page. Example: go_forward(). No parameters."},
 
-	//页面状态检查
-	{"is_visible", is_visible},
-	{"is_enabled", is_enabled},
-	{"is_checked", is_checked},
-	{"is_selected", is_selected},
-	{"is_aria_selected", is_aria_selected},
+	// 行为类 / Actions
+	{"type_text", type_text, "在指定元素中输入文本", "Type text into a specified element. Example: type_text('#input-id', 'Hello World'). Parameters: selector (string) - The selector of the input element; text (string) - The text to type."},
+	{"get_text", get_text, "获取指定元素的文本内容", "Get the text content of a specified element. Example: get_text('#element-id'). Parameters: selector (string) - The selector of the element to retrieve text from."},
+	{"set_value", set_value, "设置指定元素的值", "Set the value of a specified element. Example: set_value('#input-id', 'new value'). Parameters: selector (string) - The selector of the input element; value (string) - The value to set."},
+	{"select_option", select_option, "选择下拉框中的选项", "Select an option in a dropdown. Example: select_option('#dropdown-id', 'option-value'). Parameters: selector (string) - The selector of the dropdown; value (string) - The value of the option to select."},
+	{"hover", hover, "将鼠标悬停在指定元素上", "Hover the mouse over a specified element. Example: hover('#element-id'). Parameters: selector (string) - The selector of the element to hover over."},
+	{"scroll_to", scroll_to, "滚动页面到指定位置", "Scroll the page to a specified position. Example: scroll_to('#element-id'). Parameters: selector (string) - The selector of the element to scroll to."},
 
-	//多标签页和窗口管理
-	{"new_tab", new_tab},
-	{"close_tab", close_tab},
-	{"switch_to_tab", switch_to_tab},
+	// 等待操作 / Waiting
+	{"wait_for_network_idle", wait_for_network_idle, "等待网络空闲", "Wait for the network to be idle. Example: wait_for_network_idle(). No parameters."},
+	{"wait_for_selector", wait_for_selector, "等待指定选择器匹配的元素出现", "Wait for an element matching the specified selector to appear. Example: wait_for_selector('#element-id', 5000). Parameters: selector (string) - The selector to wait for; timeout (int, optional) - Timeout in milliseconds (default is 30000)."},
+	{"wait_for_text", wait_for_text, "等待指定文本出现在页面中", "Wait for specified text to appear on the page. Example: wait_for_text('#element-id', 'Hello World', 5000). Parameters: selector (string) - The selector of the element; text (string) - The expected text; timeout (int, optional) - Timeout in milliseconds (default is 30000)."},
+	{"sleep", sleep, "暂停执行指定的时间", "Pause execution for a specified duration. Example: sleep(2). Parameters: seconds (number) - The duration to sleep in seconds."},
 
-	// 网络请求与拦截
-	{"intercept_request", intercept_request},
-	{"block_request", block_request},
-	{"get_response", get_response},
-	{"new_tab", new_tab},
+	// 页面截图 / Screenshots
+	{"screenshot", screenshot, "截取整个页面的截图", "Take a screenshot of the entire page. Example: screenshot('screenshot.png'). Parameters: path (string) - The file path to save the screenshot."},
+	{"screenshot_element", screenshot_element, "截取指定元素的截图", "Take a screenshot of a specific element. Example: screenshot_element('#element-id', 'element.png'). Parameters: selector (string) - The selector of the element; path (string) - The file path to save the screenshot."},
+	{"save_html", save_html, "保存当前页面的 HTML 内容", "Save the HTML content of the page. Example: save_html('page.html'). Parameters: path (string) - The file path to save the HTML content."},
 
-	//StateStorage管理
-	{"get_storage_state", get_storage_state},
-	{"get_cookies_string", get_cookies_string},
+	// 处理弹窗和对话框 / Handling Dialogs
+	{"accept_alert", accept_alert, "接受弹窗（点击确定）", "Accept an alert dialog. Example: accept_alert(). No parameters."},
+	{"dismiss_alert", dismiss_alert, "关闭弹窗（点击取消）", "Dismiss an alert dialog. Example: dismiss_alert(). No parameters."},
+	{"set_alert_text", set_alert_text, "在弹窗中输入文本", "Set the text in an alert dialog. Example: set_alert_text('Hello'). Parameters: text (string) - The text to set in the alert dialog."},
+
+	// 执行 JavaScript / JavaScript Execution
+	{"execute_script", execute_script, "在页面中执行 JavaScript 代码", "Execute JavaScript code on the page. Example: execute_script('alert(\"Hello World\")'). Parameters: script (string) - The JavaScript code to execute."},
+	{"evaluate", evaluate, "在页面中执行 JavaScript 表达式并返回结果", "Evaluate JavaScript expression and return the result. Example: evaluate('#element-id', 'element => element.textContent'). Parameters: selector (string) - The selector of the element; script (string) - The JavaScript expression to evaluate."},
+
+	// 上传文件 / File Upload/Download
+	{"upload_file", upload_file, "上传单个文件到指定元素", "Upload a single file. Example: upload_file('#file-input', 'file.txt'). Parameters: selector (string) - The selector of the file input; file_path (string) - The path to the file to upload."},
+	{"upload_multiple_files", upload_multiple_files, "上传多个文件到指定元素", "Upload multiple files. Example: upload_multiple_files('#file-input', 'file1.txt', 'file2.txt'). Parameters: selector (string) - The selector of the file input; files (string[]) - A list of file paths to upload."},
+	{"download_file", download_file, "下载文件到本地", "Download a file from the page. Example: download_file('https://example.com/file.txt', 'file.txt'). Parameters: url (string) - The file URL; save_path (string) - The path to save the downloaded file."},
+
+	// 提取数据 / Data Extraction
+	{"get_attribute", get_attribute, "获取指定元素的属性值", "Get the value of a specified attribute of an element. Example: get_attribute('#element-id', 'href'). Parameters: selector (string) - The selector of the element; attribute (string) - The attribute name."},
+	{"get_html", get_html, "获取指定元素的 HTML 内容", "Get the HTML content of an element. Example: get_html('#element-id'). Parameters: selector (string, optional) - The selector of the element (if omitted, returns the entire page's HTML)."},
+	{"get_all_links", get_all_links, "获取页面中所有链接", "Extract all links from the page. Example: get_all_links(). No parameters."},
+	{"capture_table", capture_table, "提取表格数据", "Capture and extract data from a table element. Example: capture_table('#table-id'). Parameters: selector (string) - The selector of the table element."},
+
+	// 页面状态检查 / Page State Checks
+	{"is_visible", is_visible, "检查元素是否可见", "Check if an element is visible. Example: is_visible('#element-id'). Parameters: selector (string) - The selector of the element."},
+	{"is_enabled", is_enabled, "检查元素是否可用", "Check if an element is enabled. Example: is_enabled('#element-id'). Parameters: selector (string) - The selector of the element."},
+	{"is_checked", is_checked, "检查复选框或单选按钮是否被选中", "Check if a checkbox or radio button is checked. Example: is_checked('#checkbox-id'). Parameters: selector (string) - The selector of the element."},
+	{"is_selected", is_selected, "检查下拉框选项是否被选中", "Check if an option in a dropdown is selected. Example: is_selected('#dropdown-id'). Parameters: selector (string) - The selector of the dropdown."},
+	{"is_aria_selected", is_aria_selected, "检查 ARIA 属性是否被选中", "Check if an element has the ARIA 'selected' attribute. Example: is_aria_selected('#element-id'). Parameters: selector (string) - The selector of the element."},
+
+	// 多标签页和窗口管理 / Tab and Window Management
+	{"new_tab", new_tab, "打开一个新标签页", "Open a new browser tab. Example: new_tab('https://example.com'). Parameters: url (string) - The URL to open in the new tab."},
+	{"close_tab", close_tab, "关闭当前标签页", "Close the current browser tab. Example: close_tab(). No parameters."},
+	{"switch_to_tab", switch_to_tab, "切换到指定的标签页", "Switch to a specific browser tab. Example: switch_to_tab(2). Parameters: index (int) - The index of the tab to switch to."},
+
+	// 网络请求与拦截 / Network Request Handling
+	{"intercept_request", intercept_request, "拦截网络请求", "Intercept and modify network requests. Example: intercept_request(function(request) return 'https://example.com' end). Parameters: callback (function) - A Lua function to handle intercepted requests."},
+	{"block_request", block_request, "阻止指定的网络请求", "Block specific network requests. Example: block_request('*.png'). Parameters: pattern (string) - The pattern of requests to block."},
+	{"get_response", get_response, "获取网络请求的响应", "Get the response of a network request. Example: get_response('https://example.com/api'). Parameters: url (string) - The URL of the request to get the response for."},
+
+	// StateStorage 管理 / State Storage Management
+	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},
+	{"get_cookies_string", get_cookies_string, "获取当前页面的 Cookie 字符串", "Get cookies as a string. Example: get_cookies_string(). No parameters."},
 }
 
 // 安全获得page
@@ -141,7 +148,7 @@ func navigate(L *lua.LState) int {
 	// 调用 Playwright 页面导航功能
 	_, err := page.Goto(url)
 	if err != nil {
-		L.RaiseError("Failed to navigate to %s: %v", url, err)
+		fmt.Println("Failed to navigate to %s: %v", url, err)
 		return 0
 	}
 
@@ -174,7 +181,7 @@ func go_back(L *lua.LState) int {
 	// 调用 Page.GoBack() 方法
 	response, err := page.GoBack()
 	if err != nil {
-		L.RaiseError("Failed to go back: %v", err)
+		fmt.Println("Failed to go back: %v", err)
 		return 0
 	}
 
@@ -196,7 +203,7 @@ func go_forward(L *lua.LState) int {
 
 	response, err := page.GoForward()
 	if err != nil {
-		L.RaiseError("Failed to go forward: %v", err)
+		fmt.Println("Failed to go forward: %v", err)
 		return 0
 	}
 
@@ -278,17 +285,44 @@ func get_text(L *lua.LState) int {
 		return 0
 	}
 
-	// 获取元素的文本内容
-	text, err := page.TextContent(selector)
+	// 获取所有匹配的元素
+	elements, err := page.QuerySelectorAll(selector)
 	if err != nil {
-		L.RaiseError("Failed to get text from selector '%s': %v", selector, err)
+		L.RaiseError("Failed to query elements with selector '%s': %v", selector, err)
 		return 0
 	}
 
-	// 将文本内容推回 Lua
-	L.Push(lua.LString(text))
+	// 如果没有匹配的元素，返回 nil
+	if len(elements) == 0 {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	// 如果只有一个元素，返回其文本内容
+	if len(elements) == 1 {
+		text, err := elements[0].TextContent()
+		if err != nil {
+			L.RaiseError("Failed to get text from element: %v", err)
+			return 0
+		}
+		L.Push(lua.LString(text))
+		return 1
+	}
+
+	// 如果有多个元素，返回文本内容列表
+	textsTable := L.NewTable()
+	for i, element := range elements {
+		text, err := element.TextContent()
+		if err != nil {
+			L.RaiseError("Failed to get text from element %d: %v", i+1, err)
+			return 0
+		}
+		L.RawSetInt(textsTable, i+1, lua.LString(text))
+	}
+	L.Push(textsTable)
 	return 1
 }
+
 func set_value(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {
@@ -469,28 +503,6 @@ func wait_for_text(L *lua.LState) int {
 	return 0
 }
 
-func wait_for_navigation(L *lua.LState) int {
-	page := safe_page(L)
-	if page == nil {
-		return 0
-	}
-
-	// 从 Lua 获取 timeout 参数
-	timeout := L.OptInt(1, 30000) // 默认超时时间为 30 秒（30000 毫秒）
-
-	// 等待页面完成导航操作
-	_, err := page.WaitForEvent("framenavigated", playwright.PageWaitForEventOptions{
-		Timeout: playwright.Float(float64(timeout)),
-	})
-	if err != nil {
-		L.RaiseError("Failed to wait for navigation: %v", err)
-		return 0
-	}
-
-	fmt.Println("Successfully waited for navigation")
-	return 0
-}
-
 func sleep(L *lua.LState) int {
 	// 从 Lua 获取 seconds 参数
 	seconds := L.CheckNumber(1) // 返回 lua.LNumber 类型
@@ -526,7 +538,7 @@ func screenshot(L *lua.LState) int {
 	}
 
 	// 截取页面截图
-	err, _ := page.Screenshot(playwright.PageScreenshotOptions{
+	_, err := page.Screenshot(playwright.PageScreenshotOptions{
 		Path: playwright.String(path),
 	})
 	if err != nil {

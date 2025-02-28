@@ -1,16 +1,160 @@
 package main
 
 import (
+	"flag"
+	"fmt"
+	"github.com/c-bata/go-prompt"
 	"github.com/playwright-community/playwright-go"
 	"github.com/yuin/gopher-lua"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"tsplay/tsplay"
 )
 
+func completer(d prompt.Document) []prompt.Suggest {
+	s := []prompt.Suggest{}
+	for _, fn := range tsplay.GlobalPlayWrightFunc {
+		sug := prompt.Suggest{
+			Text:        fn.Name,
+			Description: fn.Description_en,
+		}
+		s = append(s, sug)
+	}
+	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
+}
+
 func main() {
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
+
+	// 解析命令行参数
+	flag.Parse()
+	switch *action {
+	case "cli":
+		//fmt.Println("Start As Cli.")
+		cli_mode()
+	case "gpt":
+		fmt.Println("Start As GPT.")
+	case "srv":
+		fmt.Println("Start As Web.")
+	}
+
+}
+
+func cli_mode() {
+	L := lua.NewState()
+	defer L.Close()
+
+	// 注册 Go 函数到 Lua
+	for _, fn := range tsplay.GlobalPlayWrightFunc {
+		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
+	}
+
+	pw, err := playwright.Run()
+	if err != nil {
+		log.Fatalf("could not start Playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	var browser playwright.Browser
+	var page playwright.Page
+
+	// 初始化浏览器和页面
+	initPlaywright := func() error {
+		var err error
+		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+			Headless: playwright.Bool(false),
+		})
+		if err != nil {
+			return fmt.Errorf("could not launch browser: %v", err)
+		}
+		page, err = browser.NewPage()
+		if err != nil {
+			return fmt.Errorf("could not create page: %v", err)
+		}
+		fmt.Println("Playwright initialized. Browser and page are ready.")
+		return nil
+	}
+
+	// 将浏览器和页面对象传递给 Lua
+	startPlaywright := func() {
+		if browser == nil || page == nil {
+			fmt.Println("Playwright is not initialized. Initializing now...")
+			if err := initPlaywright(); err != nil {
+				fmt.Printf("Failed to initialize Playwright: %v\n", err)
+				return
+			}
+		}
+		// 将 Playwright 对象传递给 Lua
+		ud_b := L.NewUserData()
+		ud_b.Value = browser
+		L.SetGlobal("browser", ud_b)
+
+		ud_p := L.NewUserData()
+		ud_p.Value = page
+		L.SetGlobal("page", ud_p)
+		fmt.Println("Playwright started. Browser and page objects are now available in Lua.")
+	}
+
+	for {
+		// 动态 CLI 提示符
+		prefix := "> "
+		if page != nil {
+			prefix = "(playwright) > "
+		}
+
+		// 启动 prompt
+		input := prompt.Input(prefix, completer)
+
+		// 检查输入是否为 exit
+		if input == "exit" {
+			fmt.Println("Exiting the shell. Goodbye!")
+			break
+		}
+
+		// 处理 reset 命令
+		if input == "reset" {
+			fmt.Println("Resetting Playwright...")
+			if browser != nil {
+				if err := browser.Close(); err != nil {
+					log.Printf("failed to close browser: %v", err)
+				}
+				browser = nil
+				page = nil
+			}
+			if err := initPlaywright(); err != nil {
+				fmt.Printf("Failed to reset Playwright: %v\n", err)
+			}
+			startPlaywright()
+			continue
+		}
+
+		// 处理 start 命令
+		if input == "start" {
+			startPlaywright()
+			continue
+		}
+
+		// 处理 Lua 脚本
+		if strings.HasPrefix(input, "lua ") {
+			script := strings.TrimPrefix(input, "lua ")
+			if err := L.DoString(script); err != nil {
+				fmt.Printf("Lua error: %v\n", err)
+			}
+			continue
+		}
+		// 默认行为：将输入内容作为 Lua 脚本执行
+		if input != "" {
+			if err := L.DoString(input); err != nil {
+				fmt.Printf("Lua error: %v\n", err)
+			}
+		}
+	}
+}
+
+func main_old() {
 	// 初始化 Playwright
 	pw, err := playwright.Run()
 	if err != nil {
@@ -54,7 +198,6 @@ func main() {
 
 	// 执行 Lua 脚本
 	script := `
-        -- 使用 Lua 调用注册的函数
         navigate("https://www.baidu.com")
 		type_text("#kw","山东")
         click("#su")
@@ -75,7 +218,12 @@ type_text("#kw", "山东")
 click("#su")
 
 -- 等待搜索结果页面加载完成
-wait_for_navigation()
+wait_for_network_idle()
+
+screenshot("./data.png")
+
+print(get_storage_state())
+
 `
 	if err := L.DoString(script); err != nil {
 		log.Fatalf("error running Lua script: %v", err)
