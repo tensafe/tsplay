@@ -31,11 +31,23 @@ func completer(d prompt.Document) []prompt.Suggest {
 func createReadlineCompleter() *readline.PrefixCompleter {
 	var items []readline.PrefixCompleterInterface
 	for _, fn := range tsplay.GlobalPlayWrightFunc {
-		items = append(items, readline.PcItem(fn.Name))
+		items = append(items, &readline.PrefixCompleter{
+			Name:    []rune(fn.Name),
+			Dynamic: false,
+		})
 	}
-	items = append(items, readline.PcItem("start"))
-	items = append(items, readline.PcItem("reset"))
-	items = append(items, readline.PcItem("exit"))
+	items = append(items, &readline.PrefixCompleter{
+		Name:    []rune("start"),
+		Dynamic: false,
+	})
+	items = append(items, &readline.PrefixCompleter{
+		Name:    []rune("reset"),
+		Dynamic: false,
+	})
+	items = append(items, &readline.PrefixCompleter{
+		Name:    []rune("exit"),
+		Dynamic: false,
+	})
 	return readline.NewPrefixCompleter(items...)
 }
 
