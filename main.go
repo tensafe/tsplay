@@ -7,6 +7,7 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/playwright-community/playwright-go"
 	"github.com/yuin/gopher-lua"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -51,24 +52,44 @@ func createReadlineCompleter() *readline.PrefixCompleter {
 	return readline.NewPrefixCompleter(items...)
 }
 
-func main_cli() {
+var g_headless = false
+
+func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
+	tsfile := flag.String("script", "", "tsplay script file")
+	isheadless := flag.Bool("headless", false, "is hide browser")
+
+	// 解析命令行参数
+	flag.Parse()
+
 	err := playwright.Install()
 	if err != nil {
 		log.Println("could not install playwright browsers: %v", err)
 	}
-	// 解析命令行参数
-	flag.Parse()
-	switch *action {
-	case "cli":
-		//fmt.Println("Start As Cli.")
-		cli_mode()
-	case "gpt":
-		fmt.Println("Start As GPT.")
-	case "srv":
-		fmt.Println("Start As Web.")
-	}
 
+	g_headless = *isheadless
+
+	if len(*tsfile) != 0 {
+		// 加载tsfile内容..
+		content, err := ioutil.ReadFile(*tsfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// 将内容转换为字符串
+		script := string(content)
+		run_script(script)
+	} else {
+		switch *action {
+		case "cli":
+			//fmt.Println("Start As Cli.")
+			cli_mode()
+		case "gpt":
+			fmt.Println("Start As GPT.")
+		case "srv":
+			fmt.Println("Start As Web.")
+		}
+	}
 }
 
 func cli_mode() {
@@ -105,7 +126,7 @@ func cli_mode() {
 	initPlaywright := func() error {
 		var err error
 		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			Headless: playwright.Bool(false),
+			Headless: playwright.Bool(g_headless),
 		})
 		if err != nil {
 			return fmt.Errorf("could not launch browser: %v", err)
@@ -216,7 +237,7 @@ func cli_mode() {
 	}
 }
 
-func main() {
+func run_script(script string) {
 	// 初始化 Playwright
 	pw, err := playwright.Run()
 	if err != nil {
@@ -258,54 +279,6 @@ func main() {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
-	// 执行 Lua 脚本
-	script := `
-function tableToString(tbl, indent)
-    indent = indent or 0
-    local result = "{\n"
-    local prefix = string.rep("  ", indent)
-
-    for key, value in pairs(tbl) do
-        local keyString = tostring(key)
-        if type(value) == "table" then
-            -- 递归处理嵌套表
-            result = result .. prefix .. "  " .. keyString .. " = " .. tableToString(value, indent + 1) .. ",\n"
-        else
-            -- 处理其他类型
-            local valueString = type(value) == "string" and '"' .. value .. '"' or tostring(value)
-            result = result .. prefix .. "  " .. keyString .. " = " .. valueString .. ",\n"
-        end
-    end
-
-    result = result .. prefix .. "}"
-    return result
-end
-	navigate("http://localhost:63342/tsplay/demo/tables.html?_ijt=uorcglga812t7bid9l1h3qkqmt&_ij_reload=RELOAD_ON_SAVE")
-	wait_for_network_idle()
-	local tbl = capture_table("#myTable")
-	for i = 1, #tbl do
-		print("Link " .. i .. ": " .. tableToString(tbl[i]))
-	end
-    `
-	//	script = `-- 打开百度首页
-	//navigate("https://www.baidu.com")
-	//
-	//-- 等待搜索框加载完成
-	//wait_for_selector("#kw")
-	//
-	//-- 在搜索框中输入“山东”
-	//type_text("#kw", "山东")
-	//
-	//-- 点击“百度一下”按钮
-	//click("#su")
-	//
-	//-- 等待搜索结果页面加载完成
-	//wait_for_network_idle()
-	//
-	//screenshot("./data.png")
-	//
-	//print(get_storage_state())
-	//`
 	if err := L.DoString(script); err != nil {
 		log.Fatalf("error running Lua script: %v", err)
 	}
