@@ -103,11 +103,36 @@ func safe_page(L *lua.LState) playwright.Page {
 		return nil
 	}
 
-	playwrightPage, ok := page.Value.(playwright.Page)
-	if !ok {
-		L.RaiseError("'page' does not contain a valid Playwright Page object")
-		return nil
+	var playwrightPage playwright.Page
+
+	if page == nil {
+		browser := safe_browser(L)
+		if browser == nil {
+			return nil
+		}
+
+		// 获取所有的页面
+		contexts := browser.Contexts()
+		if len(contexts) == 0 {
+			L.RaiseError("No browser contexts found")
+			return nil
+		}
+
+		context := contexts[0]
+		pages := context.Pages()
+		if len(pages) == 0 {
+			L.RaiseError("No page found")
+			return nil
+		}
+		playwrightPage = pages[0]
+	} else {
+		playwrightPage, ok = page.Value.(playwright.Page)
+		if !ok {
+			L.RaiseError("'page' does not contain a valid Playwright Page object")
+			return nil
+		}
 	}
+
 	return playwrightPage
 }
 
@@ -1314,11 +1339,9 @@ func is_selected(L *lua.LState) int {
 	}
 
 	// 检查是否被选中，通过 Evaluate 获取 `selected` 属性
-	isSelected, err := element.Evaluate(`element => element.selected`)
-	if err != nil {
-		L.RaiseError("Failed to check if element is selected for selector '%s': %v", selector, err)
-		return 0
-	}
+	isSelected, err := element.Evaluate(`element => {
+        return element.selected;
+    }`)
 
 	// 将结果返回给 Lua
 	L.Push(lua.LBool(isSelected.(bool)))
@@ -1375,15 +1398,11 @@ func new_tab(L *lua.LState) int {
 		return 0
 	}
 
-	// 打开新标签页
-	contexts := browser.Contexts()
-	if len(contexts) == 0 {
-		L.RaiseError("No browser contexts found")
+	context, err := browser.NewContext()
+	if err != nil {
+		L.RaiseError(" browser new contexts failed: %v", err)
 		return 0
 	}
-
-	// 使用第一个浏览器上下文
-	context := contexts[0]
 	page, err := context.NewPage()
 	if err != nil {
 		L.RaiseError("Failed to open new tab: %v", err)
@@ -1396,6 +1415,10 @@ func new_tab(L *lua.LState) int {
 		L.RaiseError("Failed to load URL '%s': %v", url, err)
 		return 0
 	}
+
+	ud_p := L.NewUserData()
+	ud_p.Value = page
+	L.SetGlobal("page", ud_p)
 
 	fmt.Printf("Opened new tab with URL: %s\n", url)
 	return 0
@@ -1412,6 +1435,10 @@ func close_tab(L *lua.LState) int {
 		L.RaiseError("Failed to close current tab: %v", err)
 		return 0
 	}
+
+	ud_p := L.NewUserData()
+	ud_p.Value = nil
+	L.SetGlobal("page", ud_p)
 
 	fmt.Println("Current tab closed")
 	return 0
@@ -1452,6 +1479,10 @@ func switch_to_tab(L *lua.LState) int {
 		return 0
 	}
 
+	ud_p := L.NewUserData()
+	ud_p.Value = page
+	L.SetGlobal("page", ud_p)
+
 	fmt.Printf("Switched to tab at index: %d\n", index)
 	return 0
 }
@@ -1485,6 +1516,7 @@ func intercept_request(L *lua.LState) int {
 		L.Push(lua.LString(request.Method()))
 		L.Push(lua.LString(request.ResourceType()))
 		if err := L.PCall(3, 1, nil); err != nil {
+			fmt.Println(request.URL(), request.Method(), request.ResourceType(), callback)
 			fmt.Printf("Error calling Lua callback: %v\n", err)
 			route.Continue()
 			return

@@ -235,6 +235,12 @@ func cli_mode() {
 			}
 		}
 	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// 等待信号以便优雅地退出
+	<-sigChan
 }
 
 func run_script(script string) {
