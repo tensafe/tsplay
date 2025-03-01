@@ -930,6 +930,12 @@ func download_url(L *lua.LState) int {
 		cookieHeader.WriteString(fmt.Sprintf("%s=%s; ", cookie.Name, cookie.Value))
 	}
 
+	referer := page.URL()
+	userAgent, err := page.Evaluate("navigator.userAgent")
+	if err != nil {
+		L.RaiseError("Failed to get User-Agent: %v", err)
+		return 0
+	}
 	// Create an HTTP client
 	client := &http.Client{}
 
@@ -942,7 +948,10 @@ func download_url(L *lua.LState) int {
 
 	// Add the Cookie header to the request
 	req.Header.Set("Cookie", cookieHeader.String())
-
+	// 填充 referer 到请求头
+	req.Header.Set("Referer", referer)
+	// 填充 User-Agent 到请求头
+	req.Header.Set("User-Agent", userAgent.(string))
 	// Perform the HTTP request
 	resp, err := client.Do(req)
 	if err != nil {
