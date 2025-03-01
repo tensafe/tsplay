@@ -1505,19 +1505,19 @@ func intercept_request(L *lua.LState) int {
 		return 0
 	}
 
+	route_url_match := L.OptString(2, "**/*") // 若未传递参数，默认为空字符串
 	// 设置请求拦截器
-	err := page.Route("**/*", func(route playwright.Route) {
+	err := page.Route(route_url_match, func(route playwright.Route) {
 		// 获取请求对象
 		request := route.Request()
-
+		fmt.Println(request.URL(), request.Method(), request.ResourceType(), callback)
 		// 将请求信息传递给 Lua 回调
+		//_callback := L.GetGlobal("__intercept_request_callback") // 已经将 callback 压入栈中
 		L.Push(callback)
 		L.Push(lua.LString(request.URL()))
 		L.Push(lua.LString(request.Method()))
 		L.Push(lua.LString(request.ResourceType()))
 		if err := L.PCall(3, 1, nil); err != nil {
-			fmt.Println(request.URL(), request.Method(), request.ResourceType(), callback)
-			fmt.Printf("Error calling Lua callback: %v\n", err)
 			route.Continue()
 			return
 		}

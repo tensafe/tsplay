@@ -1,9 +1,5 @@
 -- 定义一个回调函数，用于处理拦截的请求
 local function handle_request(url, method, resource_type)
-    if url == nil or method == nil or resource_type == nil then
-        print("Error: One or more parameters are nil")
-        return nil
-    end
     print("Intercepted request:")
     print("URL: " .. url)
     print("Method: " .. method)
@@ -15,11 +11,12 @@ local function handle_request(url, method, resource_type)
     end
 
     -- 如果没有返回新的 URL，请求将继续原样
+    print("not deal with....")
     return nil
 end
 
 -- 调用 Go 函数设置请求拦截器
-intercept_request(handle_request)
+intercept_request(handle_request, "**/*.js")
 
 -- 继续执行其他脚本逻辑
 print("Request interceptor has been set up.")
