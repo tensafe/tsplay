@@ -80,7 +80,7 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"switch_to_tab", switch_to_tab, "切换到指定的标签页", "Switch to a specific browser tab. Example: switch_to_tab(2). Parameters: index (int) - The index of the tab to switch to."},
 
 	// 网络请求与拦截 / Network Request Handling
-	{"intercept_request", intercept_request, "拦截网络请求", "Intercept and modify network requests. Example: intercept_request(function(request) return 'https://example.com' end). Parameters: callback (function) - A Lua function to handle intercepted requests."},
+	{"intercept_request", intercept_request, "拦截网络请求", "Intercept and modify network requests. Example: intercept_request(function(request) return 'https://example.com' end). Parameters: callback (function, pattern) - A Lua function to handle intercepted requests."},
 	{"block_request", block_request, "阻止指定的网络请求", "Block specific network requests. Example: block_request('*.png'). Parameters: pattern (string) - The pattern of requests to block."},
 	{"get_response", get_response, "获取网络请求的响应", "Get the response of a network request. Example: get_response('https://example.com/api'). Parameters: url (string) - The URL of the request to get the response for."},
 

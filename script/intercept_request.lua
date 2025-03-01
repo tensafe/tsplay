@@ -15,6 +15,7 @@ local function handle_request(url, method, resource_type)
     return nil
 end
 
+navigate("https://www.baidu.com")
 -- 调用 Go 函数设置请求拦截器
 intercept_request(handle_request, "**/*.js")
 
