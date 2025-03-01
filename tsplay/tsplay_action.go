@@ -64,7 +64,7 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	// 提取数据 / Data Extraction
 	{"get_attribute", get_attribute, "获取指定元素的属性值", "Get the value of a specified attribute of an element. Example: get_attribute('#element-id', 'href'). Parameters: selector (string) - The selector of the element; attribute (string) - The attribute name."},
 	{"get_html", get_html, "获取指定元素的 HTML 内容", "Get the HTML content of an element. Example: get_html('#element-id'). Parameters: selector (string, optional) - The selector of the element (if omitted, returns the entire page's HTML)."},
-	{"get_all_links", get_all_links, "获取页面中所有链接", "Extract all links from the page. Example: get_all_links(). No parameters."},
+	{"get_all_links", get_all_links, "获取页面或指定元素中所有链接", "Extract all links from the page. Example: get_all_links('#element-id'). Parameters: selector (string, optional) - The selector of the element."},
 	{"capture_table", capture_table, "提取表格数据", "Capture and extract data from a table element. Example: capture_table('#table-id'). Parameters: selector (string) - The selector of the table element."},
 
 	// 页面状态检查 / Page State Checks
@@ -1109,27 +1109,46 @@ func get_all_links(L *lua.LState) int {
 		return 0
 	}
 
-	// 获取所有链接元素
-	elements, err := page.QuerySelectorAll("a")
-	if err != nil {
-		L.RaiseError("Failed to get all links: %v", err)
-		return 0
-	}
+	// 检查是否传递了选择器参数
+	selector := L.OptString(1, "") // 若未传递参数，默认为空字符串
 
+	//if selector == "" {
+	//	// 如果选择器为空，返回整个页面的 HTML 内容
+	//} else {
+	//	element, err := page.QuerySelector(selector)
+	//}
+	var elements []playwright.ElementHandle // 用于存储匹配到的 HTML 元素
+
+	if selector == "" {
+		// 如果未传递选择器参数，获取页面中所有的 <a> 标签
+		elements, _ = page.QuerySelectorAll("a")
+	} else {
+		// 如果传递了选择器参数，先找到选择器对应的元素
+		parentElement, err := page.QuerySelector(selector)
+		if err != nil || parentElement == nil {
+			L.RaiseError("Failed to find element with selector '%s': %v", selector, err)
+			return 0
+		}
+		// 在该元素下查找所有的 <a> 标签
+		elements, err = parentElement.QuerySelectorAll("a")
+	}
 	// 提取链接地址
-	links := []string{}
+	linkTable := L.NewTable()
 	for _, element := range elements {
 		href, err := element.GetAttribute("href")
-		if err == nil && href != "" {
-			links = append(links, href)
+		if err != nil || len(href) == 0 {
+			continue
 		}
+		textContent, err := element.TextContent()
+		if err != nil {
+			textContent = "[No Text]" // 若获取内容失败，设置为默认值
+		}
+		linkInfo := L.NewTable()
+		linkInfo.RawSetString("href", lua.LString(href))        // href 属性
+		linkInfo.RawSetString("text", lua.LString(textContent)) // 链接文本
+		linkTable.Append(linkInfo)
 	}
 
-	// 将链接列表返回给 Lua
-	linkTable := L.NewTable()
-	for _, link := range links {
-		linkTable.Append(lua.LString(link))
-	}
 	L.Push(linkTable)
 	return 1
 }
