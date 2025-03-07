@@ -66,6 +66,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"get_html", get_html, "获取指定元素的 HTML 内容", "Get the HTML content of an element. Example: get_html('#element-id'). Parameters: selector (string, optional) - The selector of the element (if omitted, returns the entire page's HTML)."},
 	{"get_all_links", get_all_links, "获取页面或指定元素中所有链接", "Extract all links from the page. Example: get_all_links('#element-id'). Parameters: selector (string, optional) - The selector of the element."},
 	{"capture_table", capture_table, "提取表格数据", "Capture and extract data from a table element. Example: capture_table('#table-id'). Parameters: selector (string) - The selector of the table element."},
+	{"find_element", find_element, "获取元素信息", "Find an element. Example: find_element(xpath). Parameters: xpath (string) - The xpath of the element."},
+	{"find_elements", find_elements, "获取所有元素信息", "Find all elements. Example: find_element(xpath). Parameters: xpath (string) - The xpath of all elements."},
 
 	// 页面状态检查 / Page State Checks
 	{"is_visible", is_visible, "检查元素是否可见", "Check if an element is visible. Example: is_visible('#element-id'). Parameters: selector (string) - The selector of the element."},
@@ -176,7 +178,7 @@ func navigate(L *lua.LState) int {
 	// 调用 Playwright 页面导航功能
 	_, err := page.Goto(url)
 	if err != nil {
-		fmt.Println("Failed to navigate to %s: %v", url, err)
+		fmt.Printf("Failed to navigate to %s: %v", url, err)
 		return 0
 	}
 
@@ -209,7 +211,7 @@ func go_back(L *lua.LState) int {
 	// 调用 Page.GoBack() 方法
 	response, err := page.GoBack()
 	if err != nil {
-		fmt.Println("Failed to go back: %v", err)
+		fmt.Printf("Failed to go back: %v", err)
 		return 0
 	}
 
@@ -231,7 +233,7 @@ func go_forward(L *lua.LState) int {
 
 	response, err := page.GoForward()
 	if err != nil {
-		fmt.Println("Failed to go forward: %v", err)
+		fmt.Printf("Failed to go forward: %v", err)
 		return 0
 	}
 
@@ -1137,6 +1139,16 @@ func get_html(L *lua.LState) int {
 	return 1
 }
 
+// 判断是否是直接定位 <a> 的 XPath 选择器
+func isDirectXPathForAnchor(selector string) bool {
+	return strings.HasPrefix(selector, "//a") || strings.Contains(selector, "/a")
+}
+
+// 判断 CSS 选择器是否直接匹配 <a> 标签
+func isDirectCSSForAnchor(selector string) bool {
+	return strings.HasSuffix(selector, "a") || strings.Contains(selector, " a")
+}
+
 func get_all_links(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {
@@ -1153,19 +1165,56 @@ func get_all_links(L *lua.LState) int {
 	//}
 	var elements []playwright.ElementHandle // 用于存储匹配到的 HTML 元素
 
+	//if selector == "" {
+	//	// 如果未传递选择器参数，获取页面中所有的 <a> 标签
+	//	elements, _ = page.QuerySelectorAll("a")
+	//} else {
+	//	// 如果传递了选择器参数，先找到选择器对应的元素
+	//	parentElement, err := page.QuerySelector(selector)
+	//	if err != nil || parentElement == nil {
+	//		L.RaiseError("Failed to find element with selector '%s': %v", selector, err)
+	//		return 0
+	//	}
+	//	// 在该元素下查找所有的 <a> 标签
+	//	elements, err = parentElement.QuerySelectorAll("a")
+	//}
+
 	if selector == "" {
 		// 如果未传递选择器参数，获取页面中所有的 <a> 标签
 		elements, _ = page.QuerySelectorAll("a")
 	} else {
-		// 如果传递了选择器参数，先找到选择器对应的元素
-		parentElement, err := page.QuerySelector(selector)
-		if err != nil || parentElement == nil {
-			L.RaiseError("Failed to find element with selector '%s': %v", selector, err)
-			return 0
+		// 判断选择器类型（XPath 或 CSS）
+		if strings.HasPrefix(selector, "//") {
+			// 处理 XPath 选择器
+			if isDirectXPathForAnchor(selector) {
+				// 选择器直接匹配 <a>
+				elements, _ = page.QuerySelectorAll(selector)
+			} else {
+				// 选择器匹配父元素，需要进一步查找子元素
+				parentElement, err := page.QuerySelector(selector)
+				if err != nil || parentElement == nil {
+					L.RaiseError("Failed to find element with selector '%s': %v", selector, err)
+					return 0
+				}
+				elements, err = parentElement.QuerySelectorAll("a")
+			}
+		} else {
+			// 处理 CSS 选择器
+			if isDirectCSSForAnchor(selector) {
+				// 选择器直接匹配 <a>
+				elements, _ = page.QuerySelectorAll(selector)
+			} else {
+				// 选择器匹配父元素，需要进一步查找子元素
+				parentElement, err := page.QuerySelector(selector)
+				if err != nil || parentElement == nil {
+					L.RaiseError("Failed to find element with selector '%s': %v", selector, err)
+					return 0
+				}
+				elements, err = parentElement.QuerySelectorAll("a")
+			}
 		}
-		// 在该元素下查找所有的 <a> 标签
-		elements, err = parentElement.QuerySelectorAll("a")
 	}
+
 	// 提取链接地址
 	linkTable := L.NewTable()
 	for _, element := range elements {
@@ -1729,5 +1778,96 @@ func get_cookies_string(L *lua.LState) int {
 
 	// 返回 Cookie 字符串给 Lua
 	L.Push(lua.LString(cookieString))
+	return 1
+}
+
+func find_element(L *lua.LState) int {
+	page := safe_page(L)
+	if page == nil {
+		return 0
+	}
+
+	// 从 Lua 获取 selector 参数
+	selector := L.CheckString(1)
+	if selector == "" {
+		L.RaiseError("Selector cannot be empty")
+		return 0
+	}
+
+	// 查找单个元素
+	element, err := page.QuerySelector(selector)
+	if err != nil {
+		L.RaiseError("Failed to find element with selector '%s': %v", selector, err)
+		return 0
+	}
+
+	if element == nil {
+		L.Push(lua.LNil) // 如果没有找到元素，返回 nil
+	} else {
+		// 将元素句柄返回给 Lua
+		L.Push(lua.LString(element.String()))
+	}
+
+	return 1
+}
+
+func find_elements(L *lua.LState) int {
+	page := safe_page(L)
+	if page == nil {
+		return 0
+	}
+
+	// 从 Lua 获取 selector 参数
+	selector := L.CheckString(1)
+	if selector == "" {
+		L.RaiseError("Selector cannot be empty")
+		return 0
+	}
+
+	// 查找多个元素
+	elements, err := page.QuerySelectorAll(selector)
+	if err != nil {
+		L.RaiseError("Failed to find elements with selector '%s': %v", selector, err)
+		return 0
+	}
+
+	// 创建一个 Lua 表来存储元素句柄
+	table := L.NewTable()
+	for _, element := range elements {
+		// 通过 JavaScript 计算元素的 XPath
+		xpath, err := element.Evaluate(`(element) => {
+			const getXPath = (node) => {
+				if (node.id) {
+					return '//*[@id="' + node.id + '"]';
+				}
+				if (node === document.body) {
+					return '/html/body';
+				}
+				let index = 1;
+				let siblings = node.parentNode.childNodes;
+				for (let i = 0; i < siblings.length; i++) {
+					let sibling = siblings[i];
+					if (sibling === node) {
+						return getXPath(node.parentNode) + '/' + node.tagName.toLowerCase() + '[' + index + ']';
+					}
+					if (sibling.nodeType === 1 && sibling.tagName === node.tagName) {
+						index++;
+					}
+				}
+			};
+			return getXPath(element);
+		}`)
+		if err != nil {
+			L.RaiseError("Failed to get XPath for element: %v", err)
+			return 0
+		}
+
+		// 将 XPath 添加到 Lua 表中
+		table.Append(lua.LString(xpath.(string)))
+	}
+
+	// 将表返回给 Lua
+	L.Push(table)
+
 	return 1
 }
