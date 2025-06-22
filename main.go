@@ -14,12 +14,12 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"tsplay/tsplay"
+	"tsplay/tsplay_core"
 )
 
 func completer(d prompt.Document) []prompt.Suggest {
 	s := []prompt.Suggest{}
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		sug := prompt.Suggest{
 			Text:        fn.Name,
 			Description: fn.Description_en,
@@ -31,7 +31,7 @@ func completer(d prompt.Document) []prompt.Suggest {
 
 func createReadlineCompleter() *readline.PrefixCompleter {
 	var items []readline.PrefixCompleterInterface
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		items = append(items, &readline.PrefixCompleter{
 			Name:    []rune(fn.Name),
 			Dynamic: false,
@@ -109,7 +109,7 @@ func cli_mode() {
 	defer L.Close()
 
 	// 注册 Go 函数到 Lua
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
@@ -281,7 +281,7 @@ func run_script(script string) {
 	L.SetGlobal("page", ud_p)
 
 	// 注册 Go 函数到 Lua
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 

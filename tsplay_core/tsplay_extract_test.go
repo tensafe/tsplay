@@ -1,4 +1,4 @@
-package tsplay
+package tsplay_core
 
 import "testing"
 
