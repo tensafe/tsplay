@@ -83,6 +83,12 @@ func TestHandleFlowSchemaTool(t *testing.T) {
 	if !ok || len(manifest) == 0 {
 		t.Fatalf("expected action manifest, got %#v", defs["action_manifest"])
 	}
+	if rules, ok := payload["generation_rules"].([]any); !ok || len(rules) == 0 {
+		t.Fatalf("expected generation rules, got %#v", payload["generation_rules"])
+	}
+	if selectors, ok := payload["selector_strategy"].([]any); !ok || len(selectors) == 0 {
+		t.Fatalf("expected selector strategy, got %#v", payload["selector_strategy"])
+	}
 }
 
 func TestHandleFlowExamplesTool(t *testing.T) {
@@ -97,7 +103,11 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 	if !ok || len(examples) < 3 {
 		t.Fatalf("expected examples, got %#v", payload["examples"])
 	}
+	if hints, ok := payload["example_selection_hints"].([]any); !ok || len(hints) == 0 {
+		t.Fatalf("expected example selection hints, got %#v", payload["example_selection_hints"])
+	}
 
+	foundExtractExample := false
 	for _, example := range examples {
 		item, ok := example.(map[string]any)
 		if !ok {
@@ -114,6 +124,12 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 		if err := ValidateFlow(flow); err != nil {
 			t.Fatalf("validate example %q: %v", item["name"], err)
 		}
+		if item["name"] == "extract_text_and_set_var" {
+			foundExtractExample = true
+		}
+	}
+	if !foundExtractExample {
+		t.Fatalf("missing extract_text_and_set_var example")
 	}
 }
 
@@ -238,6 +254,16 @@ steps:
 	}
 	if !strings.Contains(string(encoded), htmlPath) {
 		t.Fatalf("expected html path in context: %s", encoded)
+	}
+	if contextPayload["failure_category"] != "selector_or_timing" {
+		t.Fatalf("unexpected failure category: %#v", contextPayload["failure_category"])
+	}
+	if _, ok := contextPayload["validation_checklist"].([]any); !ok {
+		t.Fatalf("expected validation checklist, got %#v", contextPayload["validation_checklist"])
+	}
+	focusedVars, ok := contextPayload["focused_variables"].(map[string]any)
+	if !ok || focusedVars["orders_url"] != "https://example.com/orders" {
+		t.Fatalf("unexpected focused variables: %#v", contextPayload["focused_variables"])
 	}
 }
 

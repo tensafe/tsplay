@@ -7,7 +7,7 @@ func BuildFlowJSONSchema() map[string]any {
 		"name":              map[string]any{"type": "string", "description": "Optional human-readable step name."},
 		"action":            map[string]any{"type": "string", "enum": FlowActionNames(), "description": "TSPlay action name."},
 		"args":              map[string]any{"type": "array", "description": "Positional arguments. Prefer named fields for AI-generated flows."},
-		"with":              map[string]any{"type": "object", "description": "Extra named parameters. Prefer top-level named fields when available."},
+		"with":              map[string]any{"type": "object", "description": "Extra named parameters. Prefer top-level named fields when available. For set_var non-string literals, use with.value."},
 		"save_as":           map[string]any{"type": "string", "pattern": flowIdentifierPattern.String(), "description": "Save the action output as a flow variable."},
 		"continue_on_error": map[string]any{"type": "boolean", "description": "Continue to next step when this step fails."},
 		"steps":             map[string]any{"type": "array", "minItems": 1, "description": "Nested steps for control actions such as retry.", "items": map[string]any{"$ref": "#/$defs/step"}},
@@ -18,7 +18,7 @@ func BuildFlowJSONSchema() map[string]any {
 		"url":               map[string]any{"type": "string"},
 		"selector":          map[string]any{"type": "string", "description": "Use selector candidates from tsplay.observe_page when possible."},
 		"text":              map[string]any{"type": "string"},
-		"value":             map[string]any{"type": "string"},
+		"value":             map[string]any{"type": "string", "description": "String value. For set_var non-string literals, put the literal in with.value."},
 		"timeout":           map[string]any{"type": "integer", "minimum": 1},
 		"times":             map[string]any{"type": "integer", "minimum": 1, "default": 3},
 		"interval_ms":       map[string]any{"type": "integer", "minimum": 0, "default": 0},
@@ -74,16 +74,12 @@ func BuildFlowJSONSchema() map[string]any {
 			},
 		},
 		"$defs": map[string]any{
-			"step":            stepSchema,
-			"action_manifest": buildFlowActionManifest(),
-			"generation_rules": []string{
-				"Always include schema_version.",
-				"Prefer named parameters over args for readability and validation.",
-				"Use selector_candidates from tsplay.observe_page; prefer data-testid/data-cy/id/placeholder/aria-label/text selectors before XPath.",
-				"Use assert_visible/assert_text for business checks, retry for flaky page interactions, if for optional page states, foreach for lists, on_error for local recovery, and wait_until for polling conditions.",
-				"Use save_as for extracted values that later steps need.",
-				"Do not use lua, execute_script, evaluate, file actions, or browser state actions unless the user explicitly needs them and MCP allow flags are set.",
-			},
+			"step":                stepSchema,
+			"action_manifest":     buildFlowActionManifest(),
+			"generation_rules":    flowSchemaGenerationRules(),
+			"selector_strategy":   flowSelectorStrategy(),
+			"authoring_checklist": flowAuthoringChecklist(),
+			"repair_checklist":    flowRepairValidationChecklist(),
 		},
 	}
 }
@@ -92,18 +88,8 @@ func buildFlowActionSchemaConstraints() []any {
 	constraints := make([]any, 0, len(flowActionSpecs))
 	for _, action := range FlowActionNames() {
 		spec := flowActionSpecs[action]
-		if required := flowControlActionRequiredProperties(action); len(required) > 0 {
-			constraints = append(constraints, map[string]any{
-				"if": map[string]any{
-					"properties": map[string]any{"action": map[string]any{"const": action}},
-					"required":   []string{"action"},
-				},
-				"then": map[string]any{
-					"description": fmt.Sprintf("Constraints for action %q.", action),
-					"required":    append([]string{"action"}, required...),
-					"not":         map[string]any{"required": []string{"args"}},
-				},
-			})
+		if special := flowSpecialActionSchemaConstraint(action); special != nil {
+			constraints = append(constraints, special)
 			continue
 		}
 		requiredNamedParams := []string{}
@@ -138,20 +124,59 @@ func buildFlowActionSchemaConstraints() []any {
 	return constraints
 }
 
-func flowControlActionRequiredProperties(action string) []string {
+func flowSpecialActionSchemaConstraint(action string) map[string]any {
+	if action == "set_var" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "save_as", "value"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "save_as", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"value"},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	required := []string{}
 	switch action {
 	case "retry":
-		return []string{"steps"}
+		required = []string{"steps"}
 	case "if":
-		return []string{"condition"}
+		required = []string{"condition"}
 	case "foreach":
-		return []string{"items", "item_var", "steps"}
+		required = []string{"items", "item_var", "steps"}
 	case "on_error":
-		return []string{"steps", "on_error"}
+		required = []string{"steps", "on_error"}
 	case "wait_until":
-		return []string{"condition"}
+		required = []string{"condition"}
 	default:
 		return nil
+	}
+	return map[string]any{
+		"if": map[string]any{
+			"properties": map[string]any{"action": map[string]any{"const": action}},
+			"required":   []string{"action"},
+		},
+		"then": map[string]any{
+			"description": fmt.Sprintf("Constraints for action %q.", action),
+			"required":    append([]string{"action"}, required...),
+			"not":         map[string]any{"required": []string{"args"}},
+		},
 	}
 }
 
@@ -206,8 +231,10 @@ func flowParamJSONSchema(name string) map[string]any {
 func BuildFlowExamples() []map[string]any {
 	return []map[string]any{
 		{
-			"name":        "search_and_collect_links",
-			"description": "Open a search page, type a query, click submit, and save extracted links.",
+			"name":          "search_and_collect_links",
+			"description":   "Open a search page, type a query, click submit, and save extracted links.",
+			"focus_actions": []string{"navigate", "wait_for_selector", "type_text", "click", "get_all_links"},
+			"when_to_use":   "Simple page navigation plus a single extraction result.",
 			"flow": `schema_version: "1"
 name: search_and_collect_links
 vars:
@@ -229,8 +256,10 @@ steps:
 `,
 		},
 		{
-			"name":        "use_observation_selector_candidates",
-			"description": "Use selector candidates from tsplay.observe_page instead of asking the user for HTML details.",
+			"name":          "use_observation_selector_candidates",
+			"description":   "Use selector candidates from tsplay.observe_page instead of asking the user for HTML details.",
+			"focus_actions": []string{"navigate", "type_text", "click", "wait_for_selector"},
+			"when_to_use":   "The user describes intent but does not know HTML details.",
 			"flow": `schema_version: "1"
 name: order_search_from_observation
 vars:
@@ -250,8 +279,10 @@ steps:
 `,
 		},
 		{
-			"name":        "extract_table",
-			"description": "Capture a table into a variable for later processing.",
+			"name":          "extract_table",
+			"description":   "Capture a table into a variable for later processing.",
+			"focus_actions": []string{"navigate", "wait_for_selector", "capture_table"},
+			"when_to_use":   "The page already has stable table markup and later steps need structured rows.",
 			"flow": `schema_version: "1"
 name: capture_orders_table
 vars:
@@ -268,8 +299,10 @@ steps:
 `,
 		},
 		{
-			"name":        "failure_artifact_friendly",
-			"description": "Keep steps small and named so trace artifacts make repair easier.",
+			"name":          "failure_artifact_friendly",
+			"description":   "Keep steps small and named so trace artifacts make repair easier.",
+			"focus_actions": []string{"navigate", "wait_for_selector", "click"},
+			"when_to_use":   "The flow is likely to be repaired automatically later.",
 			"flow": `schema_version: "1"
 name: export_orders
 vars:
@@ -288,8 +321,10 @@ steps:
 `,
 		},
 		{
-			"name":        "retry_with_assertions",
-			"description": "Retry flaky interactions and assert the business result before continuing.",
+			"name":          "retry_with_assertions",
+			"description":   "Retry flaky interactions and assert the business result before continuing.",
+			"focus_actions": []string{"retry", "click", "assert_visible", "assert_text"},
+			"when_to_use":   "The page is dynamic and a click may succeed only after a short delay.",
 			"flow": `schema_version: "1"
 name: retry_export_orders
 vars:
@@ -313,8 +348,10 @@ steps:
 `,
 		},
 		{
-			"name":        "control_flow_branch_loop_recover",
-			"description": "Use if, foreach, on_error, and wait_until for common business control flow without lua.",
+			"name":          "control_flow_branch_loop_recover",
+			"description":   "Use if, foreach, on_error, and wait_until for common business control flow without lua.",
+			"focus_actions": []string{"if", "foreach", "on_error", "wait_until"},
+			"when_to_use":   "The flow needs login branching, list traversal, and local failure recovery.",
 			"flow": `schema_version: "1"
 name: batch_export_orders
 vars:
@@ -366,8 +403,43 @@ steps:
 `,
 		},
 		{
+			"name":          "extract_text_and_set_var",
+			"description":   "Extract text into variables and build a branch-friendly Flow without asking users for HTML internals.",
+			"focus_actions": []string{"extract_text", "set_var", "if", "assert_text"},
+			"when_to_use":   "The next action depends on page text, counts, or labels that should become Flow variables first.",
+			"flow": `schema_version: "1"
+name: extract_summary_and_branch
+vars:
+  orders_url: https://example.com/orders
+steps:
+  - action: navigate
+    url: "{{orders_url}}"
+  - action: extract_text
+    selector: ".summary .count"
+    pattern: '([0-9]+)'
+    save_as: order_count
+  - action: set_var
+    save_as: export_message
+    value: "Current orders: {{order_count}}"
+  - action: if
+    condition:
+      action: extract_text
+      selector: ".summary .count"
+      pattern: '[1-9][0-9]*'
+    then:
+      - action: click
+        selector: 'text="Export orders"'
+    else:
+      - action: assert_text
+        selector: ".empty-state"
+        text: "No orders"
+`,
+		},
+		{
 			"name":           "lua_escape_hatch",
 			"description":    "Use lua only for cases not yet expressible by structured actions.",
+			"focus_actions":  []string{"lua"},
+			"when_to_use":    "Only when structured Flow actions cannot express the needed business rule yet.",
 			"requires_allow": []string{"allow_lua"},
 			"flow": `schema_version: "1"
 name: custom_lua_escape_hatch
@@ -381,5 +453,54 @@ steps:
       print("Use lua sparingly; prefer structured actions first.")
 `,
 		},
+	}
+}
+
+func flowSchemaGenerationRules() []string {
+	return []string{
+		`Always include schema_version: "1".`,
+		"Prefer named parameters over args for readability and validation.",
+		"Generate structured Flow first. Use lua only as an explicit escape hatch.",
+		"Turn visible page facts into variables with extract_text + save_as, then use set_var when later steps need a stable derived value.",
+		"Use assert_visible/assert_text for business checks, retry for flaky page interactions, if for optional page states, foreach for lists, on_error for local recovery, and wait_until for polling conditions.",
+		"Keep steps small and named so trace artifacts and repair context point to an exact failure location.",
+		"Do not use execute_script, evaluate, file actions, or browser state actions unless the request explicitly needs them and the MCP allow flags are set.",
+	}
+}
+
+func flowSelectorStrategy() []string {
+	return []string{
+		"Prefer selectors from tsplay.observe_page selector_candidates when available.",
+		"Selector priority: data-testid, data-cy, id, placeholder, aria-label, role/text, stable class combinations, XPath only as a last resort.",
+		"Prefer selectors tied to user intent such as button text, input placeholder, or table/test ids over brittle DOM depth.",
+		"When a selector may appear late, pair it with wait_for_selector, retry, or wait_until instead of using sleep first.",
+	}
+}
+
+func flowAuthoringChecklist() []string {
+	return []string{
+		"Map the user intent to page states first, then choose actions.",
+		"Extract page values into variables before branching or looping on them.",
+		"Prefer save_as variables that describe business meaning, not DOM details.",
+		"Add assertions around the business result, not only around low-level clicks.",
+		"When adding recovery logic, keep it local with on_error instead of rewriting the whole Flow.",
+	}
+}
+
+func flowRepairValidationChecklist() []string {
+	return []string{
+		"Validate the repaired Flow before running it.",
+		"Check whether selector, text, timeout, pattern, or variable references are the actual failure point.",
+		"Prefer the smallest repair that keeps existing save_as outputs and downstream variable names stable.",
+		"Use failure artifact paths and DOM snapshot excerpts as evidence; do not inline full HTML into the repaired Flow.",
+	}
+}
+
+func flowExampleSelectionHints() []string {
+	return []string{
+		"Start from the example whose focus_actions are closest to the requested business flow.",
+		"When the user does not know selectors, combine tsplay.observe_page with the use_observation_selector_candidates example.",
+		"When the next step depends on page text or counts, start from extract_text_and_set_var.",
+		"When the page is flaky, start from retry_with_assertions before reaching for lua.",
 	}
 }

@@ -162,6 +162,8 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"go_forward":            {},
 	"type_text":             {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "text", Required: true}}},
 	"get_text":              {Args: []flowArgSpec{{Name: "selector", Required: true}}},
+	"extract_text":          {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "timeout"}, {Name: "pattern"}}},
+	"set_var":               {Args: []flowArgSpec{{Name: "value", Required: true}}},
 	"set_value":             {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "value", Required: true}}},
 	"select_option":         {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "value", Required: true}}},
 	"hover":                 {Args: []flowArgSpec{{Name: "selector", Required: true}}},
@@ -293,6 +295,14 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 
 		if step.SaveAs != "" && !flowIdentifierPattern.MatchString(step.SaveAs) {
 			return fmt.Errorf("step %s save_as %q is not a valid variable name", stepPath, step.SaveAs)
+		}
+
+		if step.Action == "set_var" {
+			if err := validateSetVarFlowStep(stepPath, step, knownVars); err != nil {
+				return err
+			}
+			knownVars[step.SaveAs] = nil
+			continue
 		}
 
 		if isFlowControlAction(step.Action) {
@@ -543,6 +553,30 @@ func validateWaitUntilFlowStep(stepPath string, step FlowStep, knownVars map[str
 		}
 	}
 	return validateFlowStepSequence([]FlowStep{*step.Condition}, copyKnownVars(knownVars), stepPath+".condition")
+}
+
+func validateSetVarFlowStep(stepPath string, step FlowStep, knownVars map[string]any) error {
+	if len(step.Args) > 0 {
+		return fmt.Errorf("step %s action %q does not support args; use save_as and value", stepPath, step.Action)
+	}
+	if strings.TrimSpace(step.SaveAs) == "" {
+		return fmt.Errorf("step %s action %q requires save_as", stepPath, step.Action)
+	}
+
+	present := step.presentNamedParams()
+	allowed := map[string]bool{"value": true}
+	for name, value := range present {
+		if !allowed[name] {
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+		if err := validateFlowReferences(stepPath, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+	}
+	if _, ok := present["value"]; !ok {
+		return fmt.Errorf("step %s action %q requires value", stepPath, step.Action)
+	}
+	return nil
 }
 
 func validateFlowStepArgs(stepIndex string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
@@ -1646,6 +1680,10 @@ func sanitizeArtifactSegment(value string) string {
 
 func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 	switch step.Action {
+	case "extract_text":
+		return runFlowExtractTextStep(L, ctx, step)
+	case "set_var":
+		return runFlowSetVarStep(ctx, step)
 	case "assert_visible":
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
@@ -1746,10 +1784,71 @@ func runFlowAssertTextStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 	}
 }
 
+func runFlowExtractTextStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	selector, err := flowStepStringParam(ctx, step, "selector")
+	if err != nil {
+		return nil, err
+	}
+	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
+	if err != nil {
+		return nil, err
+	}
+	pattern, err := flowStepOptionalStringParam(ctx, step, "pattern")
+	if err != nil {
+		return nil, err
+	}
+	if timeout > 0 {
+		if _, err := runFlowStep(L, ctx, FlowStep{Action: "wait_for_selector", Selector: selector, Timeout: timeout}); err != nil {
+			return nil, err
+		}
+	}
+
+	actual, err := runFlowStep(L, ctx, FlowStep{Action: "get_text", Selector: selector})
+	if err != nil {
+		return nil, err
+	}
+	texts := flowTextValues(actual)
+	if pattern == "" {
+		return compactExtractedTexts(texts), nil
+	}
+	matched, err := extractTextByPattern(texts, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("extract_text selector %q pattern %q %w", selector, pattern, err)
+	}
+	return matched, nil
+}
+
+func runFlowSetVarStep(ctx *FlowContext, step FlowStep) (any, error) {
+	if strings.TrimSpace(step.SaveAs) == "" {
+		return nil, fmt.Errorf("set_var requires save_as")
+	}
+	value, ok := step.param("value")
+	if !ok {
+		return nil, fmt.Errorf("set_var requires value")
+	}
+	return resolveValue(value, ctx)
+}
+
 func flowStepStringParam(ctx *FlowContext, step FlowStep, name string) (string, error) {
 	value, ok := step.param(name)
 	if !ok {
 		return "", fmt.Errorf("action %q requires %q", step.Action, name)
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return "", err
+	}
+	text, ok := resolved.(string)
+	if !ok {
+		return "", fmt.Errorf("action %q %q must be a string", step.Action, name)
+	}
+	return text, nil
+}
+
+func flowStepOptionalStringParam(ctx *FlowContext, step FlowStep, name string) (string, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return "", nil
 	}
 	resolved, err := resolveValue(value, ctx)
 	if err != nil {
@@ -1775,26 +1874,64 @@ func flowStepOptionalIntParam(ctx *FlowContext, step FlowStep, name string) (int
 }
 
 func flowTextContains(actual any, expected string) bool {
-	switch typed := actual.(type) {
-	case string:
-		return strings.Contains(typed, expected)
-	case []any:
-		for _, item := range typed {
-			if flowTextContains(item, expected) {
-				return true
-			}
+	for _, text := range flowTextValues(actual) {
+		if strings.Contains(text, expected) {
+			return true
 		}
-		return false
-	case []string:
-		for _, item := range typed {
-			if strings.Contains(item, expected) {
-				return true
-			}
-		}
-		return false
-	default:
-		return strings.Contains(fmt.Sprint(typed), expected)
 	}
+	return false
+}
+
+func flowTextValues(actual any) []string {
+	switch typed := actual.(type) {
+	case nil:
+		return nil
+	case string:
+		return []string{strings.TrimSpace(typed)}
+	case []string:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, strings.TrimSpace(item))
+		}
+		return values
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, flowTextValues(item)...)
+		}
+		return values
+	default:
+		return []string{strings.TrimSpace(fmt.Sprint(typed))}
+	}
+}
+
+func compactExtractedTexts(texts []string) any {
+	switch len(texts) {
+	case 0:
+		return ""
+	case 1:
+		return texts[0]
+	default:
+		return texts
+	}
+}
+
+func extractTextByPattern(texts []string, pattern string) (string, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", fmt.Errorf("invalid regex: %w", err)
+	}
+	for _, text := range texts {
+		match := re.FindStringSubmatch(text)
+		if len(match) == 0 {
+			continue
+		}
+		if len(match) > 1 {
+			return strings.TrimSpace(match[1]), nil
+		}
+		return strings.TrimSpace(match[0]), nil
+	}
+	return "", fmt.Errorf("did not match any extracted text")
 }
 
 func buildActionArgs(L *lua.LState, ctx *FlowContext, step FlowStep) ([]lua.LValue, error) {

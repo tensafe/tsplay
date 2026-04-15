@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -20,18 +21,25 @@ type FlowRepairContextOptions struct {
 }
 
 type FlowRepairContext struct {
-	FlowName           string                  `json:"flow_name,omitempty"`
-	FlowDescription    string                  `json:"flow_description,omitempty"`
-	Error              string                  `json:"error,omitempty"`
-	FailedStep         *FlowRepairStepContext  `json:"failed_step,omitempty"`
-	NearbySteps        []FlowRepairStepContext `json:"nearby_steps,omitempty"`
-	TraceSummary       []FlowRepairTraceItem   `json:"trace_summary,omitempty"`
-	Artifacts          *FlowRepairArtifacts    `json:"artifacts,omitempty"`
-	Variables          map[string]any          `json:"variables,omitempty"`
-	AllowedActions     []string                `json:"allowed_actions,omitempty"`
-	GenerationRules    []string                `json:"generation_rules,omitempty"`
-	RepairInstructions []string                `json:"repair_instructions,omitempty"`
-	Prompt             string                  `json:"prompt,omitempty"`
+	FlowName            string                  `json:"flow_name,omitempty"`
+	FlowDescription     string                  `json:"flow_description,omitempty"`
+	Error               string                  `json:"error,omitempty"`
+	FailureCategory     string                  `json:"failure_category,omitempty"`
+	FailureReason       string                  `json:"failure_reason,omitempty"`
+	FailedStepPath      string                  `json:"failed_step_path,omitempty"`
+	FailedStep          *FlowRepairStepContext  `json:"failed_step,omitempty"`
+	NearbySteps         []FlowRepairStepContext `json:"nearby_steps,omitempty"`
+	TraceSummary        []FlowRepairTraceItem   `json:"trace_summary,omitempty"`
+	Artifacts           *FlowRepairArtifacts    `json:"artifacts,omitempty"`
+	Variables           map[string]any          `json:"variables,omitempty"`
+	FocusedVariables    map[string]any          `json:"focused_variables,omitempty"`
+	RepairTargets       []string                `json:"repair_targets,omitempty"`
+	AllowedActions      []string                `json:"allowed_actions,omitempty"`
+	GenerationRules     []string                `json:"generation_rules,omitempty"`
+	SelectorStrategy    []string                `json:"selector_strategy,omitempty"`
+	RepairInstructions  []string                `json:"repair_instructions,omitempty"`
+	ValidationChecklist []string                `json:"validation_checklist,omitempty"`
+	Prompt              string                  `json:"prompt,omitempty"`
 }
 
 type FlowRepairStepContext struct {
@@ -109,25 +117,39 @@ func BuildFlowRepairContext(options FlowRepairContextOptions) (*FlowRepairContex
 	if failedStepNumber <= 0 {
 		failedStepNumber = failedTraceIndex + 1
 	}
+	var failedFlowStep *FlowStep
+	if failedStepNumber >= 1 && failedStepNumber <= len(options.Flow.Steps) {
+		failedFlowStep = &options.Flow.Steps[failedStepNumber-1]
+	}
 
 	traceByIndex := map[int]FlowRepairTraceItem{}
 	for _, item := range traceSummary {
 		traceByIndex[item.Index] = item
 	}
+	failureCategory, failureReason := classifyFlowRepairFailure(failedTrace, failedFlowStep)
 
 	context := &FlowRepairContext{
-		FlowName:           options.Flow.Name,
-		FlowDescription:    options.Flow.Description,
-		Error:              firstNonEmpty(options.Error, failedTrace.Error),
-		TraceSummary:       traceSummary,
-		NearbySteps:        buildFlowRepairNearbySteps(options.Flow, failedStepNumber, traceByIndex),
-		AllowedActions:     FlowActionNames(),
-		GenerationRules:    flowRepairGenerationRules(),
-		RepairInstructions: flowRepairInstructions(),
+		FlowName:            options.Flow.Name,
+		FlowDescription:     options.Flow.Description,
+		Error:               firstNonEmpty(options.Error, failedTrace.Error),
+		FailureCategory:     failureCategory,
+		FailureReason:       failureReason,
+		FailedStepPath:      failedTrace.Path,
+		TraceSummary:        traceSummary,
+		NearbySteps:         buildFlowRepairNearbySteps(options.Flow, failedStepNumber, traceByIndex),
+		RepairTargets:       buildFlowRepairTargets(failedFlowStep, failedTrace),
+		AllowedActions:      FlowActionNames(),
+		GenerationRules:     flowRepairGenerationRules(),
+		SelectorStrategy:    flowSelectorStrategy(),
+		RepairInstructions:  flowRepairInstructions(),
+		ValidationChecklist: flowRepairValidationChecklist(),
 	}
 	if options.Result != nil {
 		if vars, ok := compactTraceValue(options.Result.Vars, 0).(map[string]any); ok && len(vars) > 0 {
 			context.Variables = vars
+		}
+		if focused := buildFlowRepairFocusedVariables(options.Flow, failedStepNumber, options.Result.Vars); len(focused) > 0 {
+			context.FocusedVariables = focused
 		}
 	}
 	if failedStepNumber >= 1 && failedStepNumber <= len(options.Flow.Steps) {
@@ -370,14 +392,7 @@ func truncateRepairText(value string, limit int) (string, bool) {
 }
 
 func flowRepairGenerationRules() []string {
-	return []string{
-		`Keep schema_version: "1".`,
-		"Prefer structured actions over lua for navigation, clicking, typing, waiting, and extraction.",
-		"Repair selectors using DOM snapshot evidence and selector candidates when available.",
-		"Prefer stable selectors: data-testid, data-cy, id, placeholder, aria-label, role/text; use XPath only when necessary.",
-		"Keep steps small and named so future trace artifacts identify the failure location.",
-		"Do not inline page.html contents into the repaired Flow; use artifact paths only as evidence.",
-	}
+	return flowSchemaGenerationRules()
 }
 
 func flowRepairInstructions() []string {
@@ -385,6 +400,7 @@ func flowRepairInstructions() []string {
 		"Identify whether the failure is caused by selector drift, timing, navigation state, hidden elements, changed text, or missing variables.",
 		"Patch only the smallest necessary part of the Flow.",
 		"Add wait_for_selector or wait_for_text before fragile click/type/extract steps when the page is dynamic.",
+		"Prefer extract_text + save_as and set_var over introducing lua just to move values between steps.",
 		"Preserve existing save_as variables and downstream variable references unless they are the actual bug.",
 		"Return a valid TSPlay Flow YAML/JSON that passes tsplay.validate_flow.",
 	}
@@ -407,7 +423,108 @@ Use schema_version %q.
 Prefer structured actions and stable selectors; use lua only as an explicit escape hatch.
 Do not paste full HTML into the answer. Use html_path, screenshot_path, and dom_snapshot_excerpt as evidence.
 Failed step: %s
-Error: %s`, CurrentFlowSchemaVersion, failed, context.Error)
+Failure category: %s
+Error: %s`, CurrentFlowSchemaVersion, failed, context.FailureCategory, context.Error)
+}
+
+func classifyFlowRepairFailure(trace FlowStepTrace, step *FlowStep) (string, string) {
+	action := trace.Action
+	if step != nil && strings.TrimSpace(step.Action) != "" {
+		action = step.Action
+	}
+	errorText := strings.ToLower(firstNonEmpty(trace.Error, trace.ErrorStack))
+	switch {
+	case strings.Contains(errorText, "unknown flow variable"):
+		return "variable_resolution", "A referenced flow variable is missing or saved under the wrong name."
+	case action == "assert_text" || strings.Contains(errorText, "assert_text failed"):
+		return "text_mismatch", "Expected text no longer matches the page content or appears later than expected."
+	case action == "extract_text" && strings.Contains(errorText, "pattern"):
+		return "extraction_pattern", "The extraction regex no longer matches the text returned by the page."
+	case action == "wait_until":
+		return "polling_timeout", "The condition never became truthy before timeout."
+	case action == "navigate":
+		return "navigation", "Navigation did not reach the expected page or failed before the next state appeared."
+	case strings.Contains(errorText, "timeout"),
+		strings.Contains(errorText, "locator"),
+		strings.Contains(errorText, "not visible"),
+		strings.Contains(errorText, "assert_visible failed"):
+		return "selector_or_timing", "The selector may have drifted, the element may be hidden, or the page was not ready yet."
+	default:
+		return "step_execution", "The step failed during normal execution and likely needs a small targeted repair."
+	}
+}
+
+func buildFlowRepairTargets(step *FlowStep, trace FlowStepTrace) []string {
+	targets := map[string]bool{}
+	if step != nil {
+		if strings.TrimSpace(step.Selector) != "" {
+			targets["selector"] = true
+		}
+		if strings.TrimSpace(step.Text) != "" {
+			targets["text"] = true
+		}
+		if strings.TrimSpace(step.Pattern) != "" {
+			targets["pattern"] = true
+		}
+		if strings.TrimSpace(step.SaveAs) != "" {
+			targets["save_as"] = true
+		}
+		if len(flowReferences(step.presentNamedParams())) > 0 {
+			targets["variables"] = true
+		}
+		if step.Timeout != 0 || step.IntervalMS != 0 {
+			targets["timing"] = true
+		}
+	}
+	if strings.TrimSpace(trace.PageURL) != "" {
+		targets["page_state"] = true
+	}
+	if trace.Condition != nil {
+		targets["condition"] = true
+	}
+	items := make([]string, 0, len(targets))
+	for target := range targets {
+		items = append(items, target)
+	}
+	sort.Strings(items)
+	return items
+}
+
+func buildFlowRepairFocusedVariables(flow *Flow, failedStepNumber int, vars map[string]any) map[string]any {
+	if flow == nil || failedStepNumber <= 0 || len(vars) == 0 {
+		return nil
+	}
+	start := failedStepNumber - 1
+	if start < 1 {
+		start = 1
+	}
+	end := failedStepNumber + 1
+	if end > len(flow.Steps) {
+		end = len(flow.Steps)
+	}
+
+	refs := map[string]bool{}
+	for index := start; index <= end; index++ {
+		for _, ref := range flowReferences(flow.Steps[index-1].presentNamedParams()) {
+			refs[ref] = true
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+
+	focused := map[string]any{}
+	for ref := range refs {
+		value, ok := vars[ref]
+		if !ok {
+			continue
+		}
+		focused[ref] = compactTraceValue(value, 0)
+	}
+	if len(focused) == 0 {
+		return nil
+	}
+	return focused
 }
 
 func firstNonEmpty(values ...string) string {

@@ -316,6 +316,64 @@ func TestRunFlowWaitUntilPollsCondition(t *testing.T) {
 	}
 }
 
+func TestRunFlowExtractTextAndSetVar(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	L.SetGlobal("get_text", L.NewFunction(func(L *lua.LState) int {
+		selector := L.CheckString(1)
+		switch selector {
+		case ".summary .count":
+			L.Push(lua.LString("Orders: 12"))
+		case ".empty-state":
+			L.Push(lua.LString("No orders"))
+		default:
+			L.Push(lua.LString(""))
+		}
+		return 1
+	}))
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "extract_text_set_var",
+		Steps: []FlowStep{
+			{Action: "extract_text", Selector: ".summary .count", Pattern: `([0-9]+)`, SaveAs: "order_count"},
+			{Action: "set_var", SaveAs: "export_message", Value: "Current orders: {{order_count}}"},
+			{
+				Action: "if",
+				Condition: &FlowStep{
+					Action:   "extract_text",
+					Selector: ".summary .count",
+					Pattern:  `[1-9][0-9]*`,
+				},
+				Then: []FlowStep{
+					{Action: "set_var", SaveAs: "should_export", Value: "yes"},
+				},
+				Else: []FlowStep{
+					{Action: "set_var", SaveAs: "should_export", Value: "no"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInState(L, flow)
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["order_count"]; got != "12" {
+		t.Fatalf("order_count = %#v", got)
+	}
+	if got := result.Vars["export_message"]; got != "Current orders: 12" {
+		t.Fatalf("export_message = %#v", got)
+	}
+	if got := result.Vars["should_export"]; got != "yes" {
+		t.Fatalf("should_export = %#v", got)
+	}
+	if result.Trace[0].OutputSummary == "" {
+		t.Fatalf("expected extract_text output summary")
+	}
+}
+
 func TestValidateFlowStrictRejectsMissingSchemaVersion(t *testing.T) {
 	flow := &Flow{
 		Name: "missing_schema",
@@ -397,9 +455,10 @@ func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 				Steps: []FlowStep{
 					{Action: "assert_visible", Selector: "#ready", Timeout: 1000},
 					{Action: "assert_text", Selector: "#message", Text: "done"},
-					{Action: "get_text", Selector: "#message", SaveAs: "message"},
+					{Action: "extract_text", Selector: "#message", Pattern: "done", SaveAs: "message"},
 				},
 			},
+			{Action: "set_var", SaveAs: "message_copy", Value: "{{message}}"},
 			{
 				Action:    "if",
 				Condition: &FlowStep{Action: "is_visible", Selector: "#optional"},
@@ -429,7 +488,7 @@ func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 					{Action: "lua", Code: "return last_error", SaveAs: "handled"},
 				},
 			},
-			{Action: "lua", Code: "return message", SaveAs: "echo"},
+			{Action: "lua", Code: "return message_copy", SaveAs: "echo"},
 		},
 	}
 
@@ -448,6 +507,22 @@ func TestValidateFlowStrictRejectsControlMissingRequiredFields(t *testing.T) {
 		flow := &Flow{
 			SchemaVersion: "1",
 			Name:          "bad_" + name,
+			Steps:         []FlowStep{step},
+		}
+		if err := ValidateFlowStrict(flow); err == nil {
+			t.Fatalf("expected %s validation error", name)
+		}
+	}
+}
+
+func TestValidateFlowStrictRejectsSetVarWithoutSaveAsOrValue(t *testing.T) {
+	for name, step := range map[string]FlowStep{
+		"missing_save_as": {Action: "set_var", Value: "hello"},
+		"missing_value":   {Action: "set_var", SaveAs: "greeting"},
+	} {
+		flow := &Flow{
+			SchemaVersion: "1",
+			Name:          name,
 			Steps:         []FlowStep{step},
 		}
 		if err := ValidateFlowStrict(flow); err == nil {

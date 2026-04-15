@@ -401,7 +401,12 @@ func handleFlowSchemaTool(
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return newJSONToolResult(map[string]any{
-		"schema": BuildFlowJSONSchema(),
+		"schema":              BuildFlowJSONSchema(),
+		"action_manifest":     buildFlowActionManifest(),
+		"generation_rules":    flowSchemaGenerationRules(),
+		"selector_strategy":   flowSelectorStrategy(),
+		"authoring_checklist": flowAuthoringChecklist(),
+		"repair_checklist":    flowRepairValidationChecklist(),
 	})
 }
 
@@ -410,7 +415,8 @@ func handleFlowExamplesTool(
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return newJSONToolResult(map[string]any{
-		"examples": BuildFlowExamples(),
+		"examples":                BuildFlowExamples(),
+		"example_selection_hints": flowExampleSelectionHints(),
 	})
 }
 
@@ -666,6 +672,8 @@ func buildFlowActionManifest() []map[string]any {
 		descriptions[fn.Name] = fn.Description_en
 	}
 	descriptions["lua"] = "Run an inline Lua code block. Prefer structured actions for normal browser steps and use lua only as an escape hatch."
+	descriptions["extract_text"] = "Read text from a selector, optionally wait first, and optionally extract the first regex match."
+	descriptions["set_var"] = "Set a flow variable from a resolved value. Requires save_as; for non-string literals use with.value."
 	descriptions["assert_visible"] = "Fail the flow unless the selector is visible. Optional timeout waits before asserting."
 	descriptions["assert_text"] = "Fail the flow unless the selected element text contains the expected text. Optional timeout polls before asserting."
 	descriptions["retry"] = "Retry nested Flow steps until they succeed or the retry count is exhausted."
@@ -689,6 +697,18 @@ func buildFlowActionManifest() []map[string]any {
 			"name":        name,
 			"description": descriptions[name],
 			"args":        args,
+		}
+		if name == "extract_text" {
+			item["returns"] = "string|string[]"
+			item["encouraged_save_as"] = true
+		}
+		if name == "set_var" {
+			item["requires_save_as"] = true
+			item["returns"] = "any"
+			item["notes"] = []string{
+				"Use value for strings or placeholders such as {{order_count}}.",
+				"Use with.value when the literal is a boolean, number, list, or object.",
+			}
 		}
 		if name == "retry" {
 			item["args"] = []map[string]any{
