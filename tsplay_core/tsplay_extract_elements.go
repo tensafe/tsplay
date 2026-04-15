@@ -105,6 +105,15 @@ func ExtractElementWithXPath(page playwright.Page) string {
 }
 
 func ExtractSimplifiedElementWithXPath(page playwright.Page) string {
+	snapshot, err := ExtractSimplifiedElementWithXPathResult(page)
+	if err != nil {
+		log.Fatalf("could not evaluate simplified DOM tree with XPath: %v", err)
+	}
+	log.Printf("Simplified DOM Tree with XPath:\n%s", snapshot)
+	return snapshot
+}
+
+func ExtractSimplifiedElementWithXPathResult(page playwright.Page) (string, error) {
 	// 执行 JavaScript，获取 DOM 树并生成简化的 XPath 树，过滤掉不可见和无用的部分
 	simplifiedDomTreeWithXPath, err := page.Evaluate(`() => {
 		function generateXPath(element) {
@@ -189,16 +198,15 @@ func ExtractSimplifiedElementWithXPath(page playwright.Page) string {
 		return getSimplifiedElementTree(document.documentElement);
 	}`)
 	if err != nil {
-		log.Fatalf("could not evaluate simplified DOM tree with XPath: %v", err)
+		return "", fmt.Errorf("evaluate simplified DOM tree with XPath: %w", err)
 	}
 
 	// 格式化为 JSON 输出
 	simplifiedDomTreeWithXPathJSON, err := json.MarshalIndent(simplifiedDomTreeWithXPath, "", "  ")
 	if err != nil {
-		log.Fatalf("could not marshal simplified DOM tree with XPath: %v", err)
+		return "", fmt.Errorf("marshal simplified DOM tree with XPath: %w", err)
 	}
-	log.Printf("Simplified DOM Tree with XPath:\n%s", simplifiedDomTreeWithXPathJSON)
-	return string(simplifiedDomTreeWithXPathJSON)
+	return string(simplifiedDomTreeWithXPathJSON), nil
 }
 
 func DemoBaidu() {

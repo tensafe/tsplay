@@ -80,7 +80,7 @@ const (
 )
 
 const DefaultMCPFlowPathRoot = "script"
-const DefaultMCPArtifactRoot = "artifacts"
+const DefaultMCPArtifactRoot = DefaultFlowArtifactRoot
 
 type TSPlayMCPServerOptions struct {
 	FlowPathRoot string
@@ -400,20 +400,32 @@ func handleRunFlowToolWithOptions(
 
 	security := flowSecurityPolicyFromToolRequest(request, options)
 	result, err := RunFlow(flow, FlowRunOptions{
-		Headless: request.GetBool("headless", true),
-		Security: &security,
+		Headless:     request.GetBool("headless", true),
+		Security:     &security,
+		ArtifactRoot: options.ArtifactRoot,
 	})
 	if err != nil {
 		return newJSONToolResult(map[string]any{
 			"ok":     false,
 			"error":  err.Error(),
-			"result": result,
+			"result": flowResultForTool(result),
 		})
 	}
 	return newJSONToolResult(map[string]any{
 		"ok":     true,
-		"result": result,
+		"result": flowResultForTool(result),
 	})
+}
+
+func flowResultForTool(result *FlowResult) *FlowResult {
+	if result == nil {
+		return nil
+	}
+	sanitized := *result
+	if vars, ok := compactTraceValue(result.Vars, 0).(map[string]any); ok {
+		sanitized.Vars = vars
+	}
+	return &sanitized
 }
 
 func flowFromToolRequest(request mcp.CallToolRequest) (*Flow, error) {

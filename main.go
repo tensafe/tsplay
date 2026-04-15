@@ -54,6 +54,7 @@ func createReadlineCompleter() *readline.PrefixCompleter {
 }
 
 var g_headless = false
+var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
 
 func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
@@ -73,6 +74,7 @@ func main() {
 	}
 
 	g_headless = *isheadless
+	g_artifactRoot = *artifactRoot
 
 	if len(*flowfile) != 0 {
 		flow, err := tsplay_core.LoadFlowFile(*flowfile)
@@ -109,7 +111,8 @@ func main() {
 
 func run_flow(flow *tsplay_core.Flow) {
 	result, err := tsplay_core.RunFlow(flow, tsplay_core.FlowRunOptions{
-		Headless: g_headless,
+		Headless:     g_headless,
+		ArtifactRoot: g_artifactRoot,
 	})
 	if result != nil {
 		encoded, marshalErr := json.MarshalIndent(result, "", "  ")

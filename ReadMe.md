@@ -187,6 +187,8 @@ Flow 步骤支持两种参数写法：
 
 `save_as` 会把动作返回值保存为变量，后续步骤可以通过 `{{变量名}}` 或 Lua 全局变量继续使用。
 
+Flow 执行会返回每一步的 trace，包括 action、参数摘要、耗时、返回值摘要和当前 URL。步骤失败时会把现场资料写入 artifact root：`failure.png`、`page.html`、`dom_snapshot.json`，trace 里只返回这些文件路径，方便 OpenClaw/Codex 后续根据失败现场修复 Flow。
+
 ## **14. MCP / OpenClaw 集成**
 
 TSPlay 可以作为 MCP server 启动，供 OpenClaw 或其他 Agent 调用结构化 Flow 能力：

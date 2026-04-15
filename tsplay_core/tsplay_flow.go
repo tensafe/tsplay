@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -56,32 +57,58 @@ type FlowStep struct {
 }
 
 type FlowResult struct {
-	Name  string          `json:"name"`
-	Vars  map[string]any  `json:"vars,omitempty"`
-	Trace []FlowStepTrace `json:"trace"`
+	Name         string          `json:"name"`
+	Vars         map[string]any  `json:"vars,omitempty"`
+	Trace        []FlowStepTrace `json:"trace"`
+	ArtifactRoot string          `json:"artifact_root,omitempty"`
 }
 
 type FlowStepTrace struct {
-	Index      int    `json:"index"`
-	Name       string `json:"name,omitempty"`
-	Action     string `json:"action"`
-	Status     string `json:"status"`
-	SaveAs     string `json:"save_as,omitempty"`
-	Error      string `json:"error,omitempty"`
-	Output     any    `json:"output,omitempty"`
-	StartedAt  string `json:"started_at"`
-	FinishedAt string `json:"finished_at"`
-	DurationMS int64  `json:"duration_ms"`
+	Index         int                `json:"index"`
+	Name          string             `json:"name,omitempty"`
+	Action        string             `json:"action"`
+	Args          any                `json:"args,omitempty"`
+	ArgsSummary   string             `json:"args_summary,omitempty"`
+	Status        string             `json:"status"`
+	SaveAs        string             `json:"save_as,omitempty"`
+	Error         string             `json:"error,omitempty"`
+	ErrorStack    string             `json:"error_stack,omitempty"`
+	Output        any                `json:"output,omitempty"`
+	OutputSummary string             `json:"output_summary,omitempty"`
+	PageURL       string             `json:"page_url,omitempty"`
+	Artifacts     *FlowStepArtifacts `json:"artifacts,omitempty"`
+	StartedAt     string             `json:"started_at"`
+	FinishedAt    string             `json:"finished_at"`
+	DurationMS    int64              `json:"duration_ms"`
+}
+
+type FlowStepArtifacts struct {
+	Directory       string `json:"directory,omitempty"`
+	ScreenshotPath  string `json:"screenshot_path,omitempty"`
+	HTMLPath        string `json:"html_path,omitempty"`
+	DOMSnapshotPath string `json:"dom_snapshot_path,omitempty"`
+	CaptureError    string `json:"capture_error,omitempty"`
+}
+
+func (artifacts FlowStepArtifacts) empty() bool {
+	return artifacts.Directory == "" &&
+		artifacts.ScreenshotPath == "" &&
+		artifacts.HTMLPath == "" &&
+		artifacts.DOMSnapshotPath == "" &&
+		artifacts.CaptureError == ""
 }
 
 type FlowContext struct {
-	Vars     map[string]any
-	Security *FlowSecurityPolicy
+	Vars         map[string]any
+	Security     *FlowSecurityPolicy
+	ArtifactRoot string
+	RunID        string
 }
 
 type FlowRunOptions struct {
-	Headless bool
-	Security *FlowSecurityPolicy
+	Headless     bool
+	Security     *FlowSecurityPolicy
+	ArtifactRoot string
 }
 
 type FlowSecurityPolicy struct {
@@ -94,6 +121,7 @@ type FlowSecurityPolicy struct {
 }
 
 const CurrentFlowSchemaVersion = "1"
+const DefaultFlowArtifactRoot = "artifacts"
 
 type flowActionSpec struct {
 	Args       []flowArgSpec
@@ -712,24 +740,30 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		}
 	}
 
+	artifactRoot := flowArtifactRoot(options)
 	ctx := &FlowContext{
-		Vars:     map[string]any{},
-		Security: options.Security,
+		Vars:         map[string]any{},
+		Security:     options.Security,
+		ArtifactRoot: artifactRoot,
+		RunID:        newFlowRunID(flow),
 	}
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))
 	}
 
-	result := &FlowResult{Name: flow.Name, Vars: ctx.Vars}
+	result := &FlowResult{Name: flow.Name, Vars: ctx.Vars, ArtifactRoot: artifactRoot}
 	for i, step := range flow.Steps {
+		traceArgs := traceStepParams(step, ctx)
 		trace := FlowStepTrace{
-			Index:     i + 1,
-			Name:      step.Name,
-			Action:    step.Action,
-			SaveAs:    step.SaveAs,
-			Status:    "running",
-			StartedAt: time.Now().Format(time.RFC3339Nano),
+			Index:       i + 1,
+			Name:        step.Name,
+			Action:      step.Action,
+			Args:        compactTraceValue(traceArgs, 0),
+			ArgsSummary: summarizeTraceValue(traceArgs),
+			SaveAs:      step.SaveAs,
+			Status:      "running",
+			StartedAt:   time.Now().Format(time.RFC3339Nano),
 		}
 
 		output, err := runFlowStep(L, ctx, step)
@@ -737,10 +771,16 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		started, _ := time.Parse(time.RFC3339Nano, trace.StartedAt)
 		finished, _ := time.Parse(time.RFC3339Nano, trace.FinishedAt)
 		trace.DurationMS = finished.Sub(started).Milliseconds()
+		trace.PageURL = currentFlowPageURL(L)
 
 		if err != nil {
 			trace.Status = "error"
 			trace.Error = err.Error()
+			trace.ErrorStack = string(debug.Stack())
+			artifacts := captureFlowFailureArtifacts(L, ctx, trace)
+			if !artifacts.empty() {
+				trace.Artifacts = &artifacts
+			}
 			result.Trace = append(result.Trace, trace)
 			if !step.ContinueOnError {
 				return result, fmt.Errorf("step %d %q failed: %w", i+1, step.Action, err)
@@ -749,7 +789,8 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		}
 
 		trace.Status = "ok"
-		trace.Output = output
+		trace.Output = compactTraceValue(output, 0)
+		trace.OutputSummary = summarizeTraceValue(output)
 		if step.SaveAs != "" {
 			ctx.Vars[step.SaveAs] = output
 			L.SetGlobal(step.SaveAs, goValueToLua(L, output))
@@ -758,6 +799,198 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	}
 
 	return result, nil
+}
+
+func flowArtifactRoot(options FlowRunOptions) string {
+	if strings.TrimSpace(options.ArtifactRoot) != "" {
+		return options.ArtifactRoot
+	}
+	if options.Security != nil && strings.TrimSpace(options.Security.FileOutputRoot) != "" {
+		return options.Security.FileOutputRoot
+	}
+	return ""
+}
+
+func newFlowRunID(flow *Flow) string {
+	name := "flow"
+	if flow != nil && strings.TrimSpace(flow.Name) != "" {
+		name = flow.Name
+	}
+	return sanitizeArtifactSegment(name) + "-" + time.Now().Format("20060102-150405.000000000")
+}
+
+func traceStepParams(step FlowStep, ctx *FlowContext) any {
+	var value any
+	if len(step.Args) > 0 {
+		value = append([]any(nil), step.Args...)
+	} else {
+		value = step.presentNamedParams()
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return value
+	}
+	return resolved
+}
+
+func summarizeTraceValue(value any) string {
+	encoded, err := json.Marshal(compactTraceValue(value, 0))
+	if err != nil {
+		text := fmt.Sprint(value)
+		if len(text) > 300 {
+			return text[:300] + "...(truncated)"
+		}
+		return text
+	}
+	text := string(encoded)
+	if len(text) > 500 {
+		return text[:500] + "...(truncated)"
+	}
+	return text
+}
+
+func compactTraceValue(value any, depth int) any {
+	if depth > 4 {
+		return fmt.Sprintf("<%T>", value)
+	}
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case string:
+		if len(typed) > 1000 {
+			return typed[:1000] + "...(truncated)"
+		}
+		return typed
+	case []any:
+		limit := len(typed)
+		if limit > 20 {
+			limit = 20
+		}
+		items := make([]any, 0, limit+1)
+		for i := 0; i < limit; i++ {
+			items = append(items, compactTraceValue(typed[i], depth+1))
+		}
+		if len(typed) > limit {
+			items = append(items, fmt.Sprintf("...(%d more)", len(typed)-limit))
+		}
+		return items
+	case []string:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+		return compactTraceValue(items, depth)
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		if len(keys) > 20 {
+			keys = keys[:20]
+		}
+		result := map[string]any{}
+		for _, key := range keys {
+			result[key] = compactTraceValue(typed[key], depth+1)
+		}
+		if len(typed) > len(keys) {
+			result["_truncated"] = fmt.Sprintf("%d more keys", len(typed)-len(keys))
+		}
+		return result
+	default:
+		return value
+	}
+}
+
+func captureFlowFailureArtifacts(L *lua.LState, ctx *FlowContext, trace FlowStepTrace) FlowStepArtifacts {
+	artifacts := FlowStepArtifacts{}
+	if ctx == nil || strings.TrimSpace(ctx.ArtifactRoot) == "" {
+		return artifacts
+	}
+
+	root, err := prepareRuntimeFileRoot(ctx.ArtifactRoot)
+	if err != nil {
+		artifacts.CaptureError = fmt.Sprintf("prepare artifact root: %v", err)
+		return artifacts
+	}
+	dir := filepath.Join(root, ctx.RunID, fmt.Sprintf("%02d-%s", trace.Index, sanitizeArtifactSegment(trace.Action)))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		artifacts.CaptureError = fmt.Sprintf("create artifact directory: %v", err)
+		return artifacts
+	}
+	artifacts.Directory = dir
+
+	page, ok := flowPageFromState(L)
+	if !ok {
+		artifacts.CaptureError = "page is not available"
+		return artifacts
+	}
+
+	captureErrors := []string{}
+	screenshotPath := filepath.Join(dir, "failure.png")
+	if _, err := page.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(screenshotPath)}); err != nil {
+		captureErrors = append(captureErrors, fmt.Sprintf("screenshot: %v", err))
+	} else {
+		artifacts.ScreenshotPath = screenshotPath
+	}
+
+	htmlPath := filepath.Join(dir, "page.html")
+	if content, err := page.Content(); err != nil {
+		captureErrors = append(captureErrors, fmt.Sprintf("html: %v", err))
+	} else if err := os.WriteFile(htmlPath, []byte(content), 0644); err != nil {
+		captureErrors = append(captureErrors, fmt.Sprintf("html write: %v", err))
+	} else {
+		artifacts.HTMLPath = htmlPath
+	}
+
+	domPath := filepath.Join(dir, "dom_snapshot.json")
+	if snapshot, err := ExtractSimplifiedElementWithXPathResult(page); err != nil {
+		captureErrors = append(captureErrors, fmt.Sprintf("dom snapshot: %v", err))
+	} else if err := os.WriteFile(domPath, []byte(snapshot), 0644); err != nil {
+		captureErrors = append(captureErrors, fmt.Sprintf("dom snapshot write: %v", err))
+	} else {
+		artifacts.DOMSnapshotPath = domPath
+	}
+
+	if len(captureErrors) > 0 {
+		artifacts.CaptureError = strings.Join(captureErrors, "; ")
+	}
+	return artifacts
+}
+
+func currentFlowPageURL(L *lua.LState) string {
+	page, ok := flowPageFromState(L)
+	if !ok {
+		return ""
+	}
+	return page.URL()
+}
+
+func flowPageFromState(L *lua.LState) (playwright.Page, bool) {
+	if L == nil {
+		return nil, false
+	}
+	value := L.GetGlobal("page")
+	userData, ok := value.(*lua.LUserData)
+	if !ok || userData == nil {
+		return nil, false
+	}
+	page, ok := userData.Value.(playwright.Page)
+	return page, ok && page != nil
+}
+
+var artifactSegmentPattern = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+func sanitizeArtifactSegment(value string) string {
+	cleaned := artifactSegmentPattern.ReplaceAllString(strings.TrimSpace(value), "_")
+	cleaned = strings.Trim(cleaned, "._-")
+	if cleaned == "" {
+		return "flow"
+	}
+	if len(cleaned) > 80 {
+		return cleaned[:80]
+	}
+	return cleaned
 }
 
 func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {

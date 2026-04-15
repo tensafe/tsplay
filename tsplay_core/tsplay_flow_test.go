@@ -3,6 +3,7 @@ package tsplay_core
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	lua "github.com/yuin/gopher-lua"
@@ -101,6 +102,12 @@ func TestRunFlowLuaSteps(t *testing.T) {
 	}
 	if len(result.Trace) != 2 {
 		t.Fatalf("unexpected trace count: %d", len(result.Trace))
+	}
+	if result.Trace[0].ArgsSummary == "" {
+		t.Fatalf("expected args summary")
+	}
+	if result.Trace[0].OutputSummary == "" {
+		t.Fatalf("expected output summary")
 	}
 }
 
@@ -267,5 +274,88 @@ func TestRewriteFlowFileAccessArgsUsesOutputRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(got)); err != nil {
 		t.Fatalf("expected output directory to be created: %v", err)
+	}
+}
+
+func TestRunFlowTraceCapturesLuaFailureDetails(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	artifactRoot := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_failure",
+		Steps: []FlowStep{
+			{Action: "lua", Code: "error('boom')"},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{ArtifactRoot: artifactRoot})
+	if err == nil {
+		t.Fatalf("expected run error")
+	}
+	if result == nil || len(result.Trace) != 1 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	trace := result.Trace[0]
+	if trace.Status != "error" {
+		t.Fatalf("status = %q", trace.Status)
+	}
+	if trace.ArgsSummary == "" || !strings.Contains(trace.ArgsSummary, "boom") {
+		t.Fatalf("unexpected args summary: %q", trace.ArgsSummary)
+	}
+	if trace.ErrorStack == "" {
+		t.Fatalf("expected error stack")
+	}
+	if trace.Artifacts == nil || trace.Artifacts.Directory == "" {
+		t.Fatalf("expected artifact directory")
+	}
+	if !strings.Contains(trace.Artifacts.CaptureError, "page") {
+		t.Fatalf("expected page capture error, got %#v", trace.Artifacts)
+	}
+}
+
+func TestRunFlowCapturesFailureArtifacts(t *testing.T) {
+	artifactRoot := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_failure",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "data:text/html,<html><body><h1>Hello</h1></body></html>"},
+			{Action: "wait_for_selector", Selector: "#missing", Timeout: 50},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: artifactRoot,
+	})
+	if err == nil {
+		t.Fatalf("expected run error")
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	trace := result.Trace[1]
+	if trace.Status != "error" {
+		t.Fatalf("status = %q", trace.Status)
+	}
+	if trace.PageURL == "" {
+		t.Fatalf("expected page url")
+	}
+	if trace.Artifacts == nil {
+		t.Fatalf("expected artifacts")
+	}
+	for name, path := range map[string]string{
+		"screenshot": trace.Artifacts.ScreenshotPath,
+		"html":       trace.Artifacts.HTMLPath,
+		"dom":        trace.Artifacts.DOMSnapshotPath,
+	} {
+		if path == "" {
+			t.Fatalf("expected %s artifact path: %#v", name, trace.Artifacts)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s artifact file %s: %v", name, path, err)
+		}
 	}
 }

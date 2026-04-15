@@ -225,6 +225,26 @@ func TestHandleRunFlowToolMissingFlow(t *testing.T) {
 	}
 }
 
+func TestFlowResultForToolCompactsVars(t *testing.T) {
+	result := flowResultForTool(&FlowResult{
+		Name: "large_vars",
+		Vars: map[string]any{
+			"html": strings.Repeat("<div>content</div>", 200),
+		},
+	})
+
+	html, ok := result.Vars["html"].(string)
+	if !ok {
+		t.Fatalf("expected html string, got %#v", result.Vars["html"])
+	}
+	if len(html) > 1200 {
+		t.Fatalf("expected compacted html, got length %d", len(html))
+	}
+	if !strings.Contains(html, "truncated") {
+		t.Fatalf("expected truncation marker, got %q", html)
+	}
+}
+
 func decodeToolText(t *testing.T, result *mcp.CallToolResult, target any) {
 	t.Helper()
 	if result == nil || len(result.Content) == 0 {
