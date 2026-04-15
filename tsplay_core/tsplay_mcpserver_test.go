@@ -21,6 +21,7 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 		"tsplay.flow_schema",
 		"tsplay.list_actions",
 		"tsplay.observe_page",
+		"tsplay.repair_flow_context",
 		"tsplay.run_flow",
 		"tsplay.validate_flow",
 	}
@@ -113,6 +114,212 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 		if err := ValidateFlow(flow); err != nil {
 			t.Fatalf("validate example %q: %v", item["name"], err)
 		}
+	}
+}
+
+func TestHandleRepairFlowContextTool(t *testing.T) {
+	artifactRoot := t.TempDir()
+	artifactDir := filepath.Join(artifactRoot, "run-1", "02-click")
+	if err := os.MkdirAll(artifactDir, 0755); err != nil {
+		t.Fatalf("create artifact dir: %v", err)
+	}
+	domPath := filepath.Join(artifactDir, "dom_snapshot.json")
+	htmlPath := filepath.Join(artifactDir, "page.html")
+	screenshotPath := filepath.Join(artifactDir, "failure.png")
+	if err := os.WriteFile(domPath, []byte(`{"tag":"button","text":"Export orders","selector_candidates":["text=\"Export orders\"","#export"]}`), 0600); err != nil {
+		t.Fatalf("write dom snapshot: %v", err)
+	}
+	if err := os.WriteFile(htmlPath, []byte(`<html><body>secret full html should stay on disk</body></html>`), 0600); err != nil {
+		t.Fatalf("write html: %v", err)
+	}
+	if err := os.WriteFile(screenshotPath, []byte("png"), 0600); err != nil {
+		t.Fatalf("write screenshot: %v", err)
+	}
+
+	result := FlowResult{
+		Name:         "repair_me",
+		ArtifactRoot: artifactRoot,
+		Vars: map[string]any{
+			"orders_url": "https://example.com/orders",
+		},
+		Trace: []FlowStepTrace{
+			{
+				Index:       1,
+				Action:      "navigate",
+				Status:      "ok",
+				PageURL:     "https://example.com/orders",
+				DurationMS:  42,
+				ArgsSummary: `{"url":"https://example.com/orders"}`,
+			},
+			{
+				Index:       2,
+				Name:        "click export",
+				Action:      "click",
+				Status:      "error",
+				ArgsSummary: `{"selector":"text=\"Old export\""}`,
+				Error:       "locator click: timeout",
+				ErrorStack:  strings.Repeat("stack frame\n", 20),
+				PageURL:     "https://example.com/orders",
+				Artifacts: &FlowStepArtifacts{
+					Directory:       artifactDir,
+					ScreenshotPath:  screenshotPath,
+					HTMLPath:        htmlPath,
+					DOMSnapshotPath: domPath,
+				},
+			},
+		},
+	}
+	wrappedRunResult, err := json.Marshal(map[string]any{
+		"ok":     false,
+		"error":  "flow failed",
+		"result": result,
+	})
+	if err != nil {
+		t.Fatalf("marshal run result: %v", err)
+	}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: repair_me
+vars:
+  orders_url: https://example.com/orders
+steps:
+  - action: navigate
+    url: "{{orders_url}}"
+  - name: click export
+    action: click
+    selector: 'text="Old export"'
+`,
+				"run_result":           string(wrappedRunResult),
+				"max_artifact_excerpt": 40,
+			},
+		},
+	}
+
+	toolResult, err := handleRepairFlowContextToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{
+		ArtifactRoot: artifactRoot,
+	})
+	if err != nil {
+		t.Fatalf("repair flow context: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, toolResult, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	contextPayload, ok := payload["context"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected context, got %#v", payload["context"])
+	}
+	failedStep, ok := contextPayload["failed_step"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected failed step, got %#v", contextPayload["failed_step"])
+	}
+	if failedStep["index"] != float64(2) {
+		t.Fatalf("unexpected failed step index: %#v", failedStep["index"])
+	}
+	artifacts, ok := contextPayload["artifacts"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected artifacts, got %#v", contextPayload["artifacts"])
+	}
+	excerpt, ok := artifacts["dom_snapshot_excerpt"].(string)
+	if !ok || !strings.Contains(excerpt, "Export orders") {
+		t.Fatalf("expected dom excerpt, got %#v", artifacts["dom_snapshot_excerpt"])
+	}
+	encoded, err := json.Marshal(contextPayload)
+	if err != nil {
+		t.Fatalf("marshal context: %v", err)
+	}
+	if strings.Contains(string(encoded), "secret full html") {
+		t.Fatalf("context leaked full html content: %s", encoded)
+	}
+	if !strings.Contains(string(encoded), htmlPath) {
+		t.Fatalf("expected html path in context: %s", encoded)
+	}
+}
+
+func TestHandleRepairFlowContextToolMissingTrace(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: repair_missing_trace
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+			},
+		},
+	}
+
+	result, err := handleRepairFlowContextTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("repair flow context missing trace: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "run_result or trace") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+}
+
+func TestBuildFlowRepairContextRestrictsArtifactRoot(t *testing.T) {
+	artifactRoot := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideDOMPath := filepath.Join(outsideDir, "dom_snapshot.json")
+	if err := os.WriteFile(outsideDOMPath, []byte("outside secret"), 0600); err != nil {
+		t.Fatalf("write outside dom: %v", err)
+	}
+
+	contextPayload, err := BuildFlowRepairContext(FlowRepairContextOptions{
+		Flow: &Flow{
+			SchemaVersion: CurrentFlowSchemaVersion,
+			Name:          "restrict_artifact_read",
+			Steps: []FlowStep{
+				{Action: "click", Selector: "#missing"},
+			},
+		},
+		Result: &FlowResult{
+			Trace: []FlowStepTrace{
+				{
+					Index:  1,
+					Action: "click",
+					Status: "error",
+					Error:  "timeout",
+					Artifacts: &FlowStepArtifacts{
+						DOMSnapshotPath: outsideDOMPath,
+					},
+				},
+			},
+		},
+		ArtifactRoot: artifactRoot,
+	})
+	if err != nil {
+		t.Fatalf("build repair context: %v", err)
+	}
+	if contextPayload.Artifacts == nil {
+		t.Fatalf("expected artifact context")
+	}
+	if contextPayload.Artifacts.DOMSnapshotExcerpt != "" {
+		t.Fatalf("unexpected outside dom excerpt: %q", contextPayload.Artifacts.DOMSnapshotExcerpt)
+	}
+	if len(contextPayload.Artifacts.ReadErrors) == 0 {
+		t.Fatalf("expected read error for outside artifact")
+	}
+	encoded, err := json.Marshal(contextPayload)
+	if err != nil {
+		t.Fatalf("marshal context: %v", err)
+	}
+	if strings.Contains(string(encoded), "outside secret") {
+		t.Fatalf("context leaked outside artifact content: %s", encoded)
 	}
 }
 

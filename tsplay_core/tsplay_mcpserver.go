@@ -276,6 +276,35 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithReadOnlyHintAnnotation(true),
 	), handleFlowExamplesTool)
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.repair_flow_context",
+		mcp.WithDescription("Build an AI-friendly repair context from a Flow and failed run trace. Returns summaries and artifact paths without embedding full HTML."),
+		mcp.WithString("flow",
+			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
+		),
+		mcp.WithString("flow_path",
+			mcp.Description("Flow YAML or JSON file path relative to the configured flow root. Use this or flow."),
+		),
+		mcp.WithString("format",
+			mcp.Description("Optional format hint: yaml or json."),
+			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithString("run_result",
+			mcp.Description("JSON returned by tsplay.run_flow, or its result field. Preferred input."),
+		),
+		mcp.WithString("trace",
+			mcp.Description("JSON trace array when run_result is not available."),
+		),
+		mcp.WithString("error",
+			mcp.Description("Optional top-level error message from the failed run."),
+		),
+		mcp.WithNumber("max_artifact_excerpt",
+			mcp.Description("Maximum characters of simplified DOM snapshot to include. Defaults to 4000."),
+		),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleRepairFlowContextToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.observe_page",
 		mcp.WithDescription("Open a page and return an AI-friendly observation: screenshot path, DOM snapshot path, and interactive elements with selector candidates."),
 		mcp.WithString("url",
@@ -382,6 +411,56 @@ func handleFlowExamplesTool(
 ) (*mcp.CallToolResult, error) {
 	return newJSONToolResult(map[string]any{
 		"examples": BuildFlowExamples(),
+	})
+}
+
+func handleRepairFlowContextTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleRepairFlowContextToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleRepairFlowContextToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	flow, err := flowFromToolRequestWithOptions(request, options)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	result, runError, err := ParseFlowRunResultForRepair(
+		request.GetString("run_result", ""),
+		request.GetString("trace", ""),
+	)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	context, err := BuildFlowRepairContext(FlowRepairContextOptions{
+		Flow:               flow,
+		Result:             result,
+		Error:              firstNonEmpty(request.GetString("error", ""), runError),
+		ArtifactRoot:       options.ArtifactRoot,
+		MaxArtifactExcerpt: request.GetInt("max_artifact_excerpt", defaultFlowRepairArtifactExcerpt),
+	})
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":      true,
+		"context": context,
 	})
 }
 

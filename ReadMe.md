@@ -210,6 +210,7 @@ go run . -action srv -artifact-root artifacts
 | `tsplay.flow_schema` | 返回 Flow JSON Schema、生成规则和 action manifest，供 AI 严格生成 Flow。 |
 | `tsplay.flow_examples` | 返回典型 Flow 示例，供 AI 生成和修复时参考。 |
 | `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot 路径、可交互元素和候选 selector，供 AI 生成 Flow。 |
+| `tsplay.repair_flow_context` | 输入 Flow + 失败 run_result/trace，整理失败步骤、相邻步骤、trace 摘要和 artifact 路径，供 AI 修复 Flow。 |
 | `tsplay.validate_flow` | 校验 Flow YAML/JSON，不启动浏览器。 |
 | `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace。 |
 
@@ -218,6 +219,8 @@ go run . -action srv -artifact-root artifacts
 `observe_page` 是从用户意图生成 Flow 的入口。OpenClaw/Codex 可以先调用它观察真实页面，再结合用户意图选择元素、生成 Flow，而不是让用户理解 HTML selector。
 
 建议 AI 生成 Flow 的顺序是：先调用 `tsplay.flow_schema` 和 `tsplay.flow_examples` 获取约束，再调用 `tsplay.observe_page` 获取真实页面元素，最后生成 Flow 并交给 `tsplay.validate_flow` 校验。
+
+Flow 执行失败后，建议把原 Flow 和 `tsplay.run_flow` 返回的 JSON 原样传给 `tsplay.repair_flow_context`。它会返回适合大模型使用的上下文包：失败 step、前后 step、trace 摘要、当前 URL、错误栈摘要、失败截图路径、失败 HTML 路径、简化 DOM snapshot 摘要和修复提示。完整 HTML 不会放进 MCP 返回，后续 Agent 需要时按路径读取即可。
 
 文件类动作即使设置了 `allow_file_access=true`，也只允许在 `artifacts` 目录内读写文件；可以通过 `-artifact-root` 指定目录。截图、保存 HTML、下载文件等相对路径会自动落到 artifact root 下，例如 `screens/shot.png` 会写入 `artifacts/screens/shot.png`。
 
