@@ -43,6 +43,10 @@ type FlowRepairStepContext struct {
 
 type FlowRepairTraceItem struct {
 	Index         int                      `json:"index"`
+	Path          string                   `json:"path,omitempty"`
+	Attempt       int                      `json:"attempt,omitempty"`
+	Iteration     int                      `json:"iteration,omitempty"`
+	Branch        string                   `json:"branch,omitempty"`
 	Name          string                   `json:"name,omitempty"`
 	Action        string                   `json:"action"`
 	Status        string                   `json:"status"`
@@ -54,6 +58,8 @@ type FlowRepairTraceItem struct {
 	PageURL       string                   `json:"page_url,omitempty"`
 	DurationMS    int64                    `json:"duration_ms,omitempty"`
 	Artifacts     *FlowRepairArtifactPaths `json:"artifacts,omitempty"`
+	Condition     *FlowRepairTraceItem     `json:"condition,omitempty"`
+	Children      []FlowRepairTraceItem    `json:"children,omitempty"`
 	Attempts      []FlowRepairTraceItem    `json:"attempts,omitempty"`
 }
 
@@ -203,6 +209,10 @@ func buildFlowRepairTraceSummary(trace []FlowStepTrace, textLimit int) []FlowRep
 		}
 		item := FlowRepairTraceItem{
 			Index:         index,
+			Path:          step.Path,
+			Attempt:       step.Attempt,
+			Iteration:     step.Iteration,
+			Branch:        step.Branch,
 			Name:          step.Name,
 			Action:        step.Action,
 			Status:        step.Status,
@@ -222,6 +232,15 @@ func buildFlowRepairTraceSummary(trace []FlowStepTrace, textLimit int) []FlowRep
 		}
 		if len(step.Attempts) > 0 {
 			item.Attempts = buildFlowRepairTraceSummary(step.Attempts, textLimit)
+		}
+		if step.Condition != nil {
+			condition := buildFlowRepairTraceSummary([]FlowStepTrace{*step.Condition}, textLimit)
+			if len(condition) > 0 {
+				item.Condition = &condition[0]
+			}
+		}
+		if len(step.Children) > 0 {
+			item.Children = buildFlowRepairTraceSummary(step.Children, textLimit)
 		}
 		items = append(items, item)
 	}

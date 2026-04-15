@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +170,152 @@ func TestRunFlowRetryRetriesNestedSteps(t *testing.T) {
 	}
 }
 
+func TestRunFlowIfBranchesOnCondition(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "if_branch",
+		Vars:          map[string]any{"should_run": true},
+		Steps: []FlowStep{
+			{
+				Action:    "if",
+				Condition: &FlowStep{Action: "lua", Code: "return should_run"},
+				Then: []FlowStep{
+					{Action: "lua", Code: "return 'then'", SaveAs: "branch"},
+				},
+				Else: []FlowStep{
+					{Action: "lua", Code: "return 'else'", SaveAs: "branch"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInState(L, flow)
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["branch"]; got != "then" {
+		t.Fatalf("branch = %#v", got)
+	}
+	if result.Trace[0].Branch != "then" {
+		t.Fatalf("trace branch = %q", result.Trace[0].Branch)
+	}
+	if result.Trace[0].Condition == nil || result.Trace[0].Condition.Status != "ok" {
+		t.Fatalf("expected condition trace: %#v", result.Trace[0].Condition)
+	}
+	if len(result.Trace[0].Children) != 1 {
+		t.Fatalf("expected branch child trace: %#v", result.Trace[0].Children)
+	}
+}
+
+func TestRunFlowForeachIteratesItems(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "foreach_items",
+		Vars: map[string]any{
+			"numbers": []any{1, 2, 3},
+			"total":   0,
+		},
+		Steps: []FlowStep{
+			{
+				Action:   "foreach",
+				Items:    "{{numbers}}",
+				ItemVar:  "number",
+				IndexVar: "number_index",
+				Steps: []FlowStep{
+					{Action: "lua", Code: "return total + number", SaveAs: "total"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInState(L, flow)
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["total"]; got != float64(6) {
+		t.Fatalf("total = %#v", got)
+	}
+	if _, ok := result.Vars["number"]; ok {
+		t.Fatalf("item var leaked: %#v", result.Vars["number"])
+	}
+	if len(result.Trace[0].Children) != 3 {
+		t.Fatalf("expected foreach child traces: %#v", result.Trace[0].Children)
+	}
+	if result.Trace[0].Children[2].Iteration != 3 {
+		t.Fatalf("expected iteration marker: %#v", result.Trace[0].Children[2])
+	}
+}
+
+func TestRunFlowOnErrorHandlesFailure(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "on_error_handler",
+		Steps: []FlowStep{
+			{
+				Action: "on_error",
+				Steps: []FlowStep{
+					{Action: "lua", Code: "error('boom')"},
+				},
+				OnError: []FlowStep{
+					{Action: "lua", Code: "return last_error", SaveAs: "handled_error"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInState(L, flow)
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["handled_error"]; !strings.Contains(fmt.Sprint(got), "boom") {
+		t.Fatalf("handled_error = %#v", got)
+	}
+	if result.Trace[0].Status != "ok" || result.Trace[0].Branch != "on_error" {
+		t.Fatalf("unexpected on_error trace: %#v", result.Trace[0])
+	}
+	if len(result.Trace[0].Children) != 2 || result.Trace[0].Children[0].Status != "error" {
+		t.Fatalf("expected failing child plus handler trace: %#v", result.Trace[0].Children)
+	}
+}
+
+func TestRunFlowWaitUntilPollsCondition(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "wait_until_condition",
+		Steps: []FlowStep{
+			{
+				Action:     "wait_until",
+				Timeout:    1000,
+				IntervalMS: 1,
+				Condition:  &FlowStep{Action: "lua", Code: "counter = (counter or 0) + 1; return counter >= 3"},
+			},
+		},
+	}
+
+	result, err := RunFlowInState(L, flow)
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if len(result.Trace[0].Attempts) != 3 {
+		t.Fatalf("wait attempts = %d", len(result.Trace[0].Attempts))
+	}
+	if result.Trace[0].Attempts[2].Status != "ok" {
+		t.Fatalf("unexpected final attempt: %#v", result.Trace[0].Attempts[2])
+	}
+}
+
 func TestValidateFlowStrictRejectsMissingSchemaVersion(t *testing.T) {
 	flow := &Flow{
 		Name: "missing_schema",
@@ -253,12 +400,59 @@ func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 					{Action: "get_text", Selector: "#message", SaveAs: "message"},
 				},
 			},
+			{
+				Action:    "if",
+				Condition: &FlowStep{Action: "is_visible", Selector: "#optional"},
+				Then: []FlowStep{
+					{Action: "click", Selector: "#optional"},
+				},
+			},
+			{
+				Action:  "foreach",
+				Items:   []any{"a", "b"},
+				ItemVar: "row",
+				Steps: []FlowStep{
+					{Action: "lua", Code: "return row", SaveAs: "last_row"},
+				},
+			},
+			{
+				Action:    "wait_until",
+				Condition: &FlowStep{Action: "is_visible", Selector: "#done"},
+				Timeout:   1000,
+			},
+			{
+				Action: "on_error",
+				Steps: []FlowStep{
+					{Action: "click", Selector: "#maybe"},
+				},
+				OnError: []FlowStep{
+					{Action: "lua", Code: "return last_error", SaveAs: "handled"},
+				},
+			},
 			{Action: "lua", Code: "return message", SaveAs: "echo"},
 		},
 	}
 
 	if err := ValidateFlowStrict(flow); err != nil {
 		t.Fatalf("validate flow: %v", err)
+	}
+}
+
+func TestValidateFlowStrictRejectsControlMissingRequiredFields(t *testing.T) {
+	for name, step := range map[string]FlowStep{
+		"if":         {Action: "if"},
+		"foreach":    {Action: "foreach", Items: []any{"a"}, ItemVar: "item"},
+		"on_error":   {Action: "on_error", Steps: []FlowStep{{Action: "lua", Code: "return true"}}},
+		"wait_until": {Action: "wait_until"},
+	} {
+		flow := &Flow{
+			SchemaVersion: "1",
+			Name:          "bad_" + name,
+			Steps:         []FlowStep{step},
+		}
+		if err := ValidateFlowStrict(flow); err == nil {
+			t.Fatalf("expected %s validation error", name)
+		}
 	}
 }
 

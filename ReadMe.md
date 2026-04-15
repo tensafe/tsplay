@@ -1,155 +1,121 @@
-# **操作手册**
-本操作手册详细介绍TSPlay的导航、行为操作、等待操作、截图操作等指令功能。
+# TSPlay
 
----
+TSPlay 是一个基于 Go + Playwright 的浏览器自动化执行引擎，提供三层互相配合的能力：
 
-## **1. 导航类 / Navigation**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `navigate` | 导航到指定的 URL | `navigate('https://example.com')` | `url` (string): 目标 URL。 |
-| `click` | 点击页面上的元素 | `click('#button-id')` | `selector` (string): 要点击的元素选择器。 |
-| `reload` | 重新加载当前页面 | `reload()` | 无参数 |
-| `go_back` | 返回到上一个页面 | `go_back()` | 无参数 |
-| `go_forward` | 前进到下一个页面 | `go_forward()` | 无参数 |
+- `Lua CLI / Lua Script`：适合临时调试、手工探索和快速验证
+- `Flow DSL`：适合版本化、可审查、可被 AI 生成的结构化流程
+- `MCP Server`：适合接入 OpenClaw、Codex 等 Agent，让模型先观察页面，再生成、校验、执行和修复流程
 
+它的重点不是只把浏览器动作包成一堆函数，而是把“执行”“校验”“失败留痕”“Agent 集成”放进同一条链路里。
 
----
+## 适用场景
 
-## **2. 行为类 / Actions**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `type_text` | 在指定元素中输入文本 | `type_text('#input-id', 'Hello World')` | `selector` (string): 输入框的选择器；`text` (string): 要输入的文本。 |
-| `get_text` | 获取指定元素的文本内容 | `get_text('#element-id')` | `selector` (string): 要获取文本内容的元素选择器。 |
-| `set_value` | 设置指定元素的值 | `set_value('#input-id', 'new value')` | `selector` (string): 输入框的选择器；`value` (string): 要设置的值。 |
-| `select_option` | 选择下拉框中的选项 | `select_option('#dropdown-id', 'option-value')` | `selector` (string): 下拉框选择器；`value` (string): 要选择的选项值。 |
-| `hover` | 将鼠标悬停在指定元素上 | `hover('#element-id')` | `selector` (string): 要悬停的元素选择器。 |
-| `scroll_to` | 滚动页面到指定位置 | `scroll_to('#element-id')` | `selector` (string): 要滚动到的元素选择器。 |
+- Web RPA：登录、表单填写、点击、下载、上传
+- 页面数据提取：链接、属性、表格、HTML、Cookie、Storage State
+- 带断言和重试的业务流程自动化
+- 给大模型提供页面观察、Flow 生成、执行和修复能力
 
+## 核心能力
 
----
+- 基于 Playwright 驱动 Chromium
+- 支持 Lua 脚本直接控制浏览器
+- 支持结构化 Flow YAML/JSON
+- Flow 支持变量替换、`save_as`、`retry`、`if`、`foreach`、`on_error`、`wait_until`、断言和失败 trace
+- 失败时自动落盘现场资料：截图、HTML、DOM snapshot
+- 可作为 MCP Server 暴露给 Agent 调用
+- MCP 模式带安全边界，可按能力显式授权
 
-## **3. 等待操作 / Waiting**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `wait_for_network_idle` | 等待网络空闲 | `wait_for_network_idle()` | 无参数 |
-| `wait_for_selector` | 等待指定选择器匹配的元素出现 | `wait_for_selector('#element-id', 5000)` | `selector` (string): 要等待的选择器；`timeout` (int, optional): 超时时间（默认 30000 毫秒）。 |
-| `wait_for_text` | 等待指定文本出现在页面中 | `wait_for_text('#element-id', 'Hello World', 5000)` | `selector` (string): 元素选择器；`text` (string): 期待的文本；`timeout` (int, optional): 超时时间（默认 30000 毫秒）。 |
-| `sleep` | 暂停执行指定的时间 | `sleep(2)` | `seconds` (number): 暂停时间（秒）。 |
-| `retry` | 重试一组嵌套 Flow steps | 见下方 Flow 示例 | `times` (int, optional): 重试次数，默认 3；`interval_ms` (int, optional): 每次重试间隔；`steps`: 嵌套步骤。 |
+## 运行模式
 
+| 模式 | 入口 | 适合场景 |
+| --- | --- | --- |
+| 交互式 CLI | `go run . -action cli` | 手动调试、边试边写 |
+| Lua 脚本 | `go run . -script script/open_url.lua` | 自定义逻辑、一次性任务 |
+| Flow DSL | `go run . -flow script/demo_baidu.flow.yaml` | 结构化流程、版本管理、AI 生成 |
+| MCP Server | `go run . -action srv` | 接入 OpenClaw / Codex / 其他 Agent |
 
----
+## 快速开始
 
-## **4. 页面截图 / Screenshots**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `screenshot` | 截取整个页面的截图 | `screenshot('screenshot.png')` | `path` (string): 保存截图的文件路径。 |
-| `screenshot_element` | 截取指定元素的截图 | `screenshot_element('#element-id', 'element.png')` | `selector` (string): 元素选择器；`path` (string): 保存截图的文件路径。 |
-| `save_html` | 保存当前页面的 HTML 内容 | `save_html('page.html')` | `path` (string): 保存 HTML 的文件路径。 |
+### 环境要求
 
+- Go `1.23.6+`
+- 能运行 Playwright Chromium 的系统环境
+- 首次启动时程序会尝试自动执行 `playwright.Install()` 下载浏览器
 
----
+### 1. 拉取依赖
 
-## **5. 处理弹窗和对话框 / Handling Dialogs**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `accept_alert` | 接受弹窗（点击确定） | `accept_alert()` | 无参数 |
-| `dismiss_alert` | 关闭弹窗（点击取消） | `dismiss_alert()` | 无参数 |
-| `set_alert_text` | 在弹窗中输入文本 | `set_alert_text('Hello')` | `text` (string): 要输入的文本。 |
+```bash
+go mod download
+```
 
+### 2. 启动交互式 CLI
 
----
+```bash
+go run . -action cli
+```
 
-## **6. 执行 JavaScript / JavaScript Execution**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `execute_script` | 在页面中执行 JavaScript 代码 | `execute_script('alert("Hello World")')` | `script` (string): 要执行的 JavaScript 代码。 |
-| `evaluate` | 执行 JavaScript 表达式并返回结果 | `evaluate('#element-id', 'element => element.textContent')` | `selector` (string): 元素选择器；`script` (string): JavaScript 表达式。 |
+启动后先输入：
 
+```text
+start
+```
 
----
+然后可以直接执行 Lua 风格命令：
 
-## **7. 上传文件 / File Upload/Download**
-| **函数名** | **说明**      | **使用示例**                                                         | **参数**                                                        |
-| --- |-------------|------------------------------------------------------------------|---------------------------------------------------------------|
-| `upload_file` | 上传单个文件到指定元素 | `upload_file('#file-input', 'file.txt')`                         | `selector` (string): 文件输入框选择器；`file_path` (string): 要上传的文件路径。 |
-| `upload_multiple_files` | 上传多个文件到指定元素 | `upload_multiple_files('#file-input', 'file1.txt', 'file2.txt')` | `selector` (string): 文件输入框选择器；`files` (string[]): 要上传的文件路径列表。 |
-| `download_file` | 下载文件到本地     | `download_file('#download', 'file.txt')`                         | `selector` (string): 下载选择器 L；`save_path` (string): 保存文件的路径。   |
-| `download_url` | 下载Url到本地    | `download_url('https://example.com/file.txt', 'file.txt')`       | `url` (string): 文件 URL；`save_path` (string): 保存文件的路径。         |
+```lua
+navigate("https://www.baidu.com")
+wait_for_network_idle()
+type_text("#kw", "山东大学")
+click("#su")
+```
 
+如果想隐藏浏览器窗口：
 
+```bash
+go run . -action cli -headless
+```
 
+### 3. 运行 Lua 脚本
 
----
+```bash
+go run . -script script/open_url.lua
+go run . -script script/open_url.lua -headless
+```
 
-## **8. 提取数据 / Data Extraction**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `get_attribute` | 获取指定元素的属性值 | `get_attribute('#element-id', 'href')` | `selector` (string): 元素选择器；`attribute` (string): 属性名称。 |
-| `get_html` | 获取指定元素的 HTML 内容 | `get_html('#element-id')` | `selector` (string, optional): 元素选择器（如果省略，返回页面的完整 HTML）。 |
-| `get_all_links` | 获取页面中所有链接 | `get_all_links()` | 无参数 |
-| `capture_table` | 提取表格数据 | `capture_table('#table-id')` | `selector` (string): 表格元素的选择器。 |
-
-
----
-
-## **9. 页面状态检查 / Page State Checks**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `is_visible` | 检查元素是否可见 | `is_visible('#element-id')` | `selector` (string): 元素选择器。 |
-| `assert_visible` | 断言元素可见，不满足则让 Flow 失败 | `assert_visible('#element-id')` | `selector` (string): 元素选择器；`timeout` (int, optional): 超时时间。 |
-| `assert_text` | 断言元素文本包含指定内容，不满足则让 Flow 失败 | `assert_text('#element-id', '完成')` | `selector` (string): 元素选择器；`text` (string): 期待文本；`timeout` (int, optional): 超时时间。 |
-| `is_enabled` | 检查元素是否可用 | `is_enabled('#element-id')` | `selector` (string): 元素选择器。 |
-| `is_checked` | 检查复选框或单选按钮是否被选中 | `is_checked('#checkbox-id')` | `selector` (string): 元素选择器。 |
-| `is_selected` | 检查下拉框选项是否被选中 | `is_selected('#dropdown-id')` | `selector` (string): 下拉框选择器。 |
-| `is_aria_selected` | 检查 ARIA 属性是否被选中 | `is_aria_selected('#element-id')` | `selector` (string): 元素选择器。 |
-
-
----
-
-## **10. 多标签页和窗口管理 / Tab and Window Management**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `new_tab` | 打开一个新标签页 | `new_tab('https://example.com')` | `url` (string): 要在新标签页中打开的 URL。 |
-| `close_tab` | 关闭当前标签页 | `close_tab()` | 无参数 |
-| `switch_to_tab` | 切换到指定的标签页 | `switch_to_tab(2)` | `index` (int): 要切换到的标签页索引。 |
-
-
----
-
-## **11. 网络请求与拦截 / Network Request Handling**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `intercept_request` | 拦截网络请求 | `intercept_request(function(request) return 'https://example.com' end)` | `callback` (function): 用于处理请求的 Lua 函数。 |
-| `block_request` | 阻止指定的网络请求 | `block_request('*.png')` | `pattern` (string): 要阻止的请求模式。 |
-| `get_response` | 获取网络请求的响应 | `get_response('https://example.com/api')` | `url` (string): 请求的 URL。 |
-
-
----
-
-## **12. StateStorage 管理 / State Storage Management**
-| **函数名** | **说明** | **使用示例** | **参数** |
-| --- | --- | --- | --- |
-| `get_storage_state` | 获取当前页面的存储状态 | `get_storage_state()` | 无参数 |
-| `get_cookies_string` | 获取当前页面的 Cookie 字符串 | `get_cookies_string()` | 无参数 |
-
-
----
-
-以上就是所有操作的详细说明和示例，便于快速上手并有效操作。
-
-## **13. 结构化 Flow / Workflow DSL**
-
-除了直接编写 Lua，也可以使用结构化 Flow 描述业务流程。Flow 更适合作为长期维护的业务资产：便于 AI 生成、人工审核、版本对比、失败追踪；Lua 保留为高级扩展步骤。
-
-运行示例：
+### 4. 运行 Flow
 
 ```bash
 go run . -flow script/demo_baidu.flow.yaml
 go run . -flow script/demo_baidu.flow.yaml -headless
 ```
 
-Flow 示例：
+命令行执行 Flow 后会输出结构化 JSON 结果，其中包含变量、每一步 trace、执行耗时和失败现场路径。
+
+## Lua 示例
+
+```lua
+print("hello!")
+navigate("https://www.baidu.com")
+wait_for_network_idle()
+type_text("#kw", "山东大学")
+click("#su")
+wait_for_network_idle()
+
+links = get_all_links("xpath=//body")
+print("links count:", #links)
+```
+
+## Flow DSL
+
+Flow 更适合作为长期维护的业务资产。它比裸 Lua 更容易：
+
+- 让 AI 严格生成
+- 被人工审查
+- 做版本 diff
+- 记录失败上下文
+- 配合 MCP 修复流程
+
+### 最小示例
 
 ```yaml
 schema_version: "1"
@@ -159,25 +125,40 @@ vars:
 steps:
   - action: navigate
     url: https://www.baidu.com
+
   - action: wait_for_selector
     selector: "#kw"
     timeout: 5000
+
   - action: type_text
     selector: "#kw"
     text: "{{query}}"
+
   - action: click
     selector: "#su"
+
+  - action: wait_for_network_idle
+
   - action: get_all_links
     selector: "xpath=//body"
     save_as: links
-  - action: lua
-    code: |
-      print("links count:", #links)
 ```
 
-`schema_version` 是必填字段，当前版本为 `"1"`。Flow 会在执行前校验 action、参数数量、参数类型、变量引用和 `save_as` 变量名。
+### 关键字段
 
-Flow 步骤支持两种参数写法：
+| 字段 | 说明 |
+| --- | --- |
+| `schema_version` | 必填，当前版本固定为 `"1"` |
+| `name` | Flow 名称 |
+| `description` | 可选描述 |
+| `vars` | 初始变量，支持在步骤中用 `{{var_name}}` 引用 |
+| `steps` | 按顺序执行的步骤列表 |
+| `save_as` | 把动作返回值保存为变量，供后续步骤复用 |
+| `continue_on_error` | 当前步骤失败后继续往下执行 |
+
+### 参数写法
+
+Flow 同时支持命名参数和 `args` 两种写法：
 
 ```yaml
 - action: type_text
@@ -188,9 +169,9 @@ Flow 步骤支持两种参数写法：
   args: ["#kw", "{{query}}"]
 ```
 
-`save_as` 会把动作返回值保存为变量，后续步骤可以通过 `{{变量名}}` 或 Lua 全局变量继续使用。
+### 常用控制能力
 
-常见的不稳定页面操作可以用 `retry` 包起来，并用断言明确业务状态：
+使用 `retry` 包住不稳定步骤：
 
 ```yaml
 - action: retry
@@ -202,147 +183,260 @@ Flow 步骤支持两种参数写法：
     - action: assert_visible
       selector: "#export-result"
       timeout: 5000
-    - action: assert_text
-      selector: "#export-result"
-      text: "导出成功"
 ```
 
-Flow 执行会返回每一步的 trace，包括 action、参数摘要、耗时、返回值摘要和当前 URL。步骤失败时会把现场资料写入 artifact root：`failure.png`、`page.html`、`dom_snapshot.json`，trace 里只返回这些文件路径，方便 OpenClaw/Codex 后续根据失败现场修复 Flow。
+使用 `if` 处理可选弹窗或不同页面状态：
 
-## **14. MCP / OpenClaw 集成**
+```yaml
+- action: if
+  condition:
+    action: is_visible
+    selector: ".login-dialog"
+  then:
+    - action: type_text
+      selector: "#username"
+      text: "{{username}}"
+    - action: click
+      selector: "#login"
+  else:
+    - action: wait_for_selector
+      selector: "#main"
+      timeout: 5000
+```
 
-TSPlay 可以作为 MCP server 启动，供 OpenClaw 或其他 Agent 调用结构化 Flow 能力：
+使用 `foreach` 处理列表数据，循环变量只在循环期间可见：
+
+```yaml
+- action: foreach
+  items: "{{order_ids}}"
+  item_var: order_id
+  index_var: order_index
+  steps:
+    - action: type_text
+      selector: "#order-id"
+      text: "{{order_id}}"
+    - action: click
+      selector: "#search"
+```
+
+使用 `on_error` 做局部失败恢复，handler 中可以引用 `{{last_error}}`：
+
+```yaml
+- action: on_error
+  steps:
+    - action: click
+      selector: 'text="导出"'
+  on_error:
+    - action: reload
+    - action: wait_for_selector
+      selector: "#main"
+      timeout: 10000
+```
+
+使用 `wait_until` 轮询条件：
+
+```yaml
+- action: wait_until
+  timeout: 30000
+  interval_ms: 500
+  condition:
+    action: is_visible
+    selector: "#export-result"
+```
+
+Flow 会在执行前做严格校验，包括：
+
+- action 是否存在
+- 参数数量和类型是否匹配
+- 变量引用是否有效
+- `save_as` 名称是否合法
+- 高风险能力是否被授权
+
+## 执行结果与失败现场
+
+每次执行 Flow 都会返回 step trace，通常包含：
+
+- `action`
+- 参数摘要
+- `status`
+- `duration_ms`
+- 输出摘要
+- 当前 `page_url`
+
+步骤失败时，TSPlay 会把现场资料写入 artifact root，默认目录是 `artifacts/`。常见产物包括：
+
+- `failure.png`
+- `page.html`
+- `dom_snapshot.json`
+
+可以通过命令行参数修改目录：
+
+```bash
+go run . -flow script/demo_baidu.flow.yaml -artifact-root artifacts
+```
+
+## MCP / Agent 集成
+
+TSPlay 可以作为 MCP Server 启动，让 Agent 不必直接读整页 HTML，也不必手写 selector。
+
+### 启动方式
 
 ```bash
 go run . -action srv
 go run . -action srv -addr :8081
-go run . -action srv -flow-root script
-go run . -action srv -artifact-root artifacts
+go run . -action srv -flow-root script -artifact-root artifacts
 ```
 
-默认 server 只暴露 `tsplay.*` 工具，不再暴露示例用的 `echo`、`add`、`tinyImage` 等 demo 工具。
+### 当前暴露的 MCP 工具
 
-当前暴露的 MCP 工具：
-
-| **工具名** | **说明** |
+| 工具名 | 说明 |
 | --- | --- |
-| `tsplay.list_actions` | 返回 Flow 可用 action 及参数 schema。 |
-| `tsplay.flow_schema` | 返回 Flow JSON Schema、生成规则和 action manifest，供 AI 严格生成 Flow。 |
-| `tsplay.flow_examples` | 返回典型 Flow 示例，供 AI 生成和修复时参考。 |
-| `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot 路径、可交互元素和候选 selector，供 AI 生成 Flow。 |
-| `tsplay.repair_flow_context` | 输入 Flow + 失败 run_result/trace，整理失败步骤、相邻步骤、trace 摘要和 artifact 路径，供 AI 修复 Flow。 |
-| `tsplay.validate_flow` | 校验 Flow YAML/JSON，不启动浏览器。 |
-| `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace。 |
+| `tsplay.list_actions` | 返回 Flow 可用 action 及参数 schema |
+| `tsplay.flow_schema` | 返回 Flow JSON Schema、生成规则和 action manifest |
+| `tsplay.flow_examples` | 返回可直接参考的 Flow 示例 |
+| `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot、可交互元素和候选 selector |
+| `tsplay.repair_flow_context` | 根据失败 Flow 和 run result 组织修复上下文 |
+| `tsplay.validate_flow` | 只校验 Flow，不启动浏览器 |
+| `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace |
 
-`validate_flow` / `run_flow` 支持传入 `flow` 内容，或传入 `flow_path`。为了避免 Agent 任意读取本机路径，`flow_path` 默认只允许读取 `script` 目录下的文件；可以通过 `-flow-root` 指定允许目录。建议 OpenClaw 侧传相对路径，例如 `demo_baidu.flow.yaml`。
+### 推荐给 Agent 的调用顺序
 
-`observe_page` 是从用户意图生成 Flow 的入口。OpenClaw/Codex 可以先调用它观察真实页面，再结合用户意图选择元素、生成 Flow，而不是让用户理解 HTML selector。
+1. 调 `tsplay.flow_schema`，拿到严格约束
+2. 调 `tsplay.flow_examples`，拿到参考模板
+3. 调 `tsplay.observe_page`，观察真实页面
+4. 生成 Flow 并交给 `tsplay.validate_flow`
+5. 成功后再调用 `tsplay.run_flow`
+6. 失败时把原 Flow 和 run result 交给 `tsplay.repair_flow_context`
 
-建议 AI 生成 Flow 的顺序是：先调用 `tsplay.flow_schema` 和 `tsplay.flow_examples` 获取约束，再调用 `tsplay.observe_page` 获取真实页面元素，最后生成 Flow 并交给 `tsplay.validate_flow` 校验。
+### 安全边界
 
-Flow 执行失败后，建议把原 Flow 和 `tsplay.run_flow` 返回的 JSON 原样传给 `tsplay.repair_flow_context`。它会返回适合大模型使用的上下文包：失败 step、前后 step、trace 摘要、当前 URL、错误栈摘要、失败截图路径、失败 HTML 路径、简化 DOM snapshot 摘要和修复提示。完整 HTML 不会放进 MCP 返回，后续 Agent 需要时按路径读取即可。
+MCP 模式默认不是全放开。高风险能力需要在单次请求里显式授权：
 
-文件类动作即使设置了 `allow_file_access=true`，也只允许在 `artifacts` 目录内读写文件；可以通过 `-artifact-root` 指定目录。截图、保存 HTML、下载文件等相对路径会自动落到 artifact root 下，例如 `screens/shot.png` 会写入 `artifacts/screens/shot.png`。
-
-MCP 默认启用安全边界：高风险动作不会直接执行或通过校验，需要在单次请求里显式放行。
-
-| **放行参数** | **影响动作** |
+| 授权参数 | 放行动作 |
 | --- | --- |
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`、`evaluate` |
 | `allow_file_access=true` | `screenshot`、`screenshot_element`、`save_html`、`upload_file`、`upload_multiple_files`、`download_file`、`download_url` |
 | `allow_browser_state=true` | `get_storage_state`、`get_cookies_string` |
 
-`run_flow` 默认 `headless=true`。命令行直接执行 `go run . -flow ...` 保持兼容，不默认套 MCP 的安全边界；接入 OpenClaw 时建议优先走 MCP 工具，由工具参数控制授权。
+补充说明：
 
-# **大模型提示词**
-```markdown
-# 智能助手提示词
-## 定位
-您是一位熟悉 TSPlay 指令集的智能助手，能够帮助用户理解和执行浏览器自动化操作。
-## 能力
-- 解释 TSPlay 指令的功能和使用方法。
-- 根据用户需求生成合适的 TSPlay 指令。
-- 提供示例代码，帮助用户快速上手。
-## 知识储备
-- 导航类指令：`navigate`, `click`, `reload`, `go_back`, `go_forward`。
-- 行为类指令：`type_text`, `get_text`, `set_value`, `select_option`, `hover`, `scroll_to`。
-- 等待操作指令：`wait_for_network_idle`, `wait_for_selector`, `wait_for_text`, `sleep`。
-- 控制与断言指令：`retry`, `assert_visible`, `assert_text`。
-- 页面截图指令：`screenshot`, `screenshot_element`, `save_html`。
-- 处理弹窗和对话框指令：`accept_alert`, `dismiss_alert`, `set_alert_text`。
-- 执行 JavaScript 指令：`execute_script`, `evaluate`。
-- 上传文件指令：`upload_file`, `upload_multiple_files`, `download_file`。
-- 提取数据指令：`get_attribute`, `get_html`, `get_all_links`, `capture_table`。
-- 页面状态检查指令：`is_visible`, `is_enabled`, `is_checked`, `is_selected`, `is_aria_selected`。
-- 多标签页和窗口管理指令：`new_tab`, `close_tab`, `switch_to_tab`。
-- 网络请求与拦截指令：`intercept_request`, `block_request`, `get_response`。
-- StateStorage 管理指令：`get_storage_state`, `get_cookies_string`。
-## 提示词示例
-1. **导航到指定 URL**
-    - 提示词：请生成一个 TSPlay 指令，导航到 `https://example.com`。
-    - 示例代码：`navigate('https://example.com')`
-2. **点击页面元素**
-    - 提示词：请生成一个 TSPlay 指令，点击 ID 为 `button-id` 的按钮。
-    - 示例代码：`click('#button-id')`
-3. **输入文本**
-    - 提示词：请生成一个 TSPlay 指令，在 ID 为 `input-id` 的输入框中输入 `Hello World`。
-    - 示例代码：`type_text('#input-id', 'Hello World')`
-4. **等待元素出现**
-    - 提示词：请生成一个 TSPlay 指令，等待 ID 为 `element-id` 的元素出现，超时时间为 5 秒。
-    - 示例代码：`wait_for_selector('#element-id', 5000)`
-5. **截取页面截图**
-    - 提示词：请生成一个 TSPlay 指令，截取整个页面并保存为 `screenshot.png`。
-    - 示例代码：`screenshot('screenshot.png')`
-6. **处理弹窗**
-    - 提示词：请生成一个 TSPlay 指令，接受当前弹窗。
-    - 示例代码：`accept_alert()`
-7. **执行 JavaScript**
-    - 提示词：请生成一个 TSPlay 指令，执行一个 JavaScript 弹窗显示 `Hello World`。
-    - 示例代码：`execute_script('alert("Hello World")')`
-8. **上传文件**
-    - 提示词：请生成一个 TSPlay 指令，上传文件 `file.txt` 到 ID 为 `file-input` 的文件输入框。
-    - 示例代码：`upload_file('#file-input', 'file.txt')`
-9. **获取元素属性**
-    - 提示词：请生成一个 TSPlay 指令，获取 ID 为 `element-id` 的元素的 `href` 属性值。
-    - 示例代码：`get_attribute('#element-id', 'href')`
-10. **检查元素可见性**
-    - 提示词：请生成一个 TSPlay 指令，检查 ID 为 `element-id` 的元素是否可见。
-    - 示例代码：`is_visible('#element-id')`
-11. **切换标签页**
-    - 提示词：请生成一个 TSPlay 指令，切换到索引为 2 的标签页。
-    - 示例代码：`switch_to_tab(2)`
-12. **拦截网络请求**
-    - 提示词：请生成一个 TSPlay 指令，拦截所有 `.png` 文件的请求。
-    - 示例代码：`block_request('*.png')`
-13. **获取页面存储状态**
-    - 提示词：请生成一个 TSPlay 指令，获取当前页面的存储状态。
-    - 示例代码：`get_storage_state()`
+- `flow_path` 默认只允许读取 `script/` 目录内的文件，可用 `-flow-root` 调整
+- 文件类动作即使被授权，也只允许在 artifact root 内读写
+- `run_flow` 默认 `headless=true`
+- 直接命令行执行 `go run . -flow ...` 仍保持本地使用的灵活性
+
+## Action 速查
+
+下面的 `模式` 列含义：
+
+- `Lua / Flow`：Lua 脚本和 Flow 都可用
+- `Lua`：仅 Lua CLI / Lua 脚本可用
+- `Flow`：仅 Flow 步骤可用
+
+### 导航与窗口
+
+| Action | 说明 | 常用参数 | 模式 |
+| --- | --- | --- | --- |
+| `navigate` | 打开指定 URL | `url` | Lua / Flow |
+| `reload` | 刷新当前页面 | - | Lua / Flow |
+| `go_back` | 返回上一页 | - | Lua / Flow |
+| `go_forward` | 前进到下一页 | - | Lua / Flow |
+| `new_tab` | 新开标签页 | `url` | Lua / Flow |
+| `close_tab` | 关闭当前标签页 | - | Lua / Flow |
+| `switch_to_tab` | 切换标签页 | `index` | Lua / Flow |
+
+### 输入与交互
+
+| Action | 说明 | 常用参数 | 模式 |
+| --- | --- | --- | --- |
+| `click` | 点击元素 | `selector` | Lua / Flow |
+| `type_text` | 输入文本 | `selector`, `text` | Lua / Flow |
+| `get_text` | 读取元素文本 | `selector` | Lua / Flow |
+| `set_value` | 设置输入框值 | `selector`, `value` | Lua / Flow |
+| `select_option` | 选择下拉项 | `selector`, `value` | Lua / Flow |
+| `hover` | 悬停元素 | `selector` | Lua / Flow |
+| `scroll_to` | 滚动到元素位置 | `selector` | Lua / Flow |
+| `accept_alert` | 接受弹窗 | - | Lua / Flow |
+| `dismiss_alert` | 取消弹窗 | - | Lua / Flow |
+| `set_alert_text` | 给弹窗输入文本 | `text` | Lua / Flow |
+
+### 等待与流程控制
+
+| Action | 说明 | 常用参数 | 模式 |
+| --- | --- | --- | --- |
+| `wait_for_network_idle` | 等待网络空闲 | - | Lua / Flow |
+| `wait_for_selector` | 等待元素出现 | `selector`, `timeout` | Lua / Flow |
+| `wait_for_text` | 等待元素出现指定文本 | `selector`, `text`, `timeout` | Lua / Flow |
+| `sleep` | 暂停执行 | `seconds` | Lua / Flow |
+| `retry` | 重试一组嵌套步骤 | `times`, `interval_ms`, `steps` | Flow |
+| `if` | 条件分支 | `condition`, `then`, `else` | Flow |
+| `foreach` | 遍历列表并执行嵌套步骤 | `items`, `item_var`, `index_var`, `steps` | Flow |
+| `on_error` | 局部错误处理 | `steps`, `on_error` | Flow |
+| `wait_until` | 轮询条件直到满足 | `condition`, `timeout`, `interval_ms` | Flow |
+| `assert_visible` | 断言元素可见 | `selector`, `timeout` | Flow |
+| `assert_text` | 断言文本匹配 | `selector`, `text`, `timeout` | Flow |
+| `lua` | 在 Flow 中执行 Lua 代码 | `code` | Flow |
+
+### 截图、文件与脚本执行
+
+| Action | 说明 | 常用参数 | 模式 |
+| --- | --- | --- | --- |
+| `screenshot` | 整页截图 | `path` | Lua / Flow |
+| `screenshot_element` | 元素截图 | `selector`, `path` | Lua / Flow |
+| `save_html` | 保存页面 HTML | `path` | Lua / Flow |
+| `execute_script` | 执行 JavaScript | `script` | Lua / Flow |
+| `evaluate` | 对元素执行 JS 表达式 | `selector`, `script` | Lua / Flow |
+| `upload_file` | 上传单个文件 | `selector`, `file_path` | Lua / Flow |
+| `upload_multiple_files` | 上传多个文件 | `selector`, `files` | Lua / Flow |
+| `download_file` | 通过页面元素触发下载 | `selector`, `save_path` | Lua / Flow |
+| `download_url` | 直接下载 URL 到本地 | `url`, `save_path` | Lua / Flow |
+
+### 数据提取与状态检查
+
+| Action | 说明 | 常用参数 | 模式 |
+| --- | --- | --- | --- |
+| `get_attribute` | 获取元素属性 | `selector`, `attribute` | Lua / Flow |
+| `get_html` | 获取元素或整页 HTML | `selector?` | Lua / Flow |
+| `get_all_links` | 提取页面或区域中的链接 | `selector?` | Lua / Flow |
+| `capture_table` | 提取表格数据 | `selector` | Lua / Flow |
+| `find_element` | 获取单个元素信息 | `selector` | Lua / Flow |
+| `find_elements` | 获取多个元素信息 | `selector` | Lua / Flow |
+| `is_visible` | 判断元素是否可见 | `selector` | Lua / Flow |
+| `is_enabled` | 判断元素是否可用 | `selector` | Lua / Flow |
+| `is_checked` | 判断复选框/单选框是否勾选 | `selector` | Lua / Flow |
+| `is_selected` | 判断下拉项是否被选中 | `selector` | Lua / Flow |
+| `is_aria_selected` | 判断 ARIA selected 状态 | `selector` | Lua / Flow |
+
+### 网络与浏览器状态
+
+| Action | 说明 | 常用参数 | 模式 |
+| --- | --- | --- | --- |
+| `block_request` | 阻止指定网络请求 | `pattern` | Lua / Flow |
+| `get_response` | 获取某个请求的响应 | `url` | Lua / Flow |
+| `intercept_request` | 用 Lua 回调拦截请求 | `callback` | Lua |
+| `get_storage_state` | 获取浏览器状态 | `context_index?` | Lua / Flow |
+| `get_cookies_string` | 获取 Cookie 字符串 | `context_index?` | Lua / Flow |
+
+说明：
+
+- `intercept_request` 当前只在 Lua 中提供，Flow 没有对应的回调式写法
+- `get_storage_state` 和 `get_cookies_string` 在 Flow 里支持可选的 `context_index`
+
+## 项目结构
+
+```text
+.
+├── main.go
+├── tsplay_core/      # 核心执行引擎、Flow、MCP、页面观察与修复能力
+├── script/           # Lua 与 Flow 示例
+├── demo/             # 本地演示页面
+├── tsplay_test/      # 测试与演示资源
+└── mcp_test/         # MCP 相关试验代码
 ```
 
-## **大模型示例**
-询问大模型：
-```markdown
-百度搜索 山东 
-```
-大模型回复：
-```markdown
-要在百度上搜索“山东”，您可以使用 TSPlay 的 `navigate` 和 `type_text` 指令。以下是示例代码：
+## 开发与测试
 
-// 导航到百度首页
-navigate('https://www.baidu.com')
-
-// 在搜索框中输入“山东”
-type_text('#kw', '山东')
-
-// 点击“百度一下”按钮
-click('#su')
-```
-
-### 解释：
-1. `navigate('https://www.baidu.com')`：导航到百度首页。
-2. `type_text('#kw', '山东')`：在搜索框（ID 为 `#kw`）中输入“山东”。
-3. `click('#su')`：点击“百度一下”按钮（ID 为 `#su`）以执行搜索。
-
-执行以上代码后，浏览器将自动在百度上搜索“山东”。
+```bash
+go test ./...
 ```

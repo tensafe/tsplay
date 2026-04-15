@@ -669,6 +669,10 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["assert_visible"] = "Fail the flow unless the selector is visible. Optional timeout waits before asserting."
 	descriptions["assert_text"] = "Fail the flow unless the selected element text contains the expected text. Optional timeout polls before asserting."
 	descriptions["retry"] = "Retry nested Flow steps until they succeed or the retry count is exhausted."
+	descriptions["if"] = "Run then or else nested Flow steps based on a condition step output."
+	descriptions["foreach"] = "Run nested Flow steps once for each item in a list."
+	descriptions["on_error"] = "Run nested Flow steps and execute an error handler block if they fail."
+	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
@@ -691,6 +695,34 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "times", "type": "int", "required": false, "default": 3},
 				{"name": "interval_ms", "type": "int", "required": false, "default": 0},
 				{"name": "steps", "type": "steps", "required": true},
+			}
+		}
+		if name == "if" {
+			item["args"] = []map[string]any{
+				{"name": "condition", "type": "condition", "required": true},
+				{"name": "then", "type": "steps", "required": false},
+				{"name": "else", "type": "steps", "required": false},
+			}
+		}
+		if name == "foreach" {
+			item["args"] = []map[string]any{
+				{"name": "items", "type": "items", "required": true},
+				{"name": "item_var", "type": "string", "required": true},
+				{"name": "index_var", "type": "string", "required": false},
+				{"name": "steps", "type": "steps", "required": true},
+			}
+		}
+		if name == "on_error" {
+			item["args"] = []map[string]any{
+				{"name": "steps", "type": "steps", "required": true},
+				{"name": "on_error", "type": "steps", "required": true},
+			}
+		}
+		if name == "wait_until" {
+			item["args"] = []map[string]any{
+				{"name": "condition", "type": "condition", "required": true},
+				{"name": "timeout", "type": "int", "required": false, "default": 30000},
+				{"name": "interval_ms", "type": "int", "required": false, "default": 500},
 			}
 		}
 		if group := flowActionSecurityGroup(name); group != "" {

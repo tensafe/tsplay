@@ -11,6 +11,10 @@ func BuildFlowJSONSchema() map[string]any {
 		"save_as":           map[string]any{"type": "string", "pattern": flowIdentifierPattern.String(), "description": "Save the action output as a flow variable."},
 		"continue_on_error": map[string]any{"type": "boolean", "description": "Continue to next step when this step fails."},
 		"steps":             map[string]any{"type": "array", "minItems": 1, "description": "Nested steps for control actions such as retry.", "items": map[string]any{"$ref": "#/$defs/step"}},
+		"condition":         map[string]any{"$ref": "#/$defs/step", "description": "Condition step for if and wait_until. Its output truthiness controls the branch."},
+		"then":              map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"$ref": "#/$defs/step"}},
+		"else":              map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"$ref": "#/$defs/step"}},
+		"on_error":          map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"$ref": "#/$defs/step"}},
 		"url":               map[string]any{"type": "string"},
 		"selector":          map[string]any{"type": "string", "description": "Use selector candidates from tsplay.observe_page when possible."},
 		"text":              map[string]any{"type": "string"},
@@ -18,6 +22,9 @@ func BuildFlowJSONSchema() map[string]any {
 		"timeout":           map[string]any{"type": "integer", "minimum": 1},
 		"times":             map[string]any{"type": "integer", "minimum": 1, "default": 3},
 		"interval_ms":       map[string]any{"type": "integer", "minimum": 0, "default": 0},
+		"items":             map[string]any{"description": "List value or variable placeholder for foreach."},
+		"item_var":          map[string]any{"type": "string", "pattern": flowIdentifierPattern.String()},
+		"index_var":         map[string]any{"type": "string", "pattern": flowIdentifierPattern.String()},
 		"seconds":           map[string]any{"type": "number", "exclusiveMinimum": 0},
 		"path":              map[string]any{"type": "string"},
 		"script":            map[string]any{"type": "string"},
@@ -73,7 +80,7 @@ func BuildFlowJSONSchema() map[string]any {
 				"Always include schema_version.",
 				"Prefer named parameters over args for readability and validation.",
 				"Use selector_candidates from tsplay.observe_page; prefer data-testid/data-cy/id/placeholder/aria-label/text selectors before XPath.",
-				"Use assert_visible/assert_text for business checks and retry for flaky page interactions.",
+				"Use assert_visible/assert_text for business checks, retry for flaky page interactions, if for optional page states, foreach for lists, on_error for local recovery, and wait_until for polling conditions.",
 				"Use save_as for extracted values that later steps need.",
 				"Do not use lua, execute_script, evaluate, file actions, or browser state actions unless the user explicitly needs them and MCP allow flags are set.",
 			},
@@ -85,15 +92,15 @@ func buildFlowActionSchemaConstraints() []any {
 	constraints := make([]any, 0, len(flowActionSpecs))
 	for _, action := range FlowActionNames() {
 		spec := flowActionSpecs[action]
-		if action == "retry" {
+		if required := flowControlActionRequiredProperties(action); len(required) > 0 {
 			constraints = append(constraints, map[string]any{
 				"if": map[string]any{
 					"properties": map[string]any{"action": map[string]any{"const": action}},
 					"required":   []string{"action"},
 				},
 				"then": map[string]any{
-					"description": "Constraints for action \"retry\".",
-					"required":    []string{"action", "steps"},
+					"description": fmt.Sprintf("Constraints for action %q.", action),
+					"required":    append([]string{"action"}, required...),
 					"not":         map[string]any{"required": []string{"args"}},
 				},
 			})
@@ -129,6 +136,23 @@ func buildFlowActionSchemaConstraints() []any {
 		})
 	}
 	return constraints
+}
+
+func flowControlActionRequiredProperties(action string) []string {
+	switch action {
+	case "retry":
+		return []string{"steps"}
+	case "if":
+		return []string{"condition"}
+	case "foreach":
+		return []string{"items", "item_var", "steps"}
+	case "on_error":
+		return []string{"steps", "on_error"}
+	case "wait_until":
+		return []string{"condition"}
+	default:
+		return nil
+	}
 }
 
 func buildFlowActionArgsSchema(action string, spec flowActionSpec) map[string]any {
@@ -286,6 +310,59 @@ steps:
         selector: "#export-result"
         text: "Export complete"
         timeout: 5000
+`,
+		},
+		{
+			"name":        "control_flow_branch_loop_recover",
+			"description": "Use if, foreach, on_error, and wait_until for common business control flow without lua.",
+			"flow": `schema_version: "1"
+name: batch_export_orders
+vars:
+  orders_url: https://example.com/orders
+  username: demo
+  order_ids:
+    - A1001
+    - A1002
+steps:
+  - action: navigate
+    url: "{{orders_url}}"
+  - action: if
+    condition:
+      action: is_visible
+      selector: ".login-dialog"
+    then:
+      - action: type_text
+        selector: "#username"
+        text: "{{username}}"
+      - action: click
+        selector: "#login"
+    else:
+      - action: wait_for_selector
+        selector: "#orders-table"
+        timeout: 10000
+  - action: foreach
+    items: "{{order_ids}}"
+    item_var: order_id
+    index_var: order_index
+    steps:
+      - action: type_text
+        selector: "#order-id"
+        text: "{{order_id}}"
+      - action: on_error
+        steps:
+          - action: click
+            selector: 'text="Export"'
+          - action: wait_until
+            timeout: 30000
+            interval_ms: 500
+            condition:
+              action: is_visible
+              selector: "#export-result"
+        on_error:
+          - action: reload
+          - action: wait_for_selector
+            selector: "#orders-table"
+            timeout: 10000
 `,
 		},
 		{
