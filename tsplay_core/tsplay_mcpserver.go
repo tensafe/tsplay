@@ -666,6 +666,9 @@ func buildFlowActionManifest() []map[string]any {
 		descriptions[fn.Name] = fn.Description_en
 	}
 	descriptions["lua"] = "Run an inline Lua code block. Prefer structured actions for normal browser steps and use lua only as an escape hatch."
+	descriptions["assert_visible"] = "Fail the flow unless the selector is visible. Optional timeout waits before asserting."
+	descriptions["assert_text"] = "Fail the flow unless the selected element text contains the expected text. Optional timeout polls before asserting."
+	descriptions["retry"] = "Retry nested Flow steps until they succeed or the retry count is exhausted."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
@@ -682,6 +685,13 @@ func buildFlowActionManifest() []map[string]any {
 			"name":        name,
 			"description": descriptions[name],
 			"args":        args,
+		}
+		if name == "retry" {
+			item["args"] = []map[string]any{
+				{"name": "times", "type": "int", "required": false, "default": 3},
+				{"name": "interval_ms", "type": "int", "required": false, "default": 0},
+				{"name": "steps", "type": "steps", "required": true},
+			}
 		}
 		if group := flowActionSecurityGroup(name); group != "" {
 			item["security_group"] = group

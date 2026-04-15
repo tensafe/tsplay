@@ -111,6 +111,64 @@ func TestRunFlowLuaSteps(t *testing.T) {
 	}
 }
 
+func TestRunFlowRetryRetriesNestedSteps(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	attempts := 0
+	L.SetGlobal("flaky", L.NewFunction(func(L *lua.LState) int {
+		attempts++
+		if attempts < 2 {
+			L.RaiseError("not yet")
+			return 0
+		}
+		L.Push(lua.LString("ok"))
+		return 1
+	}))
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "retry_lua",
+		Steps: []FlowStep{
+			{
+				Action:     "retry",
+				Times:      3,
+				IntervalMS: 1,
+				Steps: []FlowStep{
+					{Action: "lua", Code: "return flaky()", SaveAs: "flaky_result"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInState(L, flow)
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d", attempts)
+	}
+	if got := result.Vars["flaky_result"]; got != "ok" {
+		t.Fatalf("flaky_result = %#v", got)
+	}
+	if len(result.Trace) != 1 {
+		t.Fatalf("unexpected trace count: %d", len(result.Trace))
+	}
+	retryTrace := result.Trace[0]
+	if retryTrace.Status != "ok" {
+		t.Fatalf("retry status = %q", retryTrace.Status)
+	}
+	if len(retryTrace.Attempts) != 2 {
+		t.Fatalf("retry attempts trace count = %d", len(retryTrace.Attempts))
+	}
+	if retryTrace.Attempts[0].Status != "error" || retryTrace.Attempts[1].Status != "ok" {
+		t.Fatalf("unexpected attempt statuses: %#v", retryTrace.Attempts)
+	}
+	if retryTrace.Attempts[0].Attempt != 1 || retryTrace.Attempts[1].Attempt != 2 {
+		t.Fatalf("unexpected attempt numbers: %#v", retryTrace.Attempts)
+	}
+}
+
 func TestValidateFlowStrictRejectsMissingSchemaVersion(t *testing.T) {
 	flow := &Flow{
 		Name: "missing_schema",
@@ -177,6 +235,66 @@ func TestValidateFlowStrictRejectsTypeMismatch(t *testing.T) {
 
 	if err := ValidateFlowStrict(flow); err == nil {
 		t.Fatalf("expected type mismatch error")
+	}
+}
+
+func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "retry_asserts",
+		Steps: []FlowStep{
+			{
+				Action:     "retry",
+				Times:      2,
+				IntervalMS: 10,
+				Steps: []FlowStep{
+					{Action: "assert_visible", Selector: "#ready", Timeout: 1000},
+					{Action: "assert_text", Selector: "#message", Text: "done"},
+					{Action: "get_text", Selector: "#message", SaveAs: "message"},
+				},
+			},
+			{Action: "lua", Code: "return message", SaveAs: "echo"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+}
+
+func TestValidateFlowStrictRejectsRetryWithoutSteps(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "bad_retry",
+		Steps: []FlowStep{
+			{Action: "retry", Times: 2},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected retry nested steps error")
+	}
+}
+
+func TestValidateFlowSecurityChecksRetryNestedSteps(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "nested_lua_policy",
+		Steps: []FlowStep{
+			{
+				Action: "retry",
+				Steps: []FlowStep{
+					{Action: "lua", Code: "return true"},
+				},
+			},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy()); err == nil {
+		t.Fatalf("expected nested lua security policy error")
 	}
 }
 
@@ -274,6 +392,32 @@ func TestRewriteFlowFileAccessArgsUsesOutputRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(got)); err != nil {
 		t.Fatalf("expected output directory to be created: %v", err)
+	}
+}
+
+func TestRunFlowAssertVisibleAndText(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "assert_browser",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: `data:text/html,<html><body><div id="ready">Order complete</div></body></html>`},
+			{Action: "assert_visible", Selector: "#ready", Timeout: 1000},
+			{Action: "assert_text", Selector: "#ready", Text: "complete", Timeout: 1000},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{Headless: true})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if result == nil || len(result.Trace) != 3 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if result.Trace[1].Output != true {
+		t.Fatalf("assert_visible output = %#v", result.Trace[1].Output)
+	}
+	if result.Trace[2].OutputSummary == "" {
+		t.Fatalf("expected assert_text output summary")
 	}
 }
 

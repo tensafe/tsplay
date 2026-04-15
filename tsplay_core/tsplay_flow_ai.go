@@ -10,11 +10,14 @@ func BuildFlowJSONSchema() map[string]any {
 		"with":              map[string]any{"type": "object", "description": "Extra named parameters. Prefer top-level named fields when available."},
 		"save_as":           map[string]any{"type": "string", "pattern": flowIdentifierPattern.String(), "description": "Save the action output as a flow variable."},
 		"continue_on_error": map[string]any{"type": "boolean", "description": "Continue to next step when this step fails."},
+		"steps":             map[string]any{"type": "array", "minItems": 1, "description": "Nested steps for control actions such as retry.", "items": map[string]any{"$ref": "#/$defs/step"}},
 		"url":               map[string]any{"type": "string"},
 		"selector":          map[string]any{"type": "string", "description": "Use selector candidates from tsplay.observe_page when possible."},
 		"text":              map[string]any{"type": "string"},
 		"value":             map[string]any{"type": "string"},
 		"timeout":           map[string]any{"type": "integer", "minimum": 1},
+		"times":             map[string]any{"type": "integer", "minimum": 1, "default": 3},
+		"interval_ms":       map[string]any{"type": "integer", "minimum": 0, "default": 0},
 		"seconds":           map[string]any{"type": "number", "exclusiveMinimum": 0},
 		"path":              map[string]any{"type": "string"},
 		"script":            map[string]any{"type": "string"},
@@ -26,6 +29,13 @@ func BuildFlowJSONSchema() map[string]any {
 		"pattern":           map[string]any{"type": "string"},
 		"index":             map[string]any{"type": "integer"},
 		"context_index":     map[string]any{"type": "integer"},
+	}
+	stepSchema := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"action"},
+		"properties":           stepProperties,
+		"allOf":                buildFlowActionSchemaConstraints(),
 	}
 
 	return map[string]any{
@@ -53,21 +63,17 @@ func BuildFlowJSONSchema() map[string]any {
 				"type":        "array",
 				"minItems":    1,
 				"description": "Linear workflow steps. Use lua only as an escape hatch.",
-				"items": map[string]any{
-					"type":                 "object",
-					"additionalProperties": false,
-					"required":             []string{"action"},
-					"properties":           stepProperties,
-					"allOf":                buildFlowActionSchemaConstraints(),
-				},
+				"items":       map[string]any{"$ref": "#/$defs/step"},
 			},
 		},
 		"$defs": map[string]any{
+			"step":            stepSchema,
 			"action_manifest": buildFlowActionManifest(),
 			"generation_rules": []string{
 				"Always include schema_version.",
 				"Prefer named parameters over args for readability and validation.",
 				"Use selector_candidates from tsplay.observe_page; prefer data-testid/data-cy/id/placeholder/aria-label/text selectors before XPath.",
+				"Use assert_visible/assert_text for business checks and retry for flaky page interactions.",
 				"Use save_as for extracted values that later steps need.",
 				"Do not use lua, execute_script, evaluate, file actions, or browser state actions unless the user explicitly needs them and MCP allow flags are set.",
 			},
@@ -79,6 +85,20 @@ func buildFlowActionSchemaConstraints() []any {
 	constraints := make([]any, 0, len(flowActionSpecs))
 	for _, action := range FlowActionNames() {
 		spec := flowActionSpecs[action]
+		if action == "retry" {
+			constraints = append(constraints, map[string]any{
+				"if": map[string]any{
+					"properties": map[string]any{"action": map[string]any{"const": action}},
+					"required":   []string{"action"},
+				},
+				"then": map[string]any{
+					"description": "Constraints for action \"retry\".",
+					"required":    []string{"action", "steps"},
+					"not":         map[string]any{"required": []string{"args"}},
+				},
+			})
+			continue
+		}
 		requiredNamedParams := []string{}
 		for _, arg := range spec.Args {
 			if arg.Required {
@@ -241,6 +261,31 @@ steps:
   - name: click export
     action: click
     selector: 'text="Export orders"'
+`,
+		},
+		{
+			"name":        "retry_with_assertions",
+			"description": "Retry flaky interactions and assert the business result before continuing.",
+			"flow": `schema_version: "1"
+name: retry_export_orders
+vars:
+  orders_url: https://example.com/orders
+steps:
+  - action: navigate
+    url: "{{orders_url}}"
+  - action: retry
+    times: 3
+    interval_ms: 1000
+    steps:
+      - action: click
+        selector: 'text="Export orders"'
+      - action: assert_visible
+        selector: "#export-result"
+        timeout: 5000
+      - action: assert_text
+        selector: "#export-result"
+        text: "Export complete"
+        timeout: 5000
 `,
 		},
 		{

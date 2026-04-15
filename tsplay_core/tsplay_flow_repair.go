@@ -54,6 +54,7 @@ type FlowRepairTraceItem struct {
 	PageURL       string                   `json:"page_url,omitempty"`
 	DurationMS    int64                    `json:"duration_ms,omitempty"`
 	Artifacts     *FlowRepairArtifactPaths `json:"artifacts,omitempty"`
+	Attempts      []FlowRepairTraceItem    `json:"attempts,omitempty"`
 }
 
 type FlowRepairArtifacts struct {
@@ -218,6 +219,9 @@ func buildFlowRepairTraceSummary(trace []FlowStepTrace, textLimit int) []FlowRep
 		if step.Artifacts != nil {
 			paths := flowRepairArtifactPaths(*step.Artifacts)
 			item.Artifacts = &paths
+		}
+		if len(step.Attempts) > 0 {
+			item.Attempts = buildFlowRepairTraceSummary(step.Attempts, textLimit)
 		}
 		items = append(items, item)
 	}

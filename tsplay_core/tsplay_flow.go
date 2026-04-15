@@ -35,6 +35,7 @@ type FlowStep struct {
 	With            map[string]any `json:"with,omitempty" yaml:"with,omitempty"`
 	SaveAs          string         `json:"save_as,omitempty" yaml:"save_as,omitempty"`
 	ContinueOnError bool           `json:"continue_on_error,omitempty" yaml:"continue_on_error,omitempty"`
+	Steps           []FlowStep     `json:"steps,omitempty" yaml:"steps,omitempty"`
 
 	// Common named parameters. Flow accepts both args: [...] and these named
 	// fields because named fields are easier for humans and AI to review.
@@ -54,6 +55,8 @@ type FlowStep struct {
 	Pattern      string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 	Index        int      `json:"index,omitempty" yaml:"index,omitempty"`
 	ContextIndex int      `json:"context_index,omitempty" yaml:"context_index,omitempty"`
+	Times        int      `json:"times,omitempty" yaml:"times,omitempty"`
+	IntervalMS   int      `json:"interval_ms,omitempty" yaml:"interval_ms,omitempty"`
 }
 
 type FlowResult struct {
@@ -65,6 +68,8 @@ type FlowResult struct {
 
 type FlowStepTrace struct {
 	Index         int                `json:"index"`
+	Path          string             `json:"path,omitempty"`
+	Attempt       int                `json:"attempt,omitempty"`
 	Name          string             `json:"name,omitempty"`
 	Action        string             `json:"action"`
 	Args          any                `json:"args,omitempty"`
@@ -77,6 +82,7 @@ type FlowStepTrace struct {
 	OutputSummary string             `json:"output_summary,omitempty"`
 	PageURL       string             `json:"page_url,omitempty"`
 	Artifacts     *FlowStepArtifacts `json:"artifacts,omitempty"`
+	Attempts      []FlowStepTrace    `json:"attempts,omitempty"`
 	StartedAt     string             `json:"started_at"`
 	FinishedAt    string             `json:"finished_at"`
 	DurationMS    int64              `json:"duration_ms"`
@@ -153,6 +159,9 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"wait_for_selector":     {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "timeout"}}},
 	"wait_for_text":         {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "text", Required: true}, {Name: "timeout"}}},
 	"sleep":                 {Args: []flowArgSpec{{Name: "seconds", Required: true}}},
+	"assert_visible":        {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "timeout"}}},
+	"assert_text":           {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "text", Required: true}, {Name: "timeout"}}},
+	"retry":                 {},
 	"screenshot":            {Args: []flowArgSpec{{Name: "path", Required: true}}},
 	"screenshot_element":    {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "path", Required: true}}},
 	"save_html":             {Args: []flowArgSpec{{Name: "path", Required: true}}},
@@ -253,25 +262,40 @@ func ValidateFlowStrict(flow *Flow) error {
 		knownVars[name] = value
 	}
 
-	for i, step := range flow.Steps {
+	return validateFlowStepSequence(flow.Steps, knownVars, "")
+}
+
+func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parentPath string) error {
+	for i, step := range steps {
+		stepPath := flowStepPath(parentPath, i+1)
 		if strings.TrimSpace(step.Action) == "" {
-			return fmt.Errorf("step %d action is required", i+1)
+			return fmt.Errorf("step %s action is required", stepPath)
 		}
 		spec, ok := flowActionSpecs[step.Action]
 		if !ok {
-			return fmt.Errorf("step %d uses unsupported action %q", i+1, step.Action)
+			return fmt.Errorf("step %s uses unsupported action %q", stepPath, step.Action)
 		}
 
 		if step.SaveAs != "" && !flowIdentifierPattern.MatchString(step.SaveAs) {
-			return fmt.Errorf("step %d save_as %q is not a valid variable name", i+1, step.SaveAs)
+			return fmt.Errorf("step %s save_as %q is not a valid variable name", stepPath, step.SaveAs)
+		}
+
+		if step.Action == "retry" {
+			if err := validateRetryFlowStep(stepPath, step, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
+			continue
 		}
 
 		if len(step.Args) > 0 {
-			if err := validateFlowStepArgs(i+1, step, spec, knownVars); err != nil {
+			if err := validateFlowStepArgs(stepPath, step, spec, knownVars); err != nil {
 				return err
 			}
 		} else {
-			if err := validateFlowStepNamedParams(i+1, step, spec, knownVars); err != nil {
+			if err := validateFlowStepNamedParams(stepPath, step, spec, knownVars); err != nil {
 				return err
 			}
 		}
@@ -283,9 +307,58 @@ func ValidateFlowStrict(flow *Flow) error {
 	return nil
 }
 
-func validateFlowStepArgs(stepIndex int, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+func flowStepPath(parentPath string, index int) string {
+	if parentPath == "" {
+		return fmt.Sprint(index)
+	}
+	return fmt.Sprintf("%s.%d", parentPath, index)
+}
+
+func validateRetryFlowStep(stepPath string, step FlowStep, knownVars map[string]any) error {
+	if len(step.Args) > 0 {
+		return fmt.Errorf("step %s action %q does not support args; use named fields times, interval_ms, and steps", stepPath, step.Action)
+	}
+	present := step.presentNamedParams()
+	allowed := map[string]bool{"times": true, "interval_ms": true, "steps": true}
+	for name, value := range present {
+		if !allowed[name] {
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+		if name == "steps" {
+			continue
+		}
+		if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+	}
+	if len(step.Steps) == 0 {
+		return fmt.Errorf("step %s action %q requires nested steps", stepPath, step.Action)
+	}
+
+	if value, ok := step.param("times"); ok && len(flowReferences(value)) == 0 {
+		times, err := intParam(value)
+		if err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, step.Action, "times", err)
+		}
+		if times < 1 {
+			return fmt.Errorf("step %s action %q parameter %q must be at least 1", stepPath, step.Action, "times")
+		}
+	}
+	if value, ok := step.param("interval_ms"); ok && len(flowReferences(value)) == 0 {
+		intervalMS, err := intParam(value)
+		if err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, step.Action, "interval_ms", err)
+		}
+		if intervalMS < 0 {
+			return fmt.Errorf("step %s action %q parameter %q must be at least 0", stepPath, step.Action, "interval_ms")
+		}
+	}
+	return validateFlowStepSequence(step.Steps, knownVars, stepPath)
+}
+
+func validateFlowStepArgs(stepIndex string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
 	if len(step.presentNamedParams()) > 0 {
-		return fmt.Errorf("step %d action %q cannot mix args with named parameters", stepIndex, step.Action)
+		return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepIndex, step.Action)
 	}
 
 	requiredCount := requiredArgCount(spec)
@@ -297,10 +370,10 @@ func validateFlowStepArgs(stepIndex int, step FlowStep, spec flowActionSpec, kno
 	}
 
 	if len(step.Args) < minCount {
-		return fmt.Errorf("step %d action %q expects at least %d args, got %d", stepIndex, step.Action, minCount, len(step.Args))
+		return fmt.Errorf("step %s action %q expects at least %d args, got %d", stepIndex, step.Action, minCount, len(step.Args))
 	}
 	if maxCount >= 0 && len(step.Args) > maxCount {
-		return fmt.Errorf("step %d action %q expects at most %d args, got %d", stepIndex, step.Action, maxCount, len(step.Args))
+		return fmt.Errorf("step %s action %q expects at most %d args, got %d", stepIndex, step.Action, maxCount, len(step.Args))
 	}
 
 	for i, value := range step.Args {
@@ -320,13 +393,13 @@ func validateFlowStepArgs(stepIndex int, step FlowStep, spec flowActionSpec, kno
 	return nil
 }
 
-func validateFlowStepNamedParams(stepIndex int, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+func validateFlowStepNamedParams(stepIndex string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
 	present := step.presentNamedParams()
 	allowed := allowedFlowParamNames(spec)
 
 	for name, value := range present {
 		if !allowed[name] {
-			return fmt.Errorf("step %d action %q does not accept parameter %q", stepIndex, step.Action, name)
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepIndex, step.Action, name)
 		}
 		if err := validateFlowParamValue(stepIndex, step.Action, name, value, knownVars); err != nil {
 			return err
@@ -338,35 +411,35 @@ func validateFlowStepNamedParams(stepIndex int, step FlowStep, spec flowActionSp
 			continue
 		}
 		if _, ok := present[arg.Name]; !ok {
-			return fmt.Errorf("step %d action %q requires %q", stepIndex, step.Action, arg.Name)
+			return fmt.Errorf("step %s action %q requires %q", stepIndex, step.Action, arg.Name)
 		}
 	}
 	if spec.VarArgName != "" {
 		value, ok := present[spec.VarArgName]
 		if !ok || listLen(value) == 0 {
-			return fmt.Errorf("step %d action %q requires %q", stepIndex, step.Action, spec.VarArgName)
+			return fmt.Errorf("step %s action %q requires %q", stepIndex, step.Action, spec.VarArgName)
 		}
 	}
 	return nil
 }
 
-func validateFlowParamValue(stepIndex int, action string, name string, value any, knownVars map[string]any) error {
+func validateFlowParamValue(stepIndex string, action string, name string, value any, knownVars map[string]any) error {
 	if name == "" {
-		return fmt.Errorf("step %d action %q has too many arguments", stepIndex, action)
+		return fmt.Errorf("step %s action %q has too many arguments", stepIndex, action)
 	}
 	if err := validateFlowReferences(stepIndex, action, name, value, knownVars); err != nil {
 		return err
 	}
 	if err := validateFlowParamType(name, value, knownVars); err != nil {
-		return fmt.Errorf("step %d action %q parameter %q %w", stepIndex, action, name, err)
+		return fmt.Errorf("step %s action %q parameter %q %w", stepIndex, action, name, err)
 	}
 	return nil
 }
 
-func validateFlowReferences(stepIndex int, action string, name string, value any, knownVars map[string]any) error {
+func validateFlowReferences(stepIndex string, action string, name string, value any, knownVars map[string]any) error {
 	for _, ref := range flowReferences(value) {
 		if _, ok := knownVars[ref]; !ok {
-			return fmt.Errorf("step %d action %q parameter %q references unknown variable %q", stepIndex, action, name, ref)
+			return fmt.Errorf("step %s action %q parameter %q references unknown variable %q", stepIndex, action, name, ref)
 		}
 	}
 	return nil
@@ -402,6 +475,11 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 			return nil
 		}
 		return fmt.Errorf("must be a list of strings")
+	case "steps":
+		if _, ok := value.([]FlowStep); ok {
+			return nil
+		}
+		return fmt.Errorf("must be a list of flow steps")
 	default:
 		return nil
 	}
@@ -411,12 +489,14 @@ func flowParamType(name string) string {
 	switch name {
 	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "file_path", "save_path", "pattern":
 		return "string"
-	case "timeout", "index", "context_index":
+	case "timeout", "index", "context_index", "times", "interval_ms":
 		return "int"
 	case "seconds":
 		return "number"
 	case "files":
 		return "string_list"
+	case "steps":
+		return "steps"
 	default:
 		return ""
 	}
@@ -427,16 +507,28 @@ func ValidateFlowSecurity(flow *Flow, policy FlowSecurityPolicy) error {
 		return fmt.Errorf("flow is nil")
 	}
 
-	for i, step := range flow.Steps {
-		group := flowActionSecurityGroup(step.Action)
-		if group == "" || flowSecurityPolicyAllows(group, policy) {
-			continue
-		}
-		option := flowActionSecurityOption(group)
-		return fmt.Errorf("step %d action %q is disabled by security policy; set %s=true only for trusted flows", i+1, step.Action, option)
+	if err := validateFlowStepSequenceSecurity(flow.Steps, policy, ""); err != nil {
+		return err
 	}
 	if err := validateFlowFileAccessRoots(flow, policy); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateFlowStepSequenceSecurity(steps []FlowStep, policy FlowSecurityPolicy, parentPath string) error {
+	for i, step := range steps {
+		stepPath := flowStepPath(parentPath, i+1)
+		group := flowActionSecurityGroup(step.Action)
+		if group != "" && !flowSecurityPolicyAllows(group, policy) {
+			option := flowActionSecurityOption(group)
+			return fmt.Errorf("step %s action %q is disabled by security policy; set %s=true only for trusted flows", stepPath, step.Action, option)
+		}
+		if step.Action == "retry" {
+			if err := validateFlowStepSequenceSecurity(step.Steps, policy, stepPath); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -497,21 +589,31 @@ func validateFlowFileAccessRoots(flow *Flow, policy FlowSecurityPolicy) error {
 	if !policy.AllowFileAccess {
 		return nil
 	}
-	for i, step := range flow.Steps {
-		if err := validateFlowStepFileAccessRoots(i+1, step, policy); err != nil {
+	return validateFlowFileAccessRootsForSteps(flow.Steps, policy, "")
+}
+
+func validateFlowFileAccessRootsForSteps(steps []FlowStep, policy FlowSecurityPolicy, parentPath string) error {
+	for i, step := range steps {
+		stepPath := flowStepPath(parentPath, i+1)
+		if err := validateFlowStepFileAccessRoots(stepPath, step, policy); err != nil {
 			return err
+		}
+		if step.Action == "retry" {
+			if err := validateFlowFileAccessRootsForSteps(step.Steps, policy, stepPath); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func validateFlowStepFileAccessRoots(stepIndex int, step FlowStep, policy FlowSecurityPolicy) error {
+func validateFlowStepFileAccessRoots(stepIndex string, step FlowStep, policy FlowSecurityPolicy) error {
 	return forEachFlowFilePathValue(step, func(name string, role flowFilePathRole, value any) error {
 		return validateFlowFilePathValue(stepIndex, step.Action, name, role, value, policy)
 	})
 }
 
-func validateFlowFilePathValue(stepIndex int, action string, name string, role flowFilePathRole, value any, policy FlowSecurityPolicy) error {
+func validateFlowFilePathValue(stepIndex string, action string, name string, role flowFilePathRole, value any, policy FlowSecurityPolicy) error {
 	if flowFilePathValueIsDynamic(value) {
 		return nil
 	}
@@ -537,7 +639,7 @@ func validateFlowFilePathValue(stepIndex int, action string, name string, role f
 			return nil
 		}
 		if err := validatePathWithinRoot(typed, root); err != nil {
-			return fmt.Errorf("step %d action %q parameter %q is outside allowed file %s root %q: %w", stepIndex, action, name, role, root, err)
+			return fmt.Errorf("step %s action %q parameter %q is outside allowed file %s root %q: %w", stepIndex, action, name, role, root, err)
 		}
 	}
 	return nil
@@ -753,52 +855,142 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	}
 
 	result := &FlowResult{Name: flow.Name, Vars: ctx.Vars, ArtifactRoot: artifactRoot}
-	for i, step := range flow.Steps {
-		traceArgs := traceStepParams(step, ctx)
-		trace := FlowStepTrace{
-			Index:       i + 1,
-			Name:        step.Name,
-			Action:      step.Action,
-			Args:        compactTraceValue(traceArgs, 0),
-			ArgsSummary: summarizeTraceValue(traceArgs),
-			SaveAs:      step.SaveAs,
-			Status:      "running",
-			StartedAt:   time.Now().Format(time.RFC3339Nano),
-		}
-
-		output, err := runFlowStep(L, ctx, step)
-		trace.FinishedAt = time.Now().Format(time.RFC3339Nano)
-		started, _ := time.Parse(time.RFC3339Nano, trace.StartedAt)
-		finished, _ := time.Parse(time.RFC3339Nano, trace.FinishedAt)
-		trace.DurationMS = finished.Sub(started).Milliseconds()
-		trace.PageURL = currentFlowPageURL(L)
-
-		if err != nil {
-			trace.Status = "error"
-			trace.Error = err.Error()
-			trace.ErrorStack = string(debug.Stack())
-			artifacts := captureFlowFailureArtifacts(L, ctx, trace)
-			if !artifacts.empty() {
-				trace.Artifacts = &artifacts
-			}
-			result.Trace = append(result.Trace, trace)
-			if !step.ContinueOnError {
-				return result, fmt.Errorf("step %d %q failed: %w", i+1, step.Action, err)
-			}
-			continue
-		}
-
-		trace.Status = "ok"
-		trace.Output = compactTraceValue(output, 0)
-		trace.OutputSummary = summarizeTraceValue(output)
-		if step.SaveAs != "" {
-			ctx.Vars[step.SaveAs] = output
-			L.SetGlobal(step.SaveAs, goValueToLua(L, output))
-		}
-		result.Trace = append(result.Trace, trace)
+	traces, err := runFlowStepSequence(L, ctx, flow.Steps, "", 0)
+	result.Trace = append(result.Trace, traces...)
+	if err != nil {
+		return result, err
 	}
 
 	return result, nil
+}
+
+func runFlowStepSequence(L *lua.LState, ctx *FlowContext, steps []FlowStep, parentPath string, attempt int) ([]FlowStepTrace, error) {
+	traces := make([]FlowStepTrace, 0, len(steps))
+	for i, step := range steps {
+		stepPath := flowStepPath(parentPath, i+1)
+		trace, err := runFlowStepWithTrace(L, ctx, step, i+1, stepPath, attempt)
+		traces = append(traces, trace)
+		if err != nil && !step.ContinueOnError {
+			return traces, fmt.Errorf("step %s %q failed: %w", stepPath, step.Action, err)
+		}
+	}
+	return traces, nil
+}
+
+func runFlowStepWithTrace(L *lua.LState, ctx *FlowContext, step FlowStep, index int, stepPath string, attempt int) (FlowStepTrace, error) {
+	traceArgs := traceStepParams(step, ctx)
+	trace := FlowStepTrace{
+		Index:       index,
+		Path:        stepPath,
+		Attempt:     attempt,
+		Name:        step.Name,
+		Action:      step.Action,
+		Args:        compactTraceValue(traceArgs, 0),
+		ArgsSummary: summarizeTraceValue(traceArgs),
+		SaveAs:      step.SaveAs,
+		Status:      "running",
+		StartedAt:   time.Now().Format(time.RFC3339Nano),
+	}
+
+	var output any
+	var err error
+	if step.Action == "retry" {
+		output, trace.Attempts, err = runFlowRetryStep(L, ctx, step, stepPath)
+	} else {
+		output, err = runFlowStep(L, ctx, step)
+	}
+	trace.FinishedAt = time.Now().Format(time.RFC3339Nano)
+	started, _ := time.Parse(time.RFC3339Nano, trace.StartedAt)
+	finished, _ := time.Parse(time.RFC3339Nano, trace.FinishedAt)
+	trace.DurationMS = finished.Sub(started).Milliseconds()
+	trace.PageURL = currentFlowPageURL(L)
+
+	if err != nil {
+		trace.Status = "error"
+		trace.Error = err.Error()
+		trace.ErrorStack = string(debug.Stack())
+		artifacts := captureFlowFailureArtifacts(L, ctx, trace)
+		if !artifacts.empty() {
+			trace.Artifacts = &artifacts
+		}
+		return trace, err
+	}
+
+	trace.Status = "ok"
+	trace.Output = compactTraceValue(output, 0)
+	trace.OutputSummary = summarizeTraceValue(output)
+	if step.SaveAs != "" {
+		ctx.Vars[step.SaveAs] = output
+		L.SetGlobal(step.SaveAs, goValueToLua(L, output))
+	}
+	return trace, nil
+}
+
+func runFlowRetryStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath string) (any, []FlowStepTrace, error) {
+	times, err := retryTimes(ctx, step)
+	if err != nil {
+		return nil, nil, err
+	}
+	if times < 1 {
+		return nil, nil, fmt.Errorf("retry times must be at least 1")
+	}
+	intervalMS, err := retryIntervalMS(ctx, step)
+	if err != nil {
+		return nil, nil, err
+	}
+	if intervalMS < 0 {
+		return nil, nil, fmt.Errorf("retry interval_ms must be at least 0")
+	}
+
+	allAttempts := []FlowStepTrace{}
+	var lastErr error
+	for attempt := 1; attempt <= times; attempt++ {
+		snapshot := snapshotFlowVars(ctx)
+		traces, err := runFlowStepSequence(L, ctx, step.Steps, stepPath, attempt)
+		allAttempts = append(allAttempts, traces...)
+		if err == nil {
+			return map[string]any{
+				"attempts": attempt,
+				"status":   "succeeded",
+			}, allAttempts, nil
+		}
+		restoreFlowVars(L, ctx, snapshot)
+		lastErr = err
+		if intervalMS > 0 && attempt < times {
+			time.Sleep(time.Duration(intervalMS) * time.Millisecond)
+		}
+	}
+	return map[string]any{
+		"attempts": times,
+		"status":   "failed",
+	}, allAttempts, fmt.Errorf("retry failed after %d attempts: %w", times, lastErr)
+}
+
+func snapshotFlowVars(ctx *FlowContext) map[string]any {
+	snapshot := map[string]any{}
+	if ctx == nil {
+		return snapshot
+	}
+	for key, value := range ctx.Vars {
+		snapshot[key] = value
+	}
+	return snapshot
+}
+
+func restoreFlowVars(L *lua.LState, ctx *FlowContext, snapshot map[string]any) {
+	if ctx == nil {
+		return
+	}
+	for key := range ctx.Vars {
+		if _, ok := snapshot[key]; !ok {
+			delete(ctx.Vars, key)
+			L.SetGlobal(key, lua.LNil)
+		}
+	}
+	for key, value := range snapshot {
+		ctx.Vars[key] = value
+		L.SetGlobal(key, goValueToLua(L, value))
+	}
 }
 
 func flowArtifactRoot(options FlowRunOptions) string {
@@ -913,7 +1105,14 @@ func captureFlowFailureArtifacts(L *lua.LState, ctx *FlowContext, trace FlowStep
 		artifacts.CaptureError = fmt.Sprintf("prepare artifact root: %v", err)
 		return artifacts
 	}
-	dir := filepath.Join(root, ctx.RunID, fmt.Sprintf("%02d-%s", trace.Index, sanitizeArtifactSegment(trace.Action)))
+	stepID := fmt.Sprintf("%02d", trace.Index)
+	if strings.Contains(trace.Path, ".") {
+		stepID = sanitizeArtifactSegment(trace.Path)
+	}
+	if trace.Attempt > 0 {
+		stepID = fmt.Sprintf("%s-attempt-%02d", stepID, trace.Attempt)
+	}
+	dir := filepath.Join(root, ctx.RunID, fmt.Sprintf("%s-%s", stepID, sanitizeArtifactSegment(trace.Action)))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		artifacts.CaptureError = fmt.Sprintf("create artifact directory: %v", err)
 		return artifacts
@@ -994,6 +1193,15 @@ func sanitizeArtifactSegment(value string) string {
 }
 
 func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	switch step.Action {
+	case "assert_visible":
+		return runFlowAssertVisibleStep(L, ctx, step)
+	case "assert_text":
+		return runFlowAssertTextStep(L, ctx, step)
+	case "retry":
+		return nil, fmt.Errorf("retry can only be executed by the flow step runner")
+	}
+
 	if step.Action == "lua" {
 		code, err := step.luaCode(ctx)
 		if err != nil {
@@ -1022,6 +1230,119 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return nil, err
 	}
 	return collectReturns(L, top), nil
+}
+
+func runFlowAssertVisibleStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	selector, err := flowStepStringParam(ctx, step, "selector")
+	if err != nil {
+		return nil, err
+	}
+	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
+	if err != nil {
+		return nil, err
+	}
+	if timeout > 0 {
+		if _, err := runFlowStep(L, ctx, FlowStep{Action: "wait_for_selector", Selector: selector, Timeout: timeout}); err != nil {
+			return nil, err
+		}
+	}
+
+	visible, err := runFlowStep(L, ctx, FlowStep{Action: "is_visible", Selector: selector})
+	if err != nil {
+		return nil, err
+	}
+	if ok, _ := visible.(bool); !ok {
+		return nil, fmt.Errorf("assert_visible failed: selector %q is not visible", selector)
+	}
+	return true, nil
+}
+
+func runFlowAssertTextStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	selector, err := flowStepStringParam(ctx, step, "selector")
+	if err != nil {
+		return nil, err
+	}
+	expectedText, err := flowStepStringParam(ctx, step, "text")
+	if err != nil {
+		return nil, err
+	}
+	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
+	if err != nil {
+		return nil, err
+	}
+
+	deadline := time.Now()
+	if timeout > 0 {
+		deadline = deadline.Add(time.Duration(timeout) * time.Millisecond)
+	}
+	for {
+		actual, err := runFlowStep(L, ctx, FlowStep{Action: "get_text", Selector: selector})
+		if err == nil && flowTextContains(actual, expectedText) {
+			return map[string]any{
+				"selector": selector,
+				"text":     expectedText,
+				"actual":   compactTraceValue(actual, 0),
+			}, nil
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("assert_text failed: selector %q text does not contain %q; actual=%s", selector, expectedText, summarizeTraceValue(actual))
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func flowStepStringParam(ctx *FlowContext, step FlowStep, name string) (string, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return "", fmt.Errorf("action %q requires %q", step.Action, name)
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return "", err
+	}
+	text, ok := resolved.(string)
+	if !ok {
+		return "", fmt.Errorf("action %q %q must be a string", step.Action, name)
+	}
+	return text, nil
+}
+
+func flowStepOptionalIntParam(ctx *FlowContext, step FlowStep, name string) (int, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return 0, nil
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return 0, err
+	}
+	return intParam(resolved)
+}
+
+func flowTextContains(actual any, expected string) bool {
+	switch typed := actual.(type) {
+	case string:
+		return strings.Contains(typed, expected)
+	case []any:
+		for _, item := range typed {
+			if flowTextContains(item, expected) {
+				return true
+			}
+		}
+		return false
+	case []string:
+		for _, item := range typed {
+			if strings.Contains(item, expected) {
+				return true
+			}
+		}
+		return false
+	default:
+		return strings.Contains(fmt.Sprint(typed), expected)
+	}
 }
 
 func buildActionArgs(L *lua.LState, ctx *FlowContext, step FlowStep) ([]lua.LValue, error) {
@@ -1243,6 +1564,15 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	if step.ContextIndex != 0 {
 		params["context_index"] = step.ContextIndex
 	}
+	if step.Times != 0 {
+		params["times"] = step.Times
+	}
+	if step.IntervalMS != 0 {
+		params["interval_ms"] = step.IntervalMS
+	}
+	if len(step.Steps) > 0 {
+		params["steps"] = step.Steps
+	}
 	for name, value := range step.With {
 		params[name] = value
 	}
@@ -1318,6 +1648,21 @@ func (step FlowStep) param(name string) (any, bool) {
 			return nil, false
 		}
 		return step.ContextIndex, true
+	case "times":
+		if step.Times == 0 {
+			return nil, false
+		}
+		return step.Times, true
+	case "interval_ms":
+		if step.IntervalMS == 0 {
+			return nil, false
+		}
+		return step.IntervalMS, true
+	case "steps":
+		if len(step.Steps) == 0 {
+			return nil, false
+		}
+		return step.Steps, true
 	default:
 		return nil, false
 	}
@@ -1328,6 +1673,36 @@ func stringParam(value string) (any, bool) {
 		return nil, false
 	}
 	return value, true
+}
+
+func retryTimes(ctx *FlowContext, step FlowStep) (int, error) {
+	value, ok := step.param("times")
+	if !ok {
+		return 3, nil
+	}
+	if ctx != nil {
+		resolved, err := resolveValue(value, ctx)
+		if err != nil {
+			return 0, err
+		}
+		value = resolved
+	}
+	return intParam(value)
+}
+
+func retryIntervalMS(ctx *FlowContext, step FlowStep) (int, error) {
+	value, ok := step.param("interval_ms")
+	if !ok {
+		return 0, nil
+	}
+	if ctx != nil {
+		resolved, err := resolveValue(value, ctx)
+		if err != nil {
+			return 0, err
+		}
+		value = resolved
+	}
+	return intParam(value)
 }
 
 func resolveValue(value any, ctx *FlowContext) (any, error) {
@@ -1554,6 +1929,40 @@ func isIntegerValue(value any) bool {
 	default:
 		return false
 	}
+}
+
+func intParam(value any) (int, error) {
+	switch typed := value.(type) {
+	case int:
+		return typed, nil
+	case int8:
+		return int(typed), nil
+	case int16:
+		return int(typed), nil
+	case int32:
+		return int(typed), nil
+	case int64:
+		return int(typed), nil
+	case uint:
+		return int(typed), nil
+	case uint8:
+		return int(typed), nil
+	case uint16:
+		return int(typed), nil
+	case uint32:
+		return int(typed), nil
+	case uint64:
+		return int(typed), nil
+	case float32:
+		if math.Trunc(float64(typed)) == float64(typed) {
+			return int(typed), nil
+		}
+	case float64:
+		if math.Trunc(typed) == typed {
+			return int(typed), nil
+		}
+	}
+	return 0, fmt.Errorf("must be an integer")
 }
 
 func isNumberValue(value any) bool {
