@@ -1,0 +1,35 @@
+name: baidu_search
+description: Search Baidu with a structured TSPlay flow.
+vars:
+  query: 山东大学
+steps:
+  - name: open_baidu
+    action: navigate
+    url: https://www.baidu.com
+
+  - name: wait_search_box
+    action: wait_for_selector
+    selector: "#chat-textarea"
+    timeout: 5000
+
+  - name: type_query
+    action: type_text
+    selector: "#chat-textarea"
+    text: "{{query}}"
+
+  - name: submit
+    action: click
+    selector: "#chat-submit-button"
+
+  - name: wait_result
+    action: wait_for_network_idle
+
+  - name: capture_links
+    action: get_all_links
+    selector: "xpath=//body"
+    save_as: links
+
+  - name: print_count
+    action: lua
+    code: |
+      print("links count:", #links)

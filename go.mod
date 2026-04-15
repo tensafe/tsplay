@@ -20,4 +20,5 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	golang.org/x/sys v0.17.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

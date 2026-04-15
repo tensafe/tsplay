@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/c-bata/go-prompt"
@@ -57,6 +58,7 @@ var g_headless = false
 func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
 	tsfile := flag.String("script", "", "tsplay script file")
+	flowfile := flag.String("flow", "", "tsplay flow file")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -64,12 +66,18 @@ func main() {
 
 	err := playwright.Install()
 	if err != nil {
-		log.Println("could not install playwright browsers: %v", err)
+		log.Printf("could not install playwright browsers: %v", err)
 	}
 
 	g_headless = *isheadless
 
-	if len(*tsfile) != 0 {
+	if len(*flowfile) != 0 {
+		flow, err := tsplay_core.LoadFlowFile(*flowfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		run_flow(flow)
+	} else if len(*tsfile) != 0 {
 		// 加载tsfile内容..
 		content, err := ioutil.ReadFile(*tsfile)
 		if err != nil {
@@ -89,6 +97,56 @@ func main() {
 		case "srv":
 			fmt.Println("Start As Web.")
 		}
+	}
+}
+
+func run_flow(flow *tsplay_core.Flow) {
+	pw, err := playwright.Run()
+	if err != nil {
+		log.Fatalf("could not start Playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(g_headless),
+	})
+	if err != nil {
+		log.Fatalf("could not launch browser: %v", err)
+	}
+	defer browser.Close()
+
+	page, err := browser.NewPage()
+	if err != nil {
+		log.Fatalf("could not create page: %v", err)
+	}
+	defer page.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	ud_b := L.NewUserData()
+	ud_b.Value = browser
+	L.SetGlobal("browser", ud_b)
+
+	ud_p := L.NewUserData()
+	ud_p.Value = page
+	L.SetGlobal("page", ud_p)
+
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
+		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
+	}
+
+	result, err := tsplay_core.RunFlowInState(L, flow)
+	if result != nil {
+		encoded, marshalErr := json.MarshalIndent(result, "", "  ")
+		if marshalErr != nil {
+			log.Printf("could not encode flow result: %v", marshalErr)
+		} else {
+			fmt.Println(string(encoded))
+		}
+	}
+	if err != nil {
+		log.Fatalf("error running flow: %v", err)
 	}
 }
 

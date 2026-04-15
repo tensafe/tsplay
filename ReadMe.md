@@ -135,6 +135,55 @@
 
 以上就是所有操作的详细说明和示例，便于快速上手并有效操作。
 
+## **13. 结构化 Flow / Workflow DSL**
+
+除了直接编写 Lua，也可以使用结构化 Flow 描述业务流程。Flow 更适合作为长期维护的业务资产：便于 AI 生成、人工审核、版本对比、失败追踪；Lua 保留为高级扩展步骤。
+
+运行示例：
+
+```bash
+go run . -flow script/demo_baidu.flow.yaml
+go run . -flow script/demo_baidu.flow.yaml -headless
+```
+
+Flow 示例：
+
+```yaml
+name: baidu_search
+vars:
+  query: 山东大学
+steps:
+  - action: navigate
+    url: https://www.baidu.com
+  - action: wait_for_selector
+    selector: "#kw"
+    timeout: 5000
+  - action: type_text
+    selector: "#kw"
+    text: "{{query}}"
+  - action: click
+    selector: "#su"
+  - action: get_all_links
+    selector: "xpath=//body"
+    save_as: links
+  - action: lua
+    code: |
+      print("links count:", #links)
+```
+
+Flow 步骤支持两种参数写法：
+
+```yaml
+- action: type_text
+  selector: "#kw"
+  text: "{{query}}"
+
+- action: type_text
+  args: ["#kw", "{{query}}"]
+```
+
+`save_as` 会把动作返回值保存为变量，后续步骤可以通过 `{{变量名}}` 或 Lua 全局变量继续使用。
+
 # **大模型提示词**
 ```markdown
 # 智能助手提示词
