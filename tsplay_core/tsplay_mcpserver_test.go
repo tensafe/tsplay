@@ -16,7 +16,7 @@ import (
 
 func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	names := toolNamesForTest(NewTSPlayMCPServer())
-	want := []string{"tsplay.list_actions", "tsplay.run_flow", "tsplay.validate_flow"}
+	want := []string{"tsplay.list_actions", "tsplay.observe_page", "tsplay.run_flow", "tsplay.validate_flow"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("tool names = %#v, want %#v", names, want)
 	}
@@ -45,6 +45,22 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 	}
 	if !foundNavigate {
 		t.Fatalf("navigate action not found in manifest")
+	}
+}
+
+func TestHandleObservePageToolMissingURL(t *testing.T) {
+	result, err := handleObservePageTool(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("observe page missing url: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "url") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
 	}
 }
 

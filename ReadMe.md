@@ -207,10 +207,13 @@ go run . -action srv -artifact-root artifacts
 | **工具名** | **说明** |
 | --- | --- |
 | `tsplay.list_actions` | 返回 Flow 可用 action 及参数 schema。 |
+| `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot 路径、可交互元素和候选 selector，供 AI 生成 Flow。 |
 | `tsplay.validate_flow` | 校验 Flow YAML/JSON，不启动浏览器。 |
 | `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace。 |
 
 `validate_flow` / `run_flow` 支持传入 `flow` 内容，或传入 `flow_path`。为了避免 Agent 任意读取本机路径，`flow_path` 默认只允许读取 `script` 目录下的文件；可以通过 `-flow-root` 指定允许目录。建议 OpenClaw 侧传相对路径，例如 `demo_baidu.flow.yaml`。
+
+`observe_page` 是从用户意图生成 Flow 的入口。OpenClaw/Codex 可以先调用它观察真实页面，再结合用户意图选择元素、生成 Flow，而不是让用户理解 HTML selector。
 
 文件类动作即使设置了 `allow_file_access=true`，也只允许在 `artifacts` 目录内读写文件；可以通过 `-artifact-root` 指定目录。截图、保存 HTML、下载文件等相对路径会自动落到 artifact root 下，例如 `screens/shot.png` 会写入 `artifacts/screens/shot.png`。
 

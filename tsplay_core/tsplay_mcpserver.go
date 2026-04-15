@@ -266,6 +266,26 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithReadOnlyHintAnnotation(true),
 	), handleFlowListActionsTool)
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.observe_page",
+		mcp.WithDescription("Open a page and return an AI-friendly observation: screenshot path, DOM snapshot path, and interactive elements with selector candidates."),
+		mcp.WithString("url",
+			mcp.Description("URL to open and observe."),
+			mcp.Required(),
+		),
+		mcp.WithBoolean("headless",
+			mcp.Description("Run browser in headless mode. Defaults to true."),
+		),
+		mcp.WithNumber("timeout",
+			mcp.Description("Navigation timeout in milliseconds. Defaults to 30000."),
+		),
+		mcp.WithNumber("max_elements",
+			mcp.Description("Maximum interactive elements to return. Defaults to 100."),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleObservePageToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.validate_flow",
 		mcp.WithDescription("Validate a TSPlay Flow YAML or JSON document without launching a browser."),
 		mcp.WithString("flow",
@@ -334,6 +354,37 @@ func handleFlowListActionsTool(
 ) (*mcp.CallToolResult, error) {
 	return newJSONToolResult(map[string]any{
 		"actions": buildFlowActionManifest(),
+	})
+}
+
+func handleObservePageTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleObservePageToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleObservePageToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	observation, err := ObservePage(PageObservationOptions{
+		URL:          request.GetString("url", ""),
+		Headless:     request.GetBool("headless", true),
+		ArtifactRoot: options.ArtifactRoot,
+		TimeoutMS:    request.GetInt("timeout", 30000),
+		MaxElements:  request.GetInt("max_elements", 100),
+	})
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":          true,
+		"observation": observation,
 	})
 }
 
