@@ -75,7 +75,8 @@ type FlowStepTrace struct {
 }
 
 type FlowContext struct {
-	Vars map[string]any
+	Vars     map[string]any
+	Security *FlowSecurityPolicy
 }
 
 type FlowRunOptions struct {
@@ -84,10 +85,12 @@ type FlowRunOptions struct {
 }
 
 type FlowSecurityPolicy struct {
-	AllowLua          bool `json:"allow_lua"`
-	AllowJavaScript   bool `json:"allow_javascript"`
-	AllowFileAccess   bool `json:"allow_file_access"`
-	AllowBrowserState bool `json:"allow_browser_state"`
+	AllowLua          bool   `json:"allow_lua"`
+	AllowJavaScript   bool   `json:"allow_javascript"`
+	AllowFileAccess   bool   `json:"allow_file_access"`
+	AllowBrowserState bool   `json:"allow_browser_state"`
+	FileInputRoot     string `json:"file_input_root,omitempty"`
+	FileOutputRoot    string `json:"file_output_root,omitempty"`
 }
 
 const CurrentFlowSchemaVersion = "1"
@@ -404,6 +407,9 @@ func ValidateFlowSecurity(flow *Flow, policy FlowSecurityPolicy) error {
 		option := flowActionSecurityOption(group)
 		return fmt.Errorf("step %d action %q is disabled by security policy; set %s=true only for trusted flows", i+1, step.Action, option)
 	}
+	if err := validateFlowFileAccessRoots(flow, policy); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -450,6 +456,164 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 	default:
 		return true
 	}
+}
+
+type flowFilePathRole string
+
+const (
+	flowFileInputPath  flowFilePathRole = "input"
+	flowFileOutputPath flowFilePathRole = "output"
+)
+
+func validateFlowFileAccessRoots(flow *Flow, policy FlowSecurityPolicy) error {
+	if !policy.AllowFileAccess {
+		return nil
+	}
+	for i, step := range flow.Steps {
+		if err := validateFlowStepFileAccessRoots(i+1, step, policy); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateFlowStepFileAccessRoots(stepIndex int, step FlowStep, policy FlowSecurityPolicy) error {
+	return forEachFlowFilePathValue(step, func(name string, role flowFilePathRole, value any) error {
+		return validateFlowFilePathValue(stepIndex, step.Action, name, role, value, policy)
+	})
+}
+
+func validateFlowFilePathValue(stepIndex int, action string, name string, role flowFilePathRole, value any, policy FlowSecurityPolicy) error {
+	if flowFilePathValueIsDynamic(value) {
+		return nil
+	}
+
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			if err := validateFlowFilePathValue(stepIndex, action, name, role, item, policy); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []string:
+		for _, item := range typed {
+			if err := validateFlowFilePathValue(stepIndex, action, name, role, item, policy); err != nil {
+				return err
+			}
+		}
+		return nil
+	case string:
+		root := flowFileRootForRole(role, policy)
+		if root == "" {
+			return nil
+		}
+		if err := validatePathWithinRoot(typed, root); err != nil {
+			return fmt.Errorf("step %d action %q parameter %q is outside allowed file %s root %q: %w", stepIndex, action, name, role, root, err)
+		}
+	}
+	return nil
+}
+
+func forEachFlowFilePathValue(step FlowStep, visit func(name string, role flowFilePathRole, value any) error) error {
+	if len(step.Args) > 0 {
+		return forEachFlowFilePathArgValue(step, visit)
+	}
+
+	params := step.presentNamedParams()
+	for name, role := range flowFilePathParams(step.Action) {
+		value, ok := params[name]
+		if !ok {
+			continue
+		}
+		if err := visit(name, role, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func forEachFlowFilePathArgValue(step FlowStep, visit func(name string, role flowFilePathRole, value any) error) error {
+	params := flowFilePathParams(step.Action)
+	spec := flowActionSpecs[step.Action]
+	for i, value := range step.Args {
+		name := ""
+		if i < len(spec.Args) {
+			name = spec.Args[i].Name
+		} else {
+			name = spec.VarArgName
+		}
+		role, ok := params[name]
+		if !ok {
+			continue
+		}
+		if err := visit(name, role, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func flowFilePathParams(action string) map[string]flowFilePathRole {
+	switch action {
+	case "screenshot", "save_html":
+		return map[string]flowFilePathRole{"path": flowFileOutputPath}
+	case "screenshot_element":
+		return map[string]flowFilePathRole{"path": flowFileOutputPath}
+	case "download_file", "download_url":
+		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
+	case "upload_file":
+		return map[string]flowFilePathRole{"file_path": flowFileInputPath}
+	case "upload_multiple_files":
+		return map[string]flowFilePathRole{"files": flowFileInputPath}
+	default:
+		return nil
+	}
+}
+
+func flowFileRootForRole(role flowFilePathRole, policy FlowSecurityPolicy) string {
+	switch role {
+	case flowFileInputPath:
+		return policy.FileInputRoot
+	case flowFileOutputPath:
+		return policy.FileOutputRoot
+	default:
+		return ""
+	}
+}
+
+func flowFilePathValueIsDynamic(value any) bool {
+	return len(flowReferences(value)) > 0
+}
+
+func validatePathWithinRoot(path string, root string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("resolve root: %w", err)
+	}
+	candidate := path
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(rootAbs, candidate)
+	}
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return fmt.Errorf("resolve path: %w", err)
+	}
+	return ensurePathInsideRoot(candidateAbs, rootAbs)
+}
+
+func ensurePathInsideRoot(path string, root string) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return fmt.Errorf("%q is outside %q", path, root)
+	}
+	return nil
 }
 
 func requiredArgCount(spec flowActionSpec) int {
@@ -527,15 +691,31 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
-	return RunFlowInState(L, flow)
+	return RunFlowInStateWithOptions(L, flow, options)
 }
 
 func RunFlowInState(L *lua.LState, flow *Flow) (*FlowResult, error) {
+	return runFlowInState(L, flow, FlowRunOptions{})
+}
+
+func RunFlowInStateWithOptions(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowResult, error) {
+	return runFlowInState(L, flow, options)
+}
+
+func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err := ValidateFlow(flow); err != nil {
 		return nil, err
 	}
+	if options.Security != nil {
+		if err := ValidateFlowSecurity(flow, *options.Security); err != nil {
+			return nil, err
+		}
+	}
 
-	ctx := &FlowContext{Vars: map[string]any{}}
+	ctx := &FlowContext{
+		Vars:     map[string]any{},
+		Security: options.Security,
+	}
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))
@@ -593,6 +773,10 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	args, err = rewriteFlowFileAccessArgs(step, args, ctx.Security)
+	if err != nil {
+		return nil, err
+	}
 
 	fn := L.GetGlobal(step.Action)
 	if fn == lua.LNil {
@@ -645,6 +829,116 @@ func buildActionArgs(L *lua.LState, ctx *FlowContext, step FlowStep) ([]lua.LVal
 		args = append(args, goValueToLua(L, resolved))
 	}
 	return args, nil
+}
+
+func rewriteFlowFileAccessArgs(step FlowStep, args []lua.LValue, policy *FlowSecurityPolicy) ([]lua.LValue, error) {
+	if policy == nil || !policy.AllowFileAccess {
+		return args, nil
+	}
+	params := flowFilePathParams(step.Action)
+	if len(params) == 0 {
+		return args, nil
+	}
+
+	rewritten := append([]lua.LValue(nil), args...)
+	spec := flowActionSpecs[step.Action]
+	for i, value := range rewritten {
+		name := ""
+		if i < len(spec.Args) {
+			name = spec.Args[i].Name
+		} else {
+			name = spec.VarArgName
+		}
+		role, ok := params[name]
+		if !ok {
+			continue
+		}
+		path := value.String()
+		resolved, err := resolveRuntimeFilePath(path, role, *policy)
+		if err != nil {
+			return nil, fmt.Errorf("action %q parameter %q %w", step.Action, name, err)
+		}
+		rewritten[i] = lua.LString(resolved)
+	}
+	return rewritten, nil
+}
+
+func resolveRuntimeFilePath(path string, role flowFilePathRole, policy FlowSecurityPolicy) (string, error) {
+	root := flowFileRootForRole(role, policy)
+	if root == "" {
+		return path, nil
+	}
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	rootReal, err := prepareRuntimeFileRoot(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve file %s root %q: %w", role, root, err)
+	}
+
+	candidate := path
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(rootReal, candidate)
+	}
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", fmt.Errorf("resolve path %q: %w", path, err)
+	}
+	if err := ensurePathInsideRoot(candidateAbs, rootReal); err != nil {
+		return "", fmt.Errorf("path %q is outside allowed file %s root %q", path, role, rootReal)
+	}
+
+	switch role {
+	case flowFileInputPath:
+		candidateReal, err := filepath.EvalSymlinks(candidateAbs)
+		if err != nil {
+			return "", fmt.Errorf("input path %q is not accessible: %w", path, err)
+		}
+		if err := ensurePathInsideRoot(candidateReal, rootReal); err != nil {
+			return "", fmt.Errorf("input path %q is outside allowed file input root %q", path, rootReal)
+		}
+		return candidateReal, nil
+	case flowFileOutputPath:
+		parent := filepath.Dir(candidateAbs)
+		if err := os.MkdirAll(parent, 0755); err != nil {
+			return "", fmt.Errorf("create output directory %q: %w", parent, err)
+		}
+		parentReal, err := filepath.EvalSymlinks(parent)
+		if err != nil {
+			return "", fmt.Errorf("resolve output directory %q: %w", parent, err)
+		}
+		if err := ensurePathInsideRoot(parentReal, rootReal); err != nil {
+			return "", fmt.Errorf("output path %q is outside allowed file output root %q", path, rootReal)
+		}
+		if info, err := os.Lstat(candidateAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			targetReal, err := filepath.EvalSymlinks(candidateAbs)
+			if err != nil {
+				return "", fmt.Errorf("resolve output symlink %q: %w", path, err)
+			}
+			if err := ensurePathInsideRoot(targetReal, rootReal); err != nil {
+				return "", fmt.Errorf("output path %q is outside allowed file output root %q", path, rootReal)
+			}
+		}
+		return candidateAbs, nil
+	default:
+		return path, nil
+	}
+}
+
+func prepareRuntimeFileRoot(root string) (string, error) {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(rootAbs, 0755); err != nil {
+		return "", err
+	}
+	rootReal, err := filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return "", err
+	}
+	return rootReal, nil
 }
 
 func callLuaChunk(L *lua.LState, code string) (any, error) {

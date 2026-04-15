@@ -167,6 +167,38 @@ steps:
 	}
 }
 
+func TestHandleValidateFlowToolRestrictsArtifactRoot(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: artifact_root
+steps:
+  - action: screenshot
+    path: ../escape.png
+`,
+				"allow_file_access": true,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != false {
+		t.Fatalf("expected invalid flow, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "file output root") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+}
+
 func toolNamesForTest(mcpServer *server.MCPServer) []string {
 	value := reflect.ValueOf(mcpServer).Elem().FieldByName("tools")
 	names := make([]string, 0, value.Len())

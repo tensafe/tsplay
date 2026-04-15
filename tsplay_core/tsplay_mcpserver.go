@@ -80,14 +80,17 @@ const (
 )
 
 const DefaultMCPFlowPathRoot = "script"
+const DefaultMCPArtifactRoot = "artifacts"
 
 type TSPlayMCPServerOptions struct {
 	FlowPathRoot string
+	ArtifactRoot string
 }
 
 func DefaultTSPlayMCPServerOptions() TSPlayMCPServerOptions {
 	return TSPlayMCPServerOptions{
 		FlowPathRoot: DefaultMCPFlowPathRoot,
+		ArtifactRoot: DefaultMCPArtifactRoot,
 	}
 }
 
@@ -98,6 +101,9 @@ func normalizeTSPlayMCPServerOptions(options []TSPlayMCPServerOptions) TSPlayMCP
 	}
 	if options[0].FlowPathRoot != "" {
 		normalized.FlowPathRoot = options[0].FlowPathRoot
+	}
+	if options[0].ArtifactRoot != "" {
+		normalized.ArtifactRoot = options[0].ArtifactRoot
 	}
 	return normalized
 }
@@ -279,7 +285,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 			mcp.Description("Allow execute_script/evaluate steps for this request. Defaults to false."),
 		),
 		mcp.WithBoolean("allow_file_access",
-			mcp.Description("Allow local file read/write actions for this request. Defaults to false."),
+			mcp.Description("Allow local file read/write actions for this request. Defaults to false. File paths are constrained to the configured artifact root."),
 		),
 		mcp.WithBoolean("allow_browser_state",
 			mcp.Description("Allow browser storage/cookie export actions for this request. Defaults to false."),
@@ -311,7 +317,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 			mcp.Description("Allow execute_script/evaluate steps for this request. Defaults to false."),
 		),
 		mcp.WithBoolean("allow_file_access",
-			mcp.Description("Allow local file read/write actions for this request. Defaults to false."),
+			mcp.Description("Allow local file read/write actions for this request. Defaults to false. File paths are constrained to the configured artifact root."),
 		),
 		mcp.WithBoolean("allow_browser_state",
 			mcp.Description("Allow browser storage/cookie export actions for this request. Defaults to false."),
@@ -350,7 +356,7 @@ func handleValidateFlowToolWithOptions(
 			"error": err.Error(),
 		})
 	}
-	security := flowSecurityPolicyFromToolRequest(request)
+	security := flowSecurityPolicyFromToolRequest(request, options)
 	if err := ValidateFlow(flow); err != nil {
 		return newJSONToolResult(map[string]any{
 			"valid": false,
@@ -392,7 +398,7 @@ func handleRunFlowToolWithOptions(
 		})
 	}
 
-	security := flowSecurityPolicyFromToolRequest(request)
+	security := flowSecurityPolicyFromToolRequest(request, options)
 	result, err := RunFlow(flow, FlowRunOptions{
 		Headless: request.GetBool("headless", true),
 		Security: &security,
@@ -433,12 +439,14 @@ func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayM
 	return ParseFlow([]byte(flowContent), request.GetString("format", "yaml"))
 }
 
-func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest) FlowSecurityPolicy {
+func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPlayMCPServerOptions) FlowSecurityPolicy {
 	return FlowSecurityPolicy{
 		AllowLua:          request.GetBool("allow_lua", false),
 		AllowJavaScript:   request.GetBool("allow_javascript", false),
 		AllowFileAccess:   request.GetBool("allow_file_access", false),
 		AllowBrowserState: request.GetBool("allow_browser_state", false),
+		FileInputRoot:     options.ArtifactRoot,
+		FileOutputRoot:    options.ArtifactRoot,
 	}
 }
 
@@ -842,6 +850,7 @@ func McpServerMCP(addr string, options ...TSPlayMCPServerOptions) {
 	httpServer := server.NewStreamableHTTPServer(mcpServer)
 	log.Printf("HTTP server listening on %s/mcp", addr)
 	log.Printf("MCP flow_path root: %s", normalizedOptions.FlowPathRoot)
+	log.Printf("MCP artifact root: %s", normalizedOptions.ArtifactRoot)
 	if err := httpServer.Start(addr); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

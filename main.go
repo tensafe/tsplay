@@ -61,6 +61,7 @@ func main() {
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8080", "server listen address")
 	flowRoot := flag.String("flow-root", tsplay_core.DefaultMCPFlowPathRoot, "allowed root directory for MCP flow_path")
+	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -100,6 +101,7 @@ func main() {
 			fmt.Println("Start As Web.")
 			tsplay_core.McpServerMCP(*addr, tsplay_core.TSPlayMCPServerOptions{
 				FlowPathRoot: *flowRoot,
+				ArtifactRoot: *artifactRoot,
 			})
 		}
 	}

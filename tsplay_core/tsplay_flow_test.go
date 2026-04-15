@@ -220,3 +220,52 @@ func TestValidateFlowSecurityRejectsBrowserStateByDefault(t *testing.T) {
 		t.Fatalf("expected browser state security policy error")
 	}
 }
+
+func TestValidateFlowSecurityRestrictsFileOutputRoot(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "file_output_policy",
+		Steps: []FlowStep{
+			{Action: "screenshot", Path: "../escape.png"},
+		},
+	}
+	policy := FlowSecurityPolicy{
+		AllowFileAccess: true,
+		FileOutputRoot:  t.TempDir(),
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, policy); err == nil {
+		t.Fatalf("expected file output root error")
+	}
+}
+
+func TestRewriteFlowFileAccessArgsUsesOutputRoot(t *testing.T) {
+	root := t.TempDir()
+	policy := &FlowSecurityPolicy{
+		AllowFileAccess: true,
+		FileOutputRoot:  root,
+	}
+	args := []lua.LValue{lua.LString("screens/shot.png")}
+
+	rewritten, err := rewriteFlowFileAccessArgs(FlowStep{Action: "screenshot"}, args, policy)
+	if err != nil {
+		t.Fatalf("rewrite args: %v", err)
+	}
+	got := rewritten[0].String()
+	if !filepath.IsAbs(got) {
+		t.Fatalf("expected absolute output path, got %q", got)
+	}
+	rootReal, err := prepareRuntimeFileRoot(root)
+	if err != nil {
+		t.Fatalf("prepare root: %v", err)
+	}
+	if err := ensurePathInsideRoot(got, rootReal); err != nil {
+		t.Fatalf("rewritten path outside root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(got)); err != nil {
+		t.Fatalf("expected output directory to be created: %v", err)
+	}
+}
