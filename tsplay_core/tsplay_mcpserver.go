@@ -1,4 +1,4 @@
-package tsexcel_core
+package tsplay_core
 
 import (
 	"context"
