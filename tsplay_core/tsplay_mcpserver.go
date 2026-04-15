@@ -276,6 +276,35 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithReadOnlyHintAnnotation(true),
 	), handleFlowExamplesTool)
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.draft_flow",
+		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation. If observation is omitted, the tool will open the page first."),
+		mcp.WithString("intent",
+			mcp.Description("User intent in natural language, for example 搜索订单并导出 or upload a file and submit."),
+			mcp.Required(),
+		),
+		mcp.WithString("url",
+			mcp.Description("Optional page URL. Required when observation is not provided."),
+		),
+		mcp.WithString("observation",
+			mcp.Description("Optional PageObservation JSON, or a wrapper that contains an observation field."),
+		),
+		mcp.WithString("flow_name",
+			mcp.Description("Optional explicit flow name. Defaults to an auto-generated draft name."),
+		),
+		mcp.WithBoolean("headless",
+			mcp.Description("Run browser in headless mode when url is provided. Defaults to true."),
+		),
+		mcp.WithNumber("timeout",
+			mcp.Description("Navigation timeout in milliseconds when url is provided. Defaults to 30000."),
+		),
+		mcp.WithNumber("max_elements",
+			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleDraftFlowToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.repair_flow_context",
 		mcp.WithDescription("Build an AI-friendly repair context from a Flow and failed run trace. Returns summaries and artifact paths without embedding full HTML."),
 		mcp.WithString("flow",
@@ -417,6 +446,78 @@ func handleFlowExamplesTool(
 	return newJSONToolResult(map[string]any{
 		"examples":                BuildFlowExamples(),
 		"example_selection_hints": flowExampleSelectionHints(),
+	})
+}
+
+func handleDraftFlowTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleDraftFlowToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleDraftFlowToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	intent := strings.TrimSpace(request.GetString("intent", ""))
+	if intent == "" {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": "intent is required",
+		})
+	}
+
+	observation, err := ParseObservationForDraft(request.GetString("observation", ""))
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	url := strings.TrimSpace(request.GetString("url", ""))
+	if observation == nil {
+		if url == "" {
+			return newJSONToolResult(map[string]any{
+				"ok":    false,
+				"error": "url or observation is required",
+			})
+		}
+		observation, err = ObservePage(PageObservationOptions{
+			URL:          url,
+			Headless:     request.GetBool("headless", true),
+			ArtifactRoot: options.ArtifactRoot,
+			TimeoutMS:    request.GetInt("timeout", 30000),
+			MaxElements:  request.GetInt("max_elements", 100),
+		})
+		if err != nil {
+			return newJSONToolResult(map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+			})
+		}
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:       intent,
+		URL:          url,
+		FlowName:     request.GetString("flow_name", ""),
+		ArtifactRoot: options.ArtifactRoot,
+		Observation:  observation,
+	})
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	return newJSONToolResult(map[string]any{
+		"ok":          true,
+		"observation": observation,
+		"draft":       draft,
 	})
 }
 

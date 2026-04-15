@@ -1,0 +1,186 @@
+package tsplay_core
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestBuildDraftFlowSearchAndExport(t *testing.T) {
+	observation := &PageObservation{
+		URL:          "https://example.com/orders",
+		Title:        "Orders",
+		ArtifactRoot: t.TempDir(),
+		Elements: []PageObservationElement{
+			{
+				Index:              1,
+				Tag:                "input",
+				Type:               "text",
+				ID:                 "query",
+				Label:              "Order keyword",
+				Placeholder:        "Search orders",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`[data-testid="order-query"]`, `#query`},
+				Attributes:         map[string]string{"data-testid": "order-query"},
+			},
+			{
+				Index:              2,
+				Tag:                "button",
+				Type:               "button",
+				ID:                 "search-button",
+				Text:               "Search",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`#search-button`, `text="Search"`},
+			},
+			{
+				Index:              3,
+				Tag:                "a",
+				Type:               "link",
+				Text:               "Export orders",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`[data-cy="export-link"]`, `text="Export orders"`},
+				Attributes:         map[string]string{"data-cy": "export-link"},
+			},
+		},
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:      "搜索订单并导出",
+		Observation: observation,
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if !strings.Contains(draft.FlowYAML, `action: type_text`) {
+		t.Fatalf("expected type_text step: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `[data-testid="order-query"]`) {
+		t.Fatalf("expected search selector: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `[data-cy="export-link"]`) {
+		t.Fatalf("expected export selector: %s", draft.FlowYAML)
+	}
+	flow, err := ParseFlow([]byte(draft.FlowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse drafted flow: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate drafted flow: %v", err)
+	}
+	if draft.SuggestedVars["order_query"] != "TODO" {
+		t.Fatalf("expected TODO order_query, got %#v", draft.SuggestedVars["order_query"])
+	}
+}
+
+func TestBuildDraftFlowTitleAndTableExtraction(t *testing.T) {
+	artifactRoot := t.TempDir()
+	domPath := filepath.Join(artifactRoot, "dom_snapshot.json")
+	content := `{
+  "tag": "HTML",
+  "xpath": "/html",
+  "text": "Order Center Table with rows",
+  "children": [
+    {
+      "tag": "BODY",
+      "xpath": "/html/body",
+      "text": "Order Center Table with rows",
+      "children": [
+        {
+          "tag": "H1",
+          "xpath": "//*[@id=\"pageTitle\"]",
+          "text": "Order Center",
+          "children": []
+        },
+        {
+          "tag": "TABLE",
+          "xpath": "//*[@id=\"myTable\"]",
+          "text": "Row 1 Row 2",
+          "children": []
+        }
+      ]
+    }
+  ]
+}`
+	if err := os.WriteFile(domPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write dom snapshot: %v", err)
+	}
+
+	observation := &PageObservation{
+		URL:             "https://example.com/tables",
+		Title:           "Tables",
+		ArtifactRoot:    artifactRoot,
+		DOMSnapshotPath: domPath,
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:       "提取标题并抓取表格",
+		Observation:  observation,
+		ArtifactRoot: artifactRoot,
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if !strings.Contains(draft.FlowYAML, `action: extract_text`) {
+		t.Fatalf("expected extract_text step: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `action: capture_table`) {
+		t.Fatalf("expected capture_table step: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `#myTable`) {
+		t.Fatalf("expected table selector from dom snapshot: %s", draft.FlowYAML)
+	}
+	flow, err := ParseFlow([]byte(draft.FlowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse drafted flow: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate drafted flow: %v", err)
+	}
+}
+
+func TestBuildDraftFlowUploadIntent(t *testing.T) {
+	observation := &PageObservation{
+		URL:          "https://example.com/upload",
+		Title:        "Upload",
+		ArtifactRoot: t.TempDir(),
+		Elements: []PageObservationElement{
+			{
+				Index:              1,
+				Tag:                "input",
+				Type:               "file",
+				ID:                 "fileInput",
+				Label:              "选择文件",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`#fileInput`},
+			},
+			{
+				Index:              2,
+				Tag:                "button",
+				Type:               "submit",
+				Text:               "上传文件",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`text="上传文件"`},
+			},
+		},
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:      "上传文件并提交",
+		Observation: observation,
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if !strings.Contains(draft.FlowYAML, `action: upload_file`) {
+		t.Fatalf("expected upload_file step: %s", draft.FlowYAML)
+	}
+	if draft.SuggestedVars["upload_file_path"] != "TODO" {
+		t.Fatalf("expected TODO upload path, got %#v", draft.SuggestedVars["upload_file_path"])
+	}
+}

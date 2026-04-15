@@ -17,6 +17,7 @@ import (
 func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	names := toolNamesForTest(NewTSPlayMCPServer())
 	want := []string{
+		"tsplay.draft_flow",
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
 		"tsplay.list_actions",
@@ -130,6 +131,105 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 	}
 	if !foundExtractExample {
 		t.Fatalf("missing extract_text_and_set_var example")
+	}
+}
+
+func TestHandleDraftFlowToolWithObservation(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "搜索订单",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	flowYAML, ok := draft["flow_yaml"].(string)
+	if !ok || strings.TrimSpace(flowYAML) == "" {
+		t.Fatalf("expected flow_yaml, got %#v", draft["flow_yaml"])
+	}
+	flow, err := ParseFlow([]byte(flowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse draft flow: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate draft flow: %v", err)
+	}
+}
+
+func TestHandleDraftFlowToolRequiresIntentAndObservationOrURL(t *testing.T) {
+	result, err := handleDraftFlowTool(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("draft flow missing intent: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "intent") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent": "搜索订单",
+			},
+		},
+	}
+	result, err = handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow missing source: %v", err)
+	}
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "url or observation") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
 	}
 }
 
