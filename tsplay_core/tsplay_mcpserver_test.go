@@ -16,7 +16,14 @@ import (
 
 func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	names := toolNamesForTest(NewTSPlayMCPServer())
-	want := []string{"tsplay.list_actions", "tsplay.observe_page", "tsplay.run_flow", "tsplay.validate_flow"}
+	want := []string{
+		"tsplay.flow_examples",
+		"tsplay.flow_schema",
+		"tsplay.list_actions",
+		"tsplay.observe_page",
+		"tsplay.run_flow",
+		"tsplay.validate_flow",
+	}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("tool names = %#v, want %#v", names, want)
 	}
@@ -45,6 +52,67 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 	}
 	if !foundNavigate {
 		t.Fatalf("navigate action not found in manifest")
+	}
+}
+
+func TestHandleFlowSchemaTool(t *testing.T) {
+	result, err := handleFlowSchemaTool(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("flow schema: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	schema, ok := payload["schema"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected schema, got %#v", payload["schema"])
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected properties, got %#v", schema["properties"])
+	}
+	if _, ok := properties["steps"]; !ok {
+		t.Fatalf("expected steps property")
+	}
+	defs, ok := schema["$defs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected $defs, got %#v", schema["$defs"])
+	}
+	manifest, ok := defs["action_manifest"].([]any)
+	if !ok || len(manifest) == 0 {
+		t.Fatalf("expected action manifest, got %#v", defs["action_manifest"])
+	}
+}
+
+func TestHandleFlowExamplesTool(t *testing.T) {
+	result, err := handleFlowExamplesTool(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("flow examples: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	examples, ok := payload["examples"].([]any)
+	if !ok || len(examples) < 3 {
+		t.Fatalf("expected examples, got %#v", payload["examples"])
+	}
+
+	for _, example := range examples {
+		item, ok := example.(map[string]any)
+		if !ok {
+			t.Fatalf("example is %T", example)
+		}
+		content, ok := item["flow"].(string)
+		if !ok || strings.TrimSpace(content) == "" {
+			t.Fatalf("example missing flow: %#v", item)
+		}
+		flow, err := ParseFlow([]byte(content), "yaml")
+		if err != nil {
+			t.Fatalf("parse example %q: %v", item["name"], err)
+		}
+		if err := ValidateFlow(flow); err != nil {
+			t.Fatalf("validate example %q: %v", item["name"], err)
+		}
 	}
 }
 

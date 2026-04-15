@@ -266,6 +266,16 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithReadOnlyHintAnnotation(true),
 	), handleFlowListActionsTool)
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.flow_schema",
+		mcp.WithDescription("Return the JSON Schema and generation rules for TSPlay Flow. Use this before generating or repairing flows."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), handleFlowSchemaTool)
+
+	mcpServer.AddTool(mcp.NewTool("tsplay.flow_examples",
+		mcp.WithDescription("Return typical TSPlay Flow examples for AI generation and repair."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), handleFlowExamplesTool)
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.observe_page",
 		mcp.WithDescription("Open a page and return an AI-friendly observation: screenshot path, DOM snapshot path, and interactive elements with selector candidates."),
 		mcp.WithString("url",
@@ -354,6 +364,24 @@ func handleFlowListActionsTool(
 ) (*mcp.CallToolResult, error) {
 	return newJSONToolResult(map[string]any{
 		"actions": buildFlowActionManifest(),
+	})
+}
+
+func handleFlowSchemaTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return newJSONToolResult(map[string]any{
+		"schema": BuildFlowJSONSchema(),
+	})
+}
+
+func handleFlowExamplesTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return newJSONToolResult(map[string]any{
+		"examples": BuildFlowExamples(),
 	})
 }
 
