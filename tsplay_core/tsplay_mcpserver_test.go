@@ -490,6 +490,23 @@ steps:
 	if contextPayload["failure_category"] != "selector_or_timing" {
 		t.Fatalf("unexpected failure category: %#v", contextPayload["failure_category"])
 	}
+	repairHints, ok := contextPayload["repair_hints"].([]any)
+	if !ok || len(repairHints) == 0 {
+		t.Fatalf("expected repair_hints, got %#v", contextPayload["repair_hints"])
+	}
+	firstHint, ok := repairHints[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first repair hint object, got %#v", repairHints[0])
+	}
+	if firstHint["source"] != "runtime_failure" {
+		t.Fatalf("expected runtime_failure hint source, got %#v", firstHint)
+	}
+	if firstHint["step_path"] != "2" {
+		t.Fatalf("expected failed step path 2, got %#v", firstHint)
+	}
+	if firstHint["failure_category"] != "selector_or_timing" {
+		t.Fatalf("expected selector_or_timing hint category, got %#v", firstHint)
+	}
 	if _, ok := contextPayload["validation_checklist"].([]any); !ok {
 		t.Fatalf("expected validation checklist, got %#v", contextPayload["validation_checklist"])
 	}

@@ -27,6 +27,7 @@ type FlowRepairContext struct {
 	FailureCategory     string                  `json:"failure_category,omitempty"`
 	FailureReason       string                  `json:"failure_reason,omitempty"`
 	FailedStepPath      string                  `json:"failed_step_path,omitempty"`
+	RepairHints         []FlowRepairHint        `json:"repair_hints,omitempty"`
 	FailedStep          *FlowRepairStepContext  `json:"failed_step,omitempty"`
 	NearbySteps         []FlowRepairStepContext `json:"nearby_steps,omitempty"`
 	TraceSummary        []FlowRepairTraceItem   `json:"trace_summary,omitempty"`
@@ -127,6 +128,10 @@ func BuildFlowRepairContext(options FlowRepairContextOptions) (*FlowRepairContex
 		traceByIndex[item.Index] = item
 	}
 	failureCategory, failureReason := classifyFlowRepairFailure(failedTrace, failedFlowStep)
+	failedStepPath := strings.TrimSpace(failedTrace.Path)
+	if failedStepPath == "" && failedStepNumber > 0 {
+		failedStepPath = fmt.Sprint(failedStepNumber)
+	}
 
 	context := &FlowRepairContext{
 		FlowName:            options.Flow.Name,
@@ -134,7 +139,7 @@ func BuildFlowRepairContext(options FlowRepairContextOptions) (*FlowRepairContex
 		Error:               firstNonEmpty(options.Error, failedTrace.Error),
 		FailureCategory:     failureCategory,
 		FailureReason:       failureReason,
-		FailedStepPath:      failedTrace.Path,
+		FailedStepPath:      failedStepPath,
 		TraceSummary:        traceSummary,
 		NearbySteps:         buildFlowRepairNearbySteps(options.Flow, failedStepNumber, traceByIndex),
 		RepairTargets:       buildFlowRepairTargets(failedFlowStep, failedTrace),
@@ -166,6 +171,7 @@ func BuildFlowRepairContext(options FlowRepairContextOptions) (*FlowRepairContex
 	if failedTrace.Artifacts != nil {
 		context.Artifacts = buildFlowRepairArtifacts(*failedTrace.Artifacts, artifactRoot, excerptLimit)
 	}
+	context.RepairHints = buildRuntimeFlowRepairHints(context, failedTrace, failedFlowStep)
 	context.Prompt = buildFlowRepairPrompt(context)
 	return context, nil
 }
@@ -406,6 +412,111 @@ func flowRepairInstructions() []string {
 	}
 }
 
+func buildRuntimeFlowRepairHints(context *FlowRepairContext, failedTrace FlowStepTrace, failedStep *FlowStep) []FlowRepairHint {
+	if context == nil {
+		return nil
+	}
+
+	stepPath := strings.TrimSpace(context.FailedStepPath)
+	hints := []FlowRepairHint{}
+	primary := FlowRepairHint{
+		Priority:        0,
+		Source:          "runtime_failure",
+		StepPath:        stepPath,
+		Action:          failedTrace.Action,
+		Targets:         append([]string(nil), context.RepairTargets...),
+		Reason:          context.FailureReason,
+		Suggestion:      runtimeFlowRepairSuggestion(context, stepPath),
+		Error:           firstNonEmpty(context.Error, failedTrace.Error, failedTrace.ErrorStack),
+		FailureCategory: context.FailureCategory,
+		PageURL:         failedTrace.PageURL,
+	}
+	if failedStep != nil {
+		if strings.TrimSpace(failedStep.Action) != "" {
+			primary.Action = failedStep.Action
+		}
+		primary.Name = failedStep.Name
+		primary.Selector = failedStep.Selector
+	}
+	if primary.Name == "" {
+		primary.Name = failedTrace.Name
+	}
+	if primary.Selector == "" && context.FailedStep != nil {
+		primary.Selector = context.FailedStep.Step.Selector
+	}
+	if failedTrace.Artifacts != nil {
+		paths := flowRepairArtifactPaths(*failedTrace.Artifacts)
+		primary.Artifacts = &paths
+	} else if context.Artifacts != nil {
+		paths := context.Artifacts.Paths
+		primary.Artifacts = &paths
+	}
+	hints = append(hints, primary)
+
+	if previous := runtimeFlowRepairPreviousStepHint(context); previous != nil {
+		hints = append(hints, *previous)
+	}
+
+	return dedupeFlowRepairHints(hints)
+}
+
+func runtimeFlowRepairSuggestion(context *FlowRepairContext, stepPath string) string {
+	switch context.FailureCategory {
+	case "selector_or_timing":
+		return fmt.Sprintf("Inspect step %s first. Compare its selector with the latest DOM snapshot and screenshot, then either switch to a better selector or add wait_for_selector/retry before interacting.", flowRepairHintStepLabel(stepPath))
+	case "text_mismatch":
+		return fmt.Sprintf("Inspect step %s first. Compare the expected text with the current page content and update assert_text/extract_text or add wait_for_text if the content now appears later.", flowRepairHintStepLabel(stepPath))
+	case "extraction_pattern":
+		return fmt.Sprintf("Inspect step %s first. Re-check the extraction regex against the current text and keep save_as names stable while adjusting the pattern.", flowRepairHintStepLabel(stepPath))
+	case "polling_timeout":
+		return fmt.Sprintf("Inspect step %s first. Confirm the wait_until condition can actually become truthy, then adjust the condition, timeout, interval_ms, or the preceding page-state step.", flowRepairHintStepLabel(stepPath))
+	case "navigation":
+		return fmt.Sprintf("Inspect step %s and the navigation state around it first. Confirm the flow reached the expected page before the next interaction or assertion ran.", flowRepairHintStepLabel(stepPath))
+	case "variable_resolution":
+		return fmt.Sprintf("Inspect step %s first. Reconnect the missing variable to an earlier save_as/set_var producer and keep downstream variable names stable.", flowRepairHintStepLabel(stepPath))
+	default:
+		return fmt.Sprintf("Inspect step %s first, compare it with the failure artifacts, and apply the smallest repair that restores the expected page state.", flowRepairHintStepLabel(stepPath))
+	}
+}
+
+func runtimeFlowRepairPreviousStepHint(context *FlowRepairContext) *FlowRepairHint {
+	if context == nil {
+		return nil
+	}
+	switch context.FailureCategory {
+	case "selector_or_timing", "text_mismatch", "polling_timeout", "navigation":
+	default:
+		return nil
+	}
+	for _, nearby := range context.NearbySteps {
+		if nearby.Relation != "previous" {
+			continue
+		}
+		return &FlowRepairHint{
+			Priority:        2,
+			Source:          "runtime_failure",
+			StepPath:        fmt.Sprint(nearby.Index),
+			Action:          nearby.Step.Action,
+			Name:            nearby.Step.Name,
+			Selector:        nearby.Step.Selector,
+			Targets:         []string{"page_state", "timing"},
+			Reason:          "The failed step may depend on page state prepared by the previous step.",
+			Suggestion:      fmt.Sprintf("Also inspect step %d to confirm it still brings the page into the state expected by the failed step.", nearby.Index),
+			Error:           context.Error,
+			FailureCategory: context.FailureCategory,
+			PageURL:         runtimeFlowRepairHintPageURL(nearby),
+		}
+	}
+	return nil
+}
+
+func runtimeFlowRepairHintPageURL(step FlowRepairStepContext) string {
+	if step.Trace == nil {
+		return ""
+	}
+	return step.Trace.PageURL
+}
+
 func buildFlowRepairPrompt(context *FlowRepairContext) string {
 	if context == nil {
 		return ""
@@ -424,7 +535,33 @@ Prefer structured actions and stable selectors; use lua only as an explicit esca
 Do not paste full HTML into the answer. Use html_path, screenshot_path, and dom_snapshot_excerpt as evidence.
 Failed step: %s
 Failure category: %s
-Error: %s`, CurrentFlowSchemaVersion, failed, context.FailureCategory, context.Error)
+Error: %s
+Repair hints:
+%s`, CurrentFlowSchemaVersion, failed, context.FailureCategory, context.Error, formatFlowRepairHintsForPrompt(context.RepairHints))
+}
+
+func formatFlowRepairHintsForPrompt(hints []FlowRepairHint) string {
+	if len(hints) == 0 {
+		return "- No structured repair hints available."
+	}
+	lines := make([]string, 0, len(hints))
+	for _, hint := range hints {
+		line := fmt.Sprintf("- priority=%d", hint.Priority)
+		if strings.TrimSpace(hint.StepPath) != "" {
+			line += fmt.Sprintf(" step=%s", hint.StepPath)
+		}
+		if strings.TrimSpace(hint.Action) != "" {
+			line += fmt.Sprintf(" action=%s", hint.Action)
+		}
+		if strings.TrimSpace(hint.Reason) != "" {
+			line += fmt.Sprintf(" reason=%s", hint.Reason)
+		}
+		if strings.TrimSpace(hint.Suggestion) != "" {
+			line += fmt.Sprintf(" suggestion=%s", hint.Suggestion)
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func classifyFlowRepairFailure(trace FlowStepTrace, step *FlowStep) (string, string) {

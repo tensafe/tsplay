@@ -31,7 +31,7 @@ type FlowDraft struct {
 	Validation        *FlowDraftValidation      `json:"validation,omitempty"`
 	AutoRepaired      bool                      `json:"auto_repaired,omitempty"`
 	SelectorRepairs   []FlowDraftSelectorRepair `json:"selector_repairs,omitempty"`
-	RepairHints       []FlowDraftRepairHint     `json:"repair_hints,omitempty"`
+	RepairHints       []FlowRepairHint          `json:"repair_hints,omitempty"`
 	PlannedActions    []string                  `json:"planned_actions,omitempty"`
 	SuggestedVars     map[string]any            `json:"suggested_vars,omitempty"`
 	MatchedElements   []FlowDraftMatch          `json:"matched_elements,omitempty"`
@@ -67,18 +67,6 @@ type FlowDraftSelectorRepair struct {
 	FromSelector  string `json:"from_selector,omitempty"`
 	ToSelector    string `json:"to_selector,omitempty"`
 	Reason        string `json:"reason,omitempty"`
-}
-
-type FlowDraftRepairHint struct {
-	Priority        int      `json:"priority"`
-	StepPath        string   `json:"step_path,omitempty"`
-	Action          string   `json:"action,omitempty"`
-	Name            string   `json:"name,omitempty"`
-	Selector        string   `json:"selector,omitempty"`
-	Targets         []string `json:"targets,omitempty"`
-	Reason          string   `json:"reason"`
-	Suggestion      string   `json:"suggestion,omitempty"`
-	ValidationError string   `json:"validation_error,omitempty"`
 }
 
 type draftIntentAction struct {
@@ -1252,18 +1240,20 @@ func applyDraftSelectorRepairsToMatches(matches []FlowDraftMatch, repairs []Flow
 	}
 }
 
-func buildDraftFlowRepairHints(flow *Flow, draft *FlowDraft) []FlowDraftRepairHint {
+func buildDraftFlowRepairHints(flow *Flow, draft *FlowDraft) []FlowRepairHint {
 	if flow == nil || draft == nil || draft.Validation == nil || draft.Validation.Valid {
 		return nil
 	}
 
 	hints := buildDraftValidationRepairHints(flow, draft.Validation.Error)
 	if len(hints) == 0 {
-		hints = append(hints, FlowDraftRepairHint{
+		hints = append(hints, FlowRepairHint{
 			Priority:        1,
+			Source:          "draft_validation",
 			Reason:          "The drafted Flow still does not pass validation after the selector repair pass.",
 			Suggestion:      "Start from the validation error, compare the affected step with tsplay.flow_schema and the current page observation, then apply the smallest possible fix.",
-			ValidationError: draft.Validation.Error,
+			Error:           draft.Validation.Error,
+			FailureCategory: "validation",
 		})
 	}
 
@@ -1290,10 +1280,10 @@ func buildDraftFlowRepairHints(flow *Flow, draft *FlowDraft) []FlowDraftRepairHi
 		}
 		return hints[i].StepPath < hints[j].StepPath
 	})
-	return dedupeDraftRepairHints(hints)
+	return dedupeFlowRepairHints(hints)
 }
 
-func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowDraftRepairHint {
+func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowRepairHint {
 	validationError = strings.TrimSpace(validationError)
 	if validationError == "" {
 		return nil
@@ -1301,10 +1291,12 @@ func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowD
 
 	stepPath := parseDraftValidationStepPath(validationError)
 	step, found := findFlowStepByPath(flow, stepPath)
-	hint := FlowDraftRepairHint{
+	hint := FlowRepairHint{
 		Priority:        1,
+		Source:          "draft_validation",
 		StepPath:        stepPath,
-		ValidationError: validationError,
+		Error:           validationError,
+		FailureCategory: "validation",
 	}
 	if found {
 		hint.Action = step.Action
@@ -1318,7 +1310,7 @@ func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowD
 		hint.Targets = []string{"security_policy", "action"}
 		hint.Reason = "The drafted step is valid structurally, but it is blocked by the current safety flags."
 		if option != "" {
-			hint.Suggestion = fmt.Sprintf("Inspect step %s first. If this is a trusted automation, rerun draft_flow or validate_flow with %s=true; otherwise replace the step with a lower-risk action.", draftHintStepLabel(stepPath), option)
+			hint.Suggestion = fmt.Sprintf("Inspect step %s first. If this is a trusted automation, rerun draft_flow or validate_flow with %s=true; otherwise replace the step with a lower-risk action.", flowRepairHintStepLabel(stepPath), option)
 		} else {
 			hint.Suggestion = "Inspect the blocked action first and decide whether to enable the matching allow_* flag or replace it with a lower-risk action."
 		}
@@ -1327,7 +1319,7 @@ func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowD
 		hint.Targets = []string{"variables", "save_as"}
 		hint.Reason = "This step depends on a variable that is not defined yet."
 		if unknownVar != "" {
-			hint.Suggestion = fmt.Sprintf("Inspect step %s and the steps right before it. Make sure %q exists in flow.vars or is produced earlier with save_as/set_var.", draftHintStepLabel(stepPath), unknownVar)
+			hint.Suggestion = fmt.Sprintf("Inspect step %s and the steps right before it. Make sure %q exists in flow.vars or is produced earlier with save_as/set_var.", flowRepairHintStepLabel(stepPath), unknownVar)
 		} else {
 			hint.Suggestion = "Inspect the affected step and the previous producing steps. Make sure every {{var}} is defined in vars or produced earlier with save_as/set_var."
 		}
@@ -1339,7 +1331,7 @@ func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowD
 		}
 		hint.Reason = "The drafted step is missing a required field for its action."
 		if field != "" {
-			hint.Suggestion = fmt.Sprintf("Inspect step %s first and fill %q using the page observation, extracted variables, or a safer default.", draftHintStepLabel(stepPath), field)
+			hint.Suggestion = fmt.Sprintf("Inspect step %s first and fill %q using the page observation, extracted variables, or a safer default.", flowRepairHintStepLabel(stepPath), field)
 		} else {
 			hint.Suggestion = "Inspect the affected step first and fill the missing required field using the action schema and page observation."
 		}
@@ -1371,7 +1363,7 @@ func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowD
 		}
 	}
 
-	return []FlowDraftRepairHint{hint}
+	return []FlowRepairHint{hint}
 }
 
 func parseDraftValidationStepPath(validationError string) string {
@@ -1450,31 +1442,4 @@ func findFlowStepInSequence(steps []FlowStep, tokens []string) (FlowStep, bool) 
 	default:
 		return findFlowStepInSequence(step.Steps, tokens[1:])
 	}
-}
-
-func draftHintStepLabel(stepPath string) string {
-	if strings.TrimSpace(stepPath) == "" {
-		return "the reported step"
-	}
-	return stepPath
-}
-
-func dedupeDraftRepairHints(hints []FlowDraftRepairHint) []FlowDraftRepairHint {
-	seen := map[string]bool{}
-	deduped := make([]FlowDraftRepairHint, 0, len(hints))
-	for _, hint := range hints {
-		key := strings.Join([]string{
-			strconv.Itoa(hint.Priority),
-			hint.StepPath,
-			hint.Action,
-			hint.Reason,
-			hint.Suggestion,
-		}, "|")
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		deduped = append(deduped, hint)
-	}
-	return deduped
 }

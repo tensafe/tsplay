@@ -318,7 +318,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.repair_flow_context",
-		mcp.WithDescription("Build an AI-friendly repair context from a Flow and failed run trace. Returns summaries and artifact paths without embedding full HTML."),
+		mcp.WithDescription("Build an AI-friendly repair context from a Flow and failed run trace. Returns summaries, unified repair_hints, and artifact paths without embedding full HTML."),
 		mcp.WithString("flow",
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
