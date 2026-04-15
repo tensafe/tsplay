@@ -172,3 +172,51 @@ func TestValidateFlowStrictRejectsTypeMismatch(t *testing.T) {
 		t.Fatalf("expected type mismatch error")
 	}
 }
+
+func TestValidateFlowSecurityRejectsLuaByDefault(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_policy",
+		Steps: []FlowStep{
+			{Action: "lua", Code: "return true"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy()); err == nil {
+		t.Fatalf("expected lua security policy error")
+	}
+}
+
+func TestValidateFlowSecurityAllowsTrustedLua(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_policy",
+		Steps: []FlowStep{
+			{Action: "lua", Code: "return true"},
+		},
+	}
+
+	if err := ValidateFlowSecurity(flow, TrustedFlowSecurityPolicy()); err != nil {
+		t.Fatalf("validate security: %v", err)
+	}
+}
+
+func TestValidateFlowSecurityRejectsBrowserStateByDefault(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_state_policy",
+		Steps: []FlowStep{
+			{Action: "get_cookies_string"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy()); err == nil {
+		t.Fatalf("expected browser state security policy error")
+	}
+}

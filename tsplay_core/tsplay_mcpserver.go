@@ -10,7 +10,9 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -77,7 +79,31 @@ const (
 	COMPLEX PromptName = "complex_prompt"
 )
 
-func NewTSPlayMCPServer() *server.MCPServer {
+const DefaultMCPFlowPathRoot = "script"
+
+type TSPlayMCPServerOptions struct {
+	FlowPathRoot string
+}
+
+func DefaultTSPlayMCPServerOptions() TSPlayMCPServerOptions {
+	return TSPlayMCPServerOptions{
+		FlowPathRoot: DefaultMCPFlowPathRoot,
+	}
+}
+
+func normalizeTSPlayMCPServerOptions(options []TSPlayMCPServerOptions) TSPlayMCPServerOptions {
+	normalized := DefaultTSPlayMCPServerOptions()
+	if len(options) == 0 {
+		return normalized
+	}
+	if options[0].FlowPathRoot != "" {
+		normalized.FlowPathRoot = options[0].FlowPathRoot
+	}
+	return normalized
+}
+
+func NewTSPlayMCPServer(options ...TSPlayMCPServerOptions) *server.MCPServer {
+	normalizedOptions := normalizeTSPlayMCPServerOptions(options)
 	mcpServer := server.NewMCPServer(
 		"tsplay",
 		"1.0.0",
@@ -85,7 +111,7 @@ func NewTSPlayMCPServer() *server.MCPServer {
 		server.WithLogging(),
 	)
 
-	registerTSPlayFlowTools(mcpServer)
+	registerTSPlayFlowTools(mcpServer, normalizedOptions)
 	return mcpServer
 }
 
@@ -228,7 +254,7 @@ func NewMCPServer() *server.MCPServer {
 	return mcpServer
 }
 
-func registerTSPlayFlowTools(mcpServer *server.MCPServer) {
+func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServerOptions) {
 	mcpServer.AddTool(mcp.NewTool("tsplay.list_actions",
 		mcp.WithDescription("List structured TSPlay Flow actions and their argument schema."),
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -240,14 +266,28 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer) {
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
 		mcp.WithString("flow_path",
-			mcp.Description("Local path to a Flow YAML or JSON file. Use this or flow."),
+			mcp.Description("Flow YAML or JSON file path relative to the configured flow root. Use this or flow."),
 		),
 		mcp.WithString("format",
 			mcp.Description("Optional format hint: yaml or json."),
 			mcp.Enum("yaml", "json"),
 		),
+		mcp.WithBoolean("allow_lua",
+			mcp.Description("Allow lua steps for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_javascript",
+			mcp.Description("Allow execute_script/evaluate steps for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_file_access",
+			mcp.Description("Allow local file read/write actions for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_browser_state",
+			mcp.Description("Allow browser storage/cookie export actions for this request. Defaults to false."),
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
-	), handleValidateFlowTool)
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleValidateFlowToolWithOptions(ctx, request, options)
+	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.run_flow",
 		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace."),
@@ -255,7 +295,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer) {
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
 		mcp.WithString("flow_path",
-			mcp.Description("Local path to a Flow YAML or JSON file. Use this or flow."),
+			mcp.Description("Flow YAML or JSON file path relative to the configured flow root. Use this or flow."),
 		),
 		mcp.WithString("format",
 			mcp.Description("Optional format hint: yaml or json."),
@@ -264,8 +304,22 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer) {
 		mcp.WithBoolean("headless",
 			mcp.Description("Run browser in headless mode. Defaults to true."),
 		),
+		mcp.WithBoolean("allow_lua",
+			mcp.Description("Allow lua steps for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_javascript",
+			mcp.Description("Allow execute_script/evaluate steps for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_file_access",
+			mcp.Description("Allow local file read/write actions for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_browser_state",
+			mcp.Description("Allow browser storage/cookie export actions for this request. Defaults to false."),
+		),
 		mcp.WithOpenWorldHintAnnotation(true),
-	), handleRunFlowTool)
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleRunFlowToolWithOptions(ctx, request, options)
+	})
 }
 
 func handleFlowListActionsTool(
@@ -281,14 +335,30 @@ func handleValidateFlowTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	flow, err := flowFromToolRequest(request)
+	return handleValidateFlowToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleValidateFlowToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
 		return newJSONToolResult(map[string]any{
 			"valid": false,
 			"error": err.Error(),
 		})
 	}
+	security := flowSecurityPolicyFromToolRequest(request)
 	if err := ValidateFlow(flow); err != nil {
+		return newJSONToolResult(map[string]any{
+			"valid": false,
+			"name":  flow.Name,
+			"error": err.Error(),
+		})
+	}
+	if err := ValidateFlowSecurity(flow, security); err != nil {
 		return newJSONToolResult(map[string]any{
 			"valid": false,
 			"name":  flow.Name,
@@ -306,7 +376,15 @@ func handleRunFlowTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	flow, err := flowFromToolRequest(request)
+	return handleRunFlowToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleRunFlowToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
 		return newJSONToolResult(map[string]any{
 			"ok":    false,
@@ -314,8 +392,10 @@ func handleRunFlowTool(
 		})
 	}
 
+	security := flowSecurityPolicyFromToolRequest(request)
 	result, err := RunFlow(flow, FlowRunOptions{
 		Headless: request.GetBool("headless", true),
+		Security: &security,
 	})
 	if err != nil {
 		return newJSONToolResult(map[string]any{
@@ -331,16 +411,75 @@ func handleRunFlowTool(
 }
 
 func flowFromToolRequest(request mcp.CallToolRequest) (*Flow, error) {
-	flowPath := request.GetString("flow_path", "")
-	if flowPath != "" {
-		return LoadFlowFile(flowPath)
-	}
+	return flowFromToolRequestWithOptions(request, DefaultTSPlayMCPServerOptions())
+}
 
+func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayMCPServerOptions) (*Flow, error) {
+	flowPath := request.GetString("flow_path", "")
 	flowContent := request.GetString("flow", "")
+	if flowPath != "" && flowContent != "" {
+		return nil, fmt.Errorf("use either flow or flow_path, not both")
+	}
+	if flowPath != "" {
+		resolvedPath, err := resolveMCPFlowPath(flowPath, options.FlowPathRoot)
+		if err != nil {
+			return nil, err
+		}
+		return LoadFlowFile(resolvedPath)
+	}
 	if flowContent == "" {
 		return nil, fmt.Errorf("either flow or flow_path is required")
 	}
 	return ParseFlow([]byte(flowContent), request.GetString("format", "yaml"))
+}
+
+func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest) FlowSecurityPolicy {
+	return FlowSecurityPolicy{
+		AllowLua:          request.GetBool("allow_lua", false),
+		AllowJavaScript:   request.GetBool("allow_javascript", false),
+		AllowFileAccess:   request.GetBool("allow_file_access", false),
+		AllowBrowserState: request.GetBool("allow_browser_state", false),
+	}
+}
+
+func resolveMCPFlowPath(flowPath string, flowRoot string) (string, error) {
+	if strings.TrimSpace(flowPath) == "" {
+		return "", fmt.Errorf("flow_path is required")
+	}
+	if strings.TrimSpace(flowRoot) == "" {
+		flowRoot = DefaultMCPFlowPathRoot
+	}
+
+	rootAbs, err := filepath.Abs(flowRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve flow root %q: %w", flowRoot, err)
+	}
+	rootReal, err := filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return "", fmt.Errorf("flow root %q is not accessible: %w", rootAbs, err)
+	}
+
+	candidate := flowPath
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(rootReal, candidate)
+	}
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", fmt.Errorf("resolve flow_path %q: %w", flowPath, err)
+	}
+	candidateReal, err := filepath.EvalSymlinks(candidateAbs)
+	if err != nil {
+		return "", fmt.Errorf("flow_path %q is not accessible: %w", flowPath, err)
+	}
+
+	rel, err := filepath.Rel(rootReal, candidateReal)
+	if err != nil {
+		return "", fmt.Errorf("compare flow_path %q with flow root %q: %w", candidateReal, rootReal, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("flow_path %q is outside allowed flow root %q", flowPath, rootReal)
+	}
+	return candidateReal, nil
 }
 
 func buildFlowActionManifest() []map[string]any {
@@ -365,6 +504,10 @@ func buildFlowActionManifest() []map[string]any {
 			"name":        name,
 			"description": descriptions[name],
 			"args":        args,
+		}
+		if group := flowActionSecurityGroup(name); group != "" {
+			item["security_group"] = group
+			item["requires_allow"] = flowActionSecurityOption(group)
 		}
 		if spec.VarArgName != "" {
 			item["var_arg"] = spec.VarArgName
@@ -688,15 +831,17 @@ func handleNotification(
 	log.Printf("Received notification: %s", notification.Method)
 }
 
-func McpServerMCP(addr string) {
+func McpServerMCP(addr string, options ...TSPlayMCPServerOptions) {
 	if addr == "" {
 		addr = ":8080"
 	}
 
-	mcpServer := NewTSPlayMCPServer()
+	normalizedOptions := normalizeTSPlayMCPServerOptions(options)
+	mcpServer := NewTSPlayMCPServer(normalizedOptions)
 
 	httpServer := server.NewStreamableHTTPServer(mcpServer)
 	log.Printf("HTTP server listening on %s/mcp", addr)
+	log.Printf("MCP flow_path root: %s", normalizedOptions.FlowPathRoot)
 	if err := httpServer.Start(addr); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

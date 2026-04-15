@@ -80,6 +80,14 @@ type FlowContext struct {
 
 type FlowRunOptions struct {
 	Headless bool
+	Security *FlowSecurityPolicy
+}
+
+type FlowSecurityPolicy struct {
+	AllowLua          bool `json:"allow_lua"`
+	AllowJavaScript   bool `json:"allow_javascript"`
+	AllowFileAccess   bool `json:"allow_file_access"`
+	AllowBrowserState bool `json:"allow_browser_state"`
 }
 
 const CurrentFlowSchemaVersion = "1"
@@ -145,6 +153,19 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"get_storage_state":     {Args: []flowArgSpec{{Name: "context_index"}}},
 	"get_cookies_string":    {Args: []flowArgSpec{{Name: "context_index"}}},
 	"lua":                   {Args: []flowArgSpec{{Name: "code", Required: true}}},
+}
+
+func DefaultFlowSecurityPolicy() FlowSecurityPolicy {
+	return FlowSecurityPolicy{}
+}
+
+func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
+	return FlowSecurityPolicy{
+		AllowLua:          true,
+		AllowJavaScript:   true,
+		AllowFileAccess:   true,
+		AllowBrowserState: true,
+	}
 }
 
 func LoadFlowFile(path string) (*Flow, error) {
@@ -370,6 +391,67 @@ func flowParamType(name string) string {
 	}
 }
 
+func ValidateFlowSecurity(flow *Flow, policy FlowSecurityPolicy) error {
+	if flow == nil {
+		return fmt.Errorf("flow is nil")
+	}
+
+	for i, step := range flow.Steps {
+		group := flowActionSecurityGroup(step.Action)
+		if group == "" || flowSecurityPolicyAllows(group, policy) {
+			continue
+		}
+		option := flowActionSecurityOption(group)
+		return fmt.Errorf("step %d action %q is disabled by security policy; set %s=true only for trusted flows", i+1, step.Action, option)
+	}
+	return nil
+}
+
+func flowActionSecurityGroup(action string) string {
+	switch action {
+	case "lua":
+		return "lua"
+	case "execute_script", "evaluate":
+		return "javascript"
+	case "screenshot", "screenshot_element", "save_html", "upload_file", "upload_multiple_files", "download_file", "download_url":
+		return "file_access"
+	case "get_storage_state", "get_cookies_string":
+		return "browser_state"
+	default:
+		return ""
+	}
+}
+
+func flowActionSecurityOption(group string) string {
+	switch group {
+	case "lua":
+		return "allow_lua"
+	case "javascript":
+		return "allow_javascript"
+	case "file_access":
+		return "allow_file_access"
+	case "browser_state":
+		return "allow_browser_state"
+	default:
+		return "allow_unsafe"
+	}
+}
+
+func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
+	switch group {
+	case "lua":
+		return policy.AllowLua
+	case "javascript":
+		return policy.AllowJavaScript
+	case "file_access":
+		return policy.AllowFileAccess
+	case "browser_state":
+		return policy.AllowBrowserState
+	default:
+		return true
+	}
+}
+
 func requiredArgCount(spec flowActionSpec) int {
 	count := 0
 	for _, arg := range spec.Args {
@@ -401,6 +483,15 @@ func FlowActionNames() []string {
 }
 
 func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
+	if err := ValidateFlow(flow); err != nil {
+		return nil, err
+	}
+	if options.Security != nil {
+		if err := ValidateFlowSecurity(flow, *options.Security); err != nil {
+			return nil, err
+		}
+	}
+
 	pw, err := playwright.Run()
 	if err != nil {
 		return nil, fmt.Errorf("could not start Playwright: %w", err)
