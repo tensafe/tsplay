@@ -3,6 +3,7 @@ package tsplay_core
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,10 +20,11 @@ import (
 // It keeps most business logic declarative, while still allowing lua steps as
 // an escape hatch for advanced cases.
 type Flow struct {
-	Name        string         `json:"name" yaml:"name"`
-	Description string         `json:"description,omitempty" yaml:"description,omitempty"`
-	Vars        map[string]any `json:"vars,omitempty" yaml:"vars,omitempty"`
-	Steps       []FlowStep     `json:"steps" yaml:"steps"`
+	SchemaVersion string         `json:"schema_version" yaml:"schema_version"`
+	Name          string         `json:"name" yaml:"name"`
+	Description   string         `json:"description,omitempty" yaml:"description,omitempty"`
+	Vars          map[string]any `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Steps         []FlowStep     `json:"steps" yaml:"steps"`
 }
 
 type FlowStep struct {
@@ -80,6 +82,8 @@ type FlowRunOptions struct {
 	Headless bool
 }
 
+const CurrentFlowSchemaVersion = "1"
+
 type flowActionSpec struct {
 	Args       []flowArgSpec
 	VarArgName string
@@ -92,6 +96,7 @@ type flowArgSpec struct {
 
 var placeholderPattern = regexp.MustCompile(`^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$`)
 var replacePattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+var flowIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 var flowActionSpecs = map[string]flowActionSpec{
 	"navigate":              {Args: []flowArgSpec{{Name: "url", Required: true}}},
@@ -171,12 +176,31 @@ func ParseFlow(content []byte, format string) (*Flow, error) {
 }
 
 func ValidateFlow(flow *Flow) error {
+	return ValidateFlowStrict(flow)
+}
+
+func ValidateFlowStrict(flow *Flow) error {
 	if flow == nil {
 		return fmt.Errorf("flow is nil")
+	}
+	if strings.TrimSpace(flow.SchemaVersion) == "" {
+		return fmt.Errorf("flow schema_version is required")
+	}
+	if flow.SchemaVersion != CurrentFlowSchemaVersion {
+		return fmt.Errorf("unsupported flow schema_version %q, expected %q", flow.SchemaVersion, CurrentFlowSchemaVersion)
 	}
 	if len(flow.Steps) == 0 {
 		return fmt.Errorf("flow must contain at least one step")
 	}
+
+	knownVars := map[string]any{}
+	for name, value := range flow.Vars {
+		if !flowIdentifierPattern.MatchString(name) {
+			return fmt.Errorf("vars key %q is not a valid variable name", name)
+		}
+		knownVars[name] = value
+	}
+
 	for i, step := range flow.Steps {
 		if strings.TrimSpace(step.Action) == "" {
 			return fmt.Errorf("step %d action is required", i+1)
@@ -185,24 +209,186 @@ func ValidateFlow(flow *Flow) error {
 		if !ok {
 			return fmt.Errorf("step %d uses unsupported action %q", i+1, step.Action)
 		}
+
+		if step.SaveAs != "" && !flowIdentifierPattern.MatchString(step.SaveAs) {
+			return fmt.Errorf("step %d save_as %q is not a valid variable name", i+1, step.SaveAs)
+		}
+
 		if len(step.Args) > 0 {
-			continue
-		}
-		for _, arg := range spec.Args {
-			if !arg.Required {
-				continue
+			if err := validateFlowStepArgs(i+1, step, spec, knownVars); err != nil {
+				return err
 			}
-			if _, ok := step.param(arg.Name); !ok {
-				return fmt.Errorf("step %d action %q requires %q", i+1, step.Action, arg.Name)
+		} else {
+			if err := validateFlowStepNamedParams(i+1, step, spec, knownVars); err != nil {
+				return err
 			}
 		}
-		if spec.VarArgName != "" {
-			if values, ok := step.param(spec.VarArgName); !ok || listLen(values) == 0 {
-				return fmt.Errorf("step %d action %q requires %q", i+1, step.Action, spec.VarArgName)
-			}
+
+		if step.SaveAs != "" {
+			knownVars[step.SaveAs] = nil
 		}
 	}
 	return nil
+}
+
+func validateFlowStepArgs(stepIndex int, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+	if len(step.presentNamedParams()) > 0 {
+		return fmt.Errorf("step %d action %q cannot mix args with named parameters", stepIndex, step.Action)
+	}
+
+	requiredCount := requiredArgCount(spec)
+	minCount := requiredCount
+	maxCount := len(spec.Args)
+	if spec.VarArgName != "" {
+		minCount = len(spec.Args) + 1
+		maxCount = -1
+	}
+
+	if len(step.Args) < minCount {
+		return fmt.Errorf("step %d action %q expects at least %d args, got %d", stepIndex, step.Action, minCount, len(step.Args))
+	}
+	if maxCount >= 0 && len(step.Args) > maxCount {
+		return fmt.Errorf("step %d action %q expects at most %d args, got %d", stepIndex, step.Action, maxCount, len(step.Args))
+	}
+
+	for i, value := range step.Args {
+		name := ""
+		if i < len(spec.Args) {
+			name = spec.Args[i].Name
+		} else {
+			name = spec.VarArgName
+			if name == "files" {
+				name = "file_path"
+			}
+		}
+		if err := validateFlowParamValue(stepIndex, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateFlowStepNamedParams(stepIndex int, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+	present := step.presentNamedParams()
+	allowed := allowedFlowParamNames(spec)
+
+	for name, value := range present {
+		if !allowed[name] {
+			return fmt.Errorf("step %d action %q does not accept parameter %q", stepIndex, step.Action, name)
+		}
+		if err := validateFlowParamValue(stepIndex, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+	}
+
+	for _, arg := range spec.Args {
+		if !arg.Required {
+			continue
+		}
+		if _, ok := present[arg.Name]; !ok {
+			return fmt.Errorf("step %d action %q requires %q", stepIndex, step.Action, arg.Name)
+		}
+	}
+	if spec.VarArgName != "" {
+		value, ok := present[spec.VarArgName]
+		if !ok || listLen(value) == 0 {
+			return fmt.Errorf("step %d action %q requires %q", stepIndex, step.Action, spec.VarArgName)
+		}
+	}
+	return nil
+}
+
+func validateFlowParamValue(stepIndex int, action string, name string, value any, knownVars map[string]any) error {
+	if name == "" {
+		return fmt.Errorf("step %d action %q has too many arguments", stepIndex, action)
+	}
+	if err := validateFlowReferences(stepIndex, action, name, value, knownVars); err != nil {
+		return err
+	}
+	if err := validateFlowParamType(name, value, knownVars); err != nil {
+		return fmt.Errorf("step %d action %q parameter %q %w", stepIndex, action, name, err)
+	}
+	return nil
+}
+
+func validateFlowReferences(stepIndex int, action string, name string, value any, knownVars map[string]any) error {
+	for _, ref := range flowReferences(value) {
+		if _, ok := knownVars[ref]; !ok {
+			return fmt.Errorf("step %d action %q parameter %q references unknown variable %q", stepIndex, action, name, ref)
+		}
+	}
+	return nil
+}
+
+func validateFlowParamType(name string, value any, knownVars map[string]any) error {
+	if ref, ok := fullPlaceholderRef(value); ok {
+		resolved, known := knownVars[ref]
+		if !known || resolved == nil {
+			return nil
+		}
+		value = resolved
+	}
+
+	switch flowParamType(name) {
+	case "string":
+		if _, ok := value.(string); ok {
+			return nil
+		}
+		return fmt.Errorf("must be a string")
+	case "int":
+		if isIntegerValue(value) {
+			return nil
+		}
+		return fmt.Errorf("must be an integer")
+	case "number":
+		if isNumberValue(value) {
+			return nil
+		}
+		return fmt.Errorf("must be a number")
+	case "string_list":
+		if isStringListValue(value, knownVars) {
+			return nil
+		}
+		return fmt.Errorf("must be a list of strings")
+	default:
+		return nil
+	}
+}
+
+func flowParamType(name string) string {
+	switch name {
+	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "file_path", "save_path", "pattern":
+		return "string"
+	case "timeout", "index", "context_index":
+		return "int"
+	case "seconds":
+		return "number"
+	case "files":
+		return "string_list"
+	default:
+		return ""
+	}
+}
+
+func requiredArgCount(spec flowActionSpec) int {
+	count := 0
+	for _, arg := range spec.Args {
+		if arg.Required {
+			count++
+		}
+	}
+	return count
+}
+
+func allowedFlowParamNames(spec flowActionSpec) map[string]bool {
+	allowed := map[string]bool{}
+	for _, arg := range spec.Args {
+		allowed[arg.Name] = true
+	}
+	if spec.VarArgName != "" {
+		allowed[spec.VarArgName] = true
+	}
+	return allowed
 }
 
 func FlowActionNames() []string {
@@ -399,6 +585,50 @@ func collectReturns(L *lua.LState, top int) any {
 		return values[0]
 	}
 	return values
+}
+
+func (step FlowStep) presentNamedParams() map[string]any {
+	params := map[string]any{}
+	add := func(name string, value any, ok bool) {
+		if ok {
+			params[name] = value
+		}
+	}
+	addString := func(name string, value string) {
+		param, ok := stringParam(value)
+		add(name, param, ok)
+	}
+
+	addString("url", step.URL)
+	addString("selector", step.Selector)
+	addString("text", step.Text)
+	addString("value", step.Value)
+	if step.Timeout != 0 {
+		params["timeout"] = step.Timeout
+	}
+	if step.Seconds != 0 {
+		params["seconds"] = step.Seconds
+	}
+	addString("path", step.Path)
+	addString("script", step.Script)
+	addString("code", step.Code)
+	addString("attribute", step.Attribute)
+	addString("file_path", step.FilePath)
+	if len(step.Files) > 0 {
+		params["files"] = step.Files
+	}
+	addString("save_path", step.SavePath)
+	addString("pattern", step.Pattern)
+	if step.Index != 0 {
+		params["index"] = step.Index
+	}
+	if step.ContextIndex != 0 {
+		params["context_index"] = step.ContextIndex
+	}
+	for name, value := range step.With {
+		params[name] = value
+	}
+	return params
 }
 
 func (step FlowStep) luaCode(ctx *FlowContext) (string, error) {
@@ -653,4 +883,111 @@ func listLen(value any) int {
 		return 0
 	}
 	return len(items)
+}
+
+func flowReferences(value any) []string {
+	refs := []string{}
+	switch typed := value.(type) {
+	case string:
+		matches := replacePattern.FindAllStringSubmatch(typed, -1)
+		for _, match := range matches {
+			if len(match) == 2 {
+				refs = append(refs, match[1])
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			refs = append(refs, flowReferences(item)...)
+		}
+	case []string:
+		for _, item := range typed {
+			refs = append(refs, flowReferences(item)...)
+		}
+	case map[string]any:
+		for _, item := range typed {
+			refs = append(refs, flowReferences(item)...)
+		}
+	}
+	return refs
+}
+
+func fullPlaceholderRef(value any) (string, bool) {
+	text, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	matches := placeholderPattern.FindStringSubmatch(text)
+	if len(matches) != 2 {
+		return "", false
+	}
+	return matches[1], true
+}
+
+func isIntegerValue(value any) bool {
+	switch typed := value.(type) {
+	case int, int8, int16, int32, int64:
+		return true
+	case uint, uint8, uint16, uint32, uint64:
+		return true
+	case float32:
+		return math.Trunc(float64(typed)) == float64(typed)
+	case float64:
+		return math.Trunc(typed) == typed
+	default:
+		return false
+	}
+}
+
+func isNumberValue(value any) bool {
+	switch value.(type) {
+	case int, int8, int16, int32, int64:
+		return true
+	case uint, uint8, uint16, uint32, uint64:
+		return true
+	case float32, float64:
+		return true
+	default:
+		return false
+	}
+}
+
+func isStringListValue(value any, knownVars map[string]any) bool {
+	if ref, ok := fullPlaceholderRef(value); ok {
+		resolved, known := knownVars[ref]
+		if !known || resolved == nil {
+			return true
+		}
+		value = resolved
+	}
+
+	switch typed := value.(type) {
+	case []string:
+		for _, item := range typed {
+			if ref, ok := fullPlaceholderRef(item); ok {
+				resolved, known := knownVars[ref]
+				if known && resolved != nil {
+					if _, ok := resolved.(string); !ok {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	case []any:
+		for _, item := range typed {
+			if ref, ok := fullPlaceholderRef(item); ok {
+				resolved, known := knownVars[ref]
+				if !known || resolved == nil {
+					continue
+				}
+				item = resolved
+			}
+			if _, ok := item.(string); !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }

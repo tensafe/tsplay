@@ -77,6 +77,20 @@ const (
 	COMPLEX PromptName = "complex_prompt"
 )
 
+func NewTSPlayMCPServer() *server.MCPServer {
+	mcpServer := server.NewMCPServer(
+		"tsplay",
+		"1.0.0",
+		server.WithToolCapabilities(true),
+		server.WithLogging(),
+	)
+
+	registerTSPlayFlowTools(mcpServer)
+	return mcpServer
+}
+
+// NewMCPServer keeps the upstream example server available for local MCP demos.
+// Production TSPlay/OpenClaw integrations should use NewTSPlayMCPServer.
 func NewMCPServer() *server.MCPServer {
 	hooks := &server.Hooks{}
 
@@ -108,7 +122,7 @@ func NewMCPServer() *server.MCPServer {
 	})
 
 	mcpServer := server.NewMCPServer(
-		"tsplay",
+		"tsplay-demo",
 		"1.0.0",
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
@@ -208,8 +222,6 @@ func NewMCPServer() *server.MCPServer {
 	mcpServer.AddTool(mcp.NewTool(string(GET_TINY_IMAGE),
 		mcp.WithDescription("Returns the MCP_TINY_IMAGE"),
 	), handleGetTinyImageTool)
-
-	registerTSPlayFlowTools(mcpServer)
 
 	mcpServer.AddNotificationHandler("notification", handleNotification)
 
@@ -345,6 +357,7 @@ func buildFlowActionManifest() []map[string]any {
 		for _, arg := range spec.Args {
 			args = append(args, map[string]any{
 				"name":     arg.Name,
+				"type":     flowParamType(arg.Name),
 				"required": arg.Required,
 			})
 		}
@@ -355,6 +368,7 @@ func buildFlowActionManifest() []map[string]any {
 		}
 		if spec.VarArgName != "" {
 			item["var_arg"] = spec.VarArgName
+			item["var_arg_type"] = flowParamType(spec.VarArgName)
 		}
 		actions = append(actions, item)
 	}
@@ -674,12 +688,16 @@ func handleNotification(
 	log.Printf("Received notification: %s", notification.Method)
 }
 
-func McpServerMCP() {
-	mcpServer := NewMCPServer()
+func McpServerMCP(addr string) {
+	if addr == "" {
+		addr = ":8080"
+	}
+
+	mcpServer := NewTSPlayMCPServer()
 
 	httpServer := server.NewStreamableHTTPServer(mcpServer)
-	log.Printf("HTTP server listening on :8080/mcp")
-	if err := httpServer.Start(":8080"); err != nil {
+	log.Printf("HTTP server listening on %s/mcp", addr)
+	if err := httpServer.Start(addr); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

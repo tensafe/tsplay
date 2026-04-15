@@ -59,6 +59,7 @@ func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
+	addr := flag.String("addr", ":8080", "server listen address")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -96,7 +97,7 @@ func main() {
 			fmt.Println("Start As GPT.")
 		case "srv":
 			fmt.Println("Start As Web.")
-			tsplay_core.McpServerMCP()
+			tsplay_core.McpServerMCP(*addr)
 		}
 	}
 }

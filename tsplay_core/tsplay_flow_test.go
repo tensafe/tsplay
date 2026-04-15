@@ -12,6 +12,7 @@ func TestLoadFlowYAMLAndValidate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "search.flow.yaml")
 	content := []byte(`
+schema_version: "1"
 name: baidu_search
 vars:
   query: 山东大学
@@ -74,8 +75,9 @@ func TestRunFlowLuaSteps(t *testing.T) {
 	defer L.Close()
 
 	flow := &Flow{
-		Name: "lua_only",
-		Vars: map[string]any{"prefix": "hello"},
+		SchemaVersion: "1",
+		Name:          "lua_only",
+		Vars:          map[string]any{"prefix": "hello"},
 		Steps: []FlowStep{
 			{
 				Action: "lua",
@@ -99,5 +101,74 @@ func TestRunFlowLuaSteps(t *testing.T) {
 	}
 	if len(result.Trace) != 2 {
 		t.Fatalf("unexpected trace count: %d", len(result.Trace))
+	}
+}
+
+func TestValidateFlowStrictRejectsMissingSchemaVersion(t *testing.T) {
+	flow := &Flow{
+		Name: "missing_schema",
+		Steps: []FlowStep{
+			{Action: "lua", Code: "return true"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected missing schema_version error")
+	}
+}
+
+func TestValidateFlowStrictRejectsArgCount(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "bad_args",
+		Steps: []FlowStep{
+			{Action: "type_text", Args: []any{"#kw"}},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected arg count error")
+	}
+}
+
+func TestValidateFlowStrictRejectsUnknownVariable(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "bad_var",
+		Steps: []FlowStep{
+			{Action: "type_text", Selector: "#kw", Text: "{{missing}}"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected unknown variable error")
+	}
+}
+
+func TestValidateFlowStrictRejectsBadSaveAs(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "bad_save_as",
+		Steps: []FlowStep{
+			{Action: "lua", Code: "return true", SaveAs: "bad-name"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected bad save_as error")
+	}
+}
+
+func TestValidateFlowStrictRejectsTypeMismatch(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "bad_type",
+		Steps: []FlowStep{
+			{Action: "wait_for_selector", Selector: "#kw", With: map[string]any{"timeout": "5000"}},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected type mismatch error")
 	}
 }

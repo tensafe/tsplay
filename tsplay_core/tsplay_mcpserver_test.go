@@ -3,11 +3,22 @@ package tsplay_core
 import (
 	"context"
 	"encoding/json"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
+
+func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
+	names := toolNamesForTest(NewTSPlayMCPServer())
+	want := []string{"tsplay.list_actions", "tsplay.run_flow", "tsplay.validate_flow"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("tool names = %#v, want %#v", names, want)
+	}
+}
 
 func TestHandleFlowListActionsTool(t *testing.T) {
 	result, err := handleFlowListActionsTool(context.Background(), mcp.CallToolRequest{})
@@ -40,6 +51,7 @@ func TestHandleValidateFlowTool(t *testing.T) {
 		Params: mcp.CallToolParams{
 			Arguments: map[string]any{
 				"flow": `
+schema_version: "1"
 name: validate_from_mcp
 steps:
   - action: lua
@@ -62,6 +74,16 @@ steps:
 	if payload["name"] != "validate_from_mcp" {
 		t.Fatalf("unexpected flow name: %#v", payload["name"])
 	}
+}
+
+func toolNamesForTest(mcpServer *server.MCPServer) []string {
+	value := reflect.ValueOf(mcpServer).Elem().FieldByName("tools")
+	names := make([]string, 0, value.Len())
+	for _, key := range value.MapKeys() {
+		names = append(names, key.String())
+	}
+	sort.Strings(names)
+	return names
 }
 
 func TestHandleRunFlowToolMissingFlow(t *testing.T) {

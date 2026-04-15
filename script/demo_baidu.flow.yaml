@@ -1,3 +1,4 @@
+schema_version: "1"
 name: baidu_search
 description: Search Baidu with a structured TSPlay flow.
 vars:
