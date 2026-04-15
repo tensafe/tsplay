@@ -263,6 +263,73 @@ func TestHandleDraftFlowToolAutoRepairsSelectors(t *testing.T) {
 	}
 }
 
+func TestHandleDraftFlowToolReturnsRepairHintsWhenValidationFails(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/upload",
+  "title": "Upload",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "file",
+      "label": "选择文件",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#fileInput"]
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "submit",
+      "text": "上传文件",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["text=\"上传文件\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "上传文件并提交",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	validation, ok := draft["validation"].(map[string]any)
+	if !ok || validation["valid"] != false {
+		t.Fatalf("expected validation.valid=false, got %#v", draft["validation"])
+	}
+	hints, ok := draft["repair_hints"].([]any)
+	if !ok || len(hints) == 0 {
+		t.Fatalf("expected repair_hints, got %#v", draft["repair_hints"])
+	}
+	firstHint, ok := hints[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected hint object, got %#v", hints[0])
+	}
+	if firstHint["step_path"] != "3" {
+		t.Fatalf("expected hint to target step 3, got %#v", firstHint)
+	}
+	suggestion, _ := firstHint["suggestion"].(string)
+	if !strings.Contains(suggestion, "allow_file_access=true") {
+		t.Fatalf("expected allow_file_access suggestion, got %#v", firstHint)
+	}
+}
+
 func TestHandleDraftFlowToolRequiresIntentAndObservationOrURL(t *testing.T) {
 	result, err := handleDraftFlowTool(context.Background(), mcp.CallToolRequest{})
 	if err != nil {

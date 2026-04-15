@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -30,6 +31,7 @@ type FlowDraft struct {
 	Validation        *FlowDraftValidation      `json:"validation,omitempty"`
 	AutoRepaired      bool                      `json:"auto_repaired,omitempty"`
 	SelectorRepairs   []FlowDraftSelectorRepair `json:"selector_repairs,omitempty"`
+	RepairHints       []FlowDraftRepairHint     `json:"repair_hints,omitempty"`
 	PlannedActions    []string                  `json:"planned_actions,omitempty"`
 	SuggestedVars     map[string]any            `json:"suggested_vars,omitempty"`
 	MatchedElements   []FlowDraftMatch          `json:"matched_elements,omitempty"`
@@ -67,6 +69,18 @@ type FlowDraftSelectorRepair struct {
 	Reason        string `json:"reason,omitempty"`
 }
 
+type FlowDraftRepairHint struct {
+	Priority        int      `json:"priority"`
+	StepPath        string   `json:"step_path,omitempty"`
+	Action          string   `json:"action,omitempty"`
+	Name            string   `json:"name,omitempty"`
+	Selector        string   `json:"selector,omitempty"`
+	Targets         []string `json:"targets,omitempty"`
+	Reason          string   `json:"reason"`
+	Suggestion      string   `json:"suggestion,omitempty"`
+	ValidationError string   `json:"validation_error,omitempty"`
+}
+
 type draftIntentAction struct {
 	Kind     string
 	Position int
@@ -101,6 +115,10 @@ type flowDraftBuilder struct {
 var draftIDXPathPattern = regexp.MustCompile(`^\s*//\*\[@id="([^"]+)"\]\s*$`)
 var draftQuotedLiteralPattern = regexp.MustCompile(`["'“”‘’]([^"'“”‘’]{1,160})["'“”‘’]`)
 var draftFilePathPattern = regexp.MustCompile(`([~/A-Za-z]:)?[/\\][^"'“”‘’\s]+\.[A-Za-z0-9]{1,8}`)
+var draftValidationStepPattern = regexp.MustCompile(`step ([0-9]+(?:\.[A-Za-z_]+|\.[0-9]+)*)`)
+var draftValidationAllowOptionPattern = regexp.MustCompile(`set ([a-z_]+)=true`)
+var draftValidationUnknownVariablePattern = regexp.MustCompile(`unknown variable "([^"]+)"`)
+var draftValidationMissingFieldPattern = regexp.MustCompile(`requires "?([a-z_]+)"?`)
 
 func BuildDraftFlow(options FlowDraftOptions) (*FlowDraft, error) {
 	if strings.TrimSpace(options.Intent) == "" {
@@ -175,6 +193,10 @@ func BuildDraftFlow(options FlowDraftOptions) (*FlowDraft, error) {
 	builder.draft.Validation = validateDraftFlow(builder.flow, options.Security)
 	if len(builder.draft.SelectorRepairs) == 0 {
 		builder.draft.SelectorRepairs = nil
+	}
+	builder.draft.RepairHints = buildDraftFlowRepairHints(builder.flow, builder.draft)
+	if len(builder.draft.RepairHints) == 0 {
+		builder.draft.RepairHints = nil
 	}
 
 	encoded, err := yaml.Marshal(builder.flow)
@@ -1228,4 +1250,231 @@ func applyDraftSelectorRepairsToMatches(matches []FlowDraftMatch, repairs []Flow
 			matches[index].Selector = selector
 		}
 	}
+}
+
+func buildDraftFlowRepairHints(flow *Flow, draft *FlowDraft) []FlowDraftRepairHint {
+	if flow == nil || draft == nil || draft.Validation == nil || draft.Validation.Valid {
+		return nil
+	}
+
+	hints := buildDraftValidationRepairHints(flow, draft.Validation.Error)
+	if len(hints) == 0 {
+		hints = append(hints, FlowDraftRepairHint{
+			Priority:        1,
+			Reason:          "The drafted Flow still does not pass validation after the selector repair pass.",
+			Suggestion:      "Start from the validation error, compare the affected step with tsplay.flow_schema and the current page observation, then apply the smallest possible fix.",
+			ValidationError: draft.Validation.Error,
+		})
+	}
+
+	if len(draft.SelectorRepairs) > 0 {
+		repairedSteps := map[string]bool{}
+		for _, repair := range draft.SelectorRepairs {
+			if strings.TrimSpace(repair.StepPath) != "" {
+				repairedSteps[repair.StepPath] = true
+			}
+		}
+		for index := range hints {
+			if repairedSteps[hints[index].StepPath] {
+				hints[index].Reason += " This step was already selector-repaired once, so inspect the action fields, variables, or policy flags next."
+			}
+		}
+	}
+
+	sort.SliceStable(hints, func(i, j int) bool {
+		if hints[i].Priority != hints[j].Priority {
+			return hints[i].Priority < hints[j].Priority
+		}
+		if hints[i].StepPath == hints[j].StepPath {
+			return hints[i].Reason < hints[j].Reason
+		}
+		return hints[i].StepPath < hints[j].StepPath
+	})
+	return dedupeDraftRepairHints(hints)
+}
+
+func buildDraftValidationRepairHints(flow *Flow, validationError string) []FlowDraftRepairHint {
+	validationError = strings.TrimSpace(validationError)
+	if validationError == "" {
+		return nil
+	}
+
+	stepPath := parseDraftValidationStepPath(validationError)
+	step, found := findFlowStepByPath(flow, stepPath)
+	hint := FlowDraftRepairHint{
+		Priority:        1,
+		StepPath:        stepPath,
+		ValidationError: validationError,
+	}
+	if found {
+		hint.Action = step.Action
+		hint.Name = step.Name
+		hint.Selector = step.Selector
+	}
+
+	switch {
+	case strings.Contains(validationError, "disabled by security policy"):
+		option := parseDraftValidationAllowOption(validationError)
+		hint.Targets = []string{"security_policy", "action"}
+		hint.Reason = "The drafted step is valid structurally, but it is blocked by the current safety flags."
+		if option != "" {
+			hint.Suggestion = fmt.Sprintf("Inspect step %s first. If this is a trusted automation, rerun draft_flow or validate_flow with %s=true; otherwise replace the step with a lower-risk action.", draftHintStepLabel(stepPath), option)
+		} else {
+			hint.Suggestion = "Inspect the blocked action first and decide whether to enable the matching allow_* flag or replace it with a lower-risk action."
+		}
+	case strings.Contains(validationError, "references unknown variable"):
+		unknownVar := parseDraftValidationUnknownVariable(validationError)
+		hint.Targets = []string{"variables", "save_as"}
+		hint.Reason = "This step depends on a variable that is not defined yet."
+		if unknownVar != "" {
+			hint.Suggestion = fmt.Sprintf("Inspect step %s and the steps right before it. Make sure %q exists in flow.vars or is produced earlier with save_as/set_var.", draftHintStepLabel(stepPath), unknownVar)
+		} else {
+			hint.Suggestion = "Inspect the affected step and the previous producing steps. Make sure every {{var}} is defined in vars or produced earlier with save_as/set_var."
+		}
+	case strings.Contains(validationError, "requires"):
+		field := parseDraftValidationMissingField(validationError)
+		hint.Targets = []string{"required_fields"}
+		if field != "" {
+			hint.Targets = append(hint.Targets, field)
+		}
+		hint.Reason = "The drafted step is missing a required field for its action."
+		if field != "" {
+			hint.Suggestion = fmt.Sprintf("Inspect step %s first and fill %q using the page observation, extracted variables, or a safer default.", draftHintStepLabel(stepPath), field)
+		} else {
+			hint.Suggestion = "Inspect the affected step first and fill the missing required field using the action schema and page observation."
+		}
+	case strings.Contains(validationError, "uses unsupported action"):
+		hint.Targets = []string{"action"}
+		hint.Reason = "The action name is not part of the current Flow DSL."
+		hint.Suggestion = "Inspect the action name first. Replace it with a supported action from tsplay.list_actions, or move the special logic into a lua escape hatch only if necessary."
+	case strings.Contains(validationError, "is not a valid variable name"):
+		hint.Targets = []string{"variables", "save_as"}
+		hint.Reason = "A variable or save_as name does not match the Flow identifier rules."
+		hint.Suggestion = "Rename the offending variable to letters, numbers, and underscores only, and keep the first character non-numeric."
+	case strings.Contains(validationError, "schema_version"):
+		hint.Priority = 0
+		hint.Targets = []string{"schema_version"}
+		hint.Reason = "The Flow schema version is missing or unsupported."
+		hint.Suggestion = fmt.Sprintf("Set schema_version to %q before validating again.", CurrentFlowSchemaVersion)
+	case strings.Contains(validationError, "flow must contain at least one step"):
+		hint.Priority = 0
+		hint.Targets = []string{"steps"}
+		hint.Reason = "The draft did not produce any executable steps."
+		hint.Suggestion = "Start from the user intent and page observation again, then add at least one concrete Flow step."
+	default:
+		hint.Targets = []string{"validation"}
+		hint.Reason = "The draft failed validation and needs a small targeted repair."
+		if stepPath != "" {
+			hint.Suggestion = fmt.Sprintf("Inspect step %s first and compare its fields against tsplay.flow_schema plus the observed selector candidates.", stepPath)
+		} else {
+			hint.Suggestion = "Inspect the validation error and compare the draft against tsplay.flow_schema before retrying."
+		}
+	}
+
+	return []FlowDraftRepairHint{hint}
+}
+
+func parseDraftValidationStepPath(validationError string) string {
+	matches := draftValidationStepPattern.FindStringSubmatch(validationError)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+func parseDraftValidationAllowOption(validationError string) string {
+	matches := draftValidationAllowOptionPattern.FindStringSubmatch(validationError)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+func parseDraftValidationUnknownVariable(validationError string) string {
+	matches := draftValidationUnknownVariablePattern.FindStringSubmatch(validationError)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+func parseDraftValidationMissingField(validationError string) string {
+	matches := draftValidationMissingFieldPattern.FindStringSubmatch(validationError)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+func findFlowStepByPath(flow *Flow, stepPath string) (FlowStep, bool) {
+	if flow == nil || strings.TrimSpace(stepPath) == "" {
+		return FlowStep{}, false
+	}
+	return findFlowStepInSequence(flow.Steps, strings.Split(stepPath, "."))
+}
+
+func findFlowStepInSequence(steps []FlowStep, tokens []string) (FlowStep, bool) {
+	if len(tokens) == 0 {
+		return FlowStep{}, false
+	}
+	index, err := strconv.Atoi(tokens[0])
+	if err != nil || index < 1 || index > len(steps) {
+		return FlowStep{}, false
+	}
+	step := steps[index-1]
+	if len(tokens) == 1 {
+		return step, true
+	}
+	if _, err := strconv.Atoi(tokens[1]); err == nil {
+		return findFlowStepInSequence(step.Steps, tokens[1:])
+	}
+	if len(tokens) < 3 {
+		return FlowStep{}, false
+	}
+	branch := tokens[1]
+	rest := tokens[2:]
+	switch branch {
+	case "condition":
+		if step.Condition == nil {
+			return FlowStep{}, false
+		}
+		return findFlowStepInSequence([]FlowStep{*step.Condition}, rest)
+	case "then":
+		return findFlowStepInSequence(step.Then, rest)
+	case "else":
+		return findFlowStepInSequence(step.Else, rest)
+	case "on_error":
+		return findFlowStepInSequence(step.OnError, rest)
+	case "try":
+		return findFlowStepInSequence(step.Steps, rest)
+	default:
+		return findFlowStepInSequence(step.Steps, tokens[1:])
+	}
+}
+
+func draftHintStepLabel(stepPath string) string {
+	if strings.TrimSpace(stepPath) == "" {
+		return "the reported step"
+	}
+	return stepPath
+}
+
+func dedupeDraftRepairHints(hints []FlowDraftRepairHint) []FlowDraftRepairHint {
+	seen := map[string]bool{}
+	deduped := make([]FlowDraftRepairHint, 0, len(hints))
+	for _, hint := range hints {
+		key := strings.Join([]string{
+			strconv.Itoa(hint.Priority),
+			hint.StepPath,
+			hint.Action,
+			hint.Reason,
+			hint.Suggestion,
+		}, "|")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		deduped = append(deduped, hint)
+	}
+	return deduped
 }

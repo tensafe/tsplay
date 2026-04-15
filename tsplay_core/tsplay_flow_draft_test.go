@@ -248,3 +248,57 @@ func TestBuildDraftFlowUploadIntent(t *testing.T) {
 		t.Fatalf("expected structural validation to pass, got %#v", draft.Validation)
 	}
 }
+
+func TestBuildDraftFlowValidationFailureProducesRepairHints(t *testing.T) {
+	observation := &PageObservation{
+		URL:          "https://example.com/upload",
+		Title:        "Upload",
+		ArtifactRoot: t.TempDir(),
+		Elements: []PageObservationElement{
+			{
+				Index:              1,
+				Tag:                "input",
+				Type:               "file",
+				ID:                 "fileInput",
+				Label:              "选择文件",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`#fileInput`},
+			},
+			{
+				Index:              2,
+				Tag:                "button",
+				Type:               "submit",
+				Text:               "上传文件",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`text="上传文件"`},
+			},
+		},
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:      "上传文件并提交",
+		Observation: observation,
+		Security:    &FlowSecurityPolicy{},
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if draft.Validation == nil || draft.Validation.Valid {
+		t.Fatalf("expected validation failure, got %#v", draft.Validation)
+	}
+	if len(draft.RepairHints) == 0 {
+		t.Fatalf("expected repair hints, got %#v", draft.RepairHints)
+	}
+	firstHint := draft.RepairHints[0]
+	if firstHint.StepPath != "3" {
+		t.Fatalf("expected first hint to point at upload_file step, got %#v", firstHint)
+	}
+	if !strings.Contains(firstHint.Suggestion, "allow_file_access=true") {
+		t.Fatalf("expected file access hint, got %#v", firstHint)
+	}
+	if firstHint.Action != "upload_file" {
+		t.Fatalf("expected upload_file action, got %#v", firstHint.Action)
+	}
+}

@@ -320,7 +320,7 @@ go run . -action srv -flow-root script -artifact-root artifacts
 2. 调 `tsplay.flow_examples`，拿到参考模板
 3. 如果已经有明确 URL 和用户意图，优先调 `tsplay.draft_flow`
 4. 如果需要更细粒度控制，也可以先调 `tsplay.observe_page` 再把 observation 传给 `tsplay.draft_flow`
-5. 查看 `tsplay.draft_flow` 返回里的 `validation` 和 `selector_repairs`
+5. 查看 `tsplay.draft_flow` 返回里的 `validation`、`selector_repairs` 和 `repair_hints`
 6. 如需单独二次校验，再调 `tsplay.validate_flow`
 7. 成功后再调用 `tsplay.run_flow`
 8. 失败时把原 Flow 和 run result 交给 `tsplay.repair_flow_context`
@@ -343,6 +343,7 @@ go run . -action srv -flow-root script -artifact-root artifacts
 - 生成一份结构化 Flow YAML
 - 自动跑一遍与 `tsplay.validate_flow` 对齐的校验
 - 如果 observation 里存在更稳的候选 selector，会自动修正一轮
+- 如果自动校验还没过，会直接返回按 step 排序的 `repair_hints`
 - 标出匹配到的元素、建议变量、假设项和未解决部分
 
 如果希望校验放开高风险动作，也可以和 `tsplay.validate_flow` 一样传：
