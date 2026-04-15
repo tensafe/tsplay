@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/playwright-community/playwright-go"
 	lua "github.com/yuin/gopher-lua"
 	"gopkg.in/yaml.v3"
 )
@@ -73,6 +74,10 @@ type FlowStepTrace struct {
 
 type FlowContext struct {
 	Vars map[string]any
+}
+
+type FlowRunOptions struct {
+	Headless bool
 }
 
 type flowActionSpec struct {
@@ -143,15 +148,24 @@ func LoadFlowFile(path string) (*Flow, error) {
 		return nil, err
 	}
 
-	var flow Flow
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".json":
-		err = json.Unmarshal(content, &flow)
-	default:
-		err = yaml.Unmarshal(content, &flow)
-	}
+	flow, err := ParseFlow(content, strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."))
 	if err != nil {
 		return nil, fmt.Errorf("parse flow %s: %w", path, err)
+	}
+	return flow, nil
+}
+
+func ParseFlow(content []byte, format string) (*Flow, error) {
+	var flow Flow
+	switch strings.ToLower(format) {
+	case "json":
+		if err := json.Unmarshal(content, &flow); err != nil {
+			return nil, err
+		}
+	default:
+		if err := yaml.Unmarshal(content, &flow); err != nil {
+			return nil, err
+		}
 	}
 	return &flow, nil
 }
@@ -198,6 +212,45 @@ func FlowActionNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
+	pw, err := playwright.Run()
+	if err != nil {
+		return nil, fmt.Errorf("could not start Playwright: %w", err)
+	}
+	defer pw.Stop()
+
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(options.Headless),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not launch browser: %w", err)
+	}
+	defer browser.Close()
+
+	page, err := browser.NewPage()
+	if err != nil {
+		return nil, fmt.Errorf("could not create page: %w", err)
+	}
+	defer page.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	udBrowser := L.NewUserData()
+	udBrowser.Value = browser
+	L.SetGlobal("browser", udBrowser)
+
+	udPage := L.NewUserData()
+	udPage.Value = page
+	L.SetGlobal("page", udPage)
+
+	for _, fn := range GlobalPlayWrightFunc {
+		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
+	}
+
+	return RunFlowInState(L, flow)
 }
 
 func RunFlowInState(L *lua.LState, flow *Flow) (*FlowResult, error) {

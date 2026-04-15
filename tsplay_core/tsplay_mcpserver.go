@@ -3,6 +3,7 @@ package tsplay_core
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -107,7 +108,7 @@ func NewMCPServer() *server.MCPServer {
 	})
 
 	mcpServer := server.NewMCPServer(
-		"example-servers/everything",
+		"tsplay",
 		"1.0.0",
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
@@ -208,9 +209,164 @@ func NewMCPServer() *server.MCPServer {
 		mcp.WithDescription("Returns the MCP_TINY_IMAGE"),
 	), handleGetTinyImageTool)
 
+	registerTSPlayFlowTools(mcpServer)
+
 	mcpServer.AddNotificationHandler("notification", handleNotification)
 
 	return mcpServer
+}
+
+func registerTSPlayFlowTools(mcpServer *server.MCPServer) {
+	mcpServer.AddTool(mcp.NewTool("tsplay.list_actions",
+		mcp.WithDescription("List structured TSPlay Flow actions and their argument schema."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), handleFlowListActionsTool)
+
+	mcpServer.AddTool(mcp.NewTool("tsplay.validate_flow",
+		mcp.WithDescription("Validate a TSPlay Flow YAML or JSON document without launching a browser."),
+		mcp.WithString("flow",
+			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
+		),
+		mcp.WithString("flow_path",
+			mcp.Description("Local path to a Flow YAML or JSON file. Use this or flow."),
+		),
+		mcp.WithString("format",
+			mcp.Description("Optional format hint: yaml or json."),
+			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), handleValidateFlowTool)
+
+	mcpServer.AddTool(mcp.NewTool("tsplay.run_flow",
+		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace."),
+		mcp.WithString("flow",
+			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
+		),
+		mcp.WithString("flow_path",
+			mcp.Description("Local path to a Flow YAML or JSON file. Use this or flow."),
+		),
+		mcp.WithString("format",
+			mcp.Description("Optional format hint: yaml or json."),
+			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithBoolean("headless",
+			mcp.Description("Run browser in headless mode. Defaults to true."),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), handleRunFlowTool)
+}
+
+func handleFlowListActionsTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return newJSONToolResult(map[string]any{
+		"actions": buildFlowActionManifest(),
+	})
+}
+
+func handleValidateFlowTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	flow, err := flowFromToolRequest(request)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"valid": false,
+			"error": err.Error(),
+		})
+	}
+	if err := ValidateFlow(flow); err != nil {
+		return newJSONToolResult(map[string]any{
+			"valid": false,
+			"name":  flow.Name,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"valid": true,
+		"name":  flow.Name,
+		"steps": len(flow.Steps),
+	})
+}
+
+func handleRunFlowTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	flow, err := flowFromToolRequest(request)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{
+		Headless: request.GetBool("headless", true),
+	})
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":     false,
+			"error":  err.Error(),
+			"result": result,
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":     true,
+		"result": result,
+	})
+}
+
+func flowFromToolRequest(request mcp.CallToolRequest) (*Flow, error) {
+	flowPath := request.GetString("flow_path", "")
+	if flowPath != "" {
+		return LoadFlowFile(flowPath)
+	}
+
+	flowContent := request.GetString("flow", "")
+	if flowContent == "" {
+		return nil, fmt.Errorf("either flow or flow_path is required")
+	}
+	return ParseFlow([]byte(flowContent), request.GetString("format", "yaml"))
+}
+
+func buildFlowActionManifest() []map[string]any {
+	descriptions := map[string]string{}
+	for _, fn := range GlobalPlayWrightFunc {
+		descriptions[fn.Name] = fn.Description_en
+	}
+	descriptions["lua"] = "Run an inline Lua code block. Prefer structured actions for normal browser steps and use lua only as an escape hatch."
+
+	actions := make([]map[string]any, 0, len(flowActionSpecs))
+	for _, name := range FlowActionNames() {
+		spec := flowActionSpecs[name]
+		args := make([]map[string]any, 0, len(spec.Args))
+		for _, arg := range spec.Args {
+			args = append(args, map[string]any{
+				"name":     arg.Name,
+				"required": arg.Required,
+			})
+		}
+		item := map[string]any{
+			"name":        name,
+			"description": descriptions[name],
+			"args":        args,
+		}
+		if spec.VarArgName != "" {
+			item["var_arg"] = spec.VarArgName
+		}
+		actions = append(actions, item)
+	}
+	return actions
+}
+
+func newJSONToolResult(value any) (*mcp.CallToolResult, error) {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return mcp.NewToolResultText(string(encoded)), nil
 }
 
 func generateResources() []mcp.Resource {

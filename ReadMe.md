@@ -184,6 +184,24 @@ Flow 步骤支持两种参数写法：
 
 `save_as` 会把动作返回值保存为变量，后续步骤可以通过 `{{变量名}}` 或 Lua 全局变量继续使用。
 
+## **14. MCP / OpenClaw 集成**
+
+TSPlay 可以作为 MCP server 启动，供 OpenClaw 或其他 Agent 调用结构化 Flow 能力：
+
+```bash
+go run . -action srv
+```
+
+当前暴露的 MCP 工具：
+
+| **工具名** | **说明** |
+| --- | --- |
+| `tsplay.list_actions` | 返回 Flow 可用 action 及参数 schema。 |
+| `tsplay.validate_flow` | 校验 Flow YAML/JSON，不启动浏览器。 |
+| `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace。 |
+
+`validate_flow` / `run_flow` 支持传入 `flow` 内容，或传入本地 `flow_path`。`run_flow` 默认 `headless=true`。
+
 # **大模型提示词**
 ```markdown
 # 智能助手提示词

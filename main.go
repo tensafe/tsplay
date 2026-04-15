@@ -96,47 +96,15 @@ func main() {
 			fmt.Println("Start As GPT.")
 		case "srv":
 			fmt.Println("Start As Web.")
+			tsplay_core.McpServerMCP()
 		}
 	}
 }
 
 func run_flow(flow *tsplay_core.Flow) {
-	pw, err := playwright.Run()
-	if err != nil {
-		log.Fatalf("could not start Playwright: %v", err)
-	}
-	defer pw.Stop()
-
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(g_headless),
+	result, err := tsplay_core.RunFlow(flow, tsplay_core.FlowRunOptions{
+		Headless: g_headless,
 	})
-	if err != nil {
-		log.Fatalf("could not launch browser: %v", err)
-	}
-	defer browser.Close()
-
-	page, err := browser.NewPage()
-	if err != nil {
-		log.Fatalf("could not create page: %v", err)
-	}
-	defer page.Close()
-
-	L := lua.NewState()
-	defer L.Close()
-
-	ud_b := L.NewUserData()
-	ud_b.Value = browser
-	L.SetGlobal("browser", ud_b)
-
-	ud_p := L.NewUserData()
-	ud_p.Value = page
-	L.SetGlobal("page", ud_p)
-
-	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
-		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
-	}
-
-	result, err := tsplay_core.RunFlowInState(L, flow)
 	if result != nil {
 		encoded, marshalErr := json.MarshalIndent(result, "", "  ")
 		if marshalErr != nil {
