@@ -18,20 +18,25 @@ type FlowDraftOptions struct {
 	FlowName     string
 	ArtifactRoot string
 	Observation  *PageObservation
+	Security     *FlowSecurityPolicy
 }
 
 type FlowDraft struct {
-	Intent          string           `json:"intent"`
-	FlowName        string           `json:"flow_name"`
-	Flow            *Flow            `json:"flow,omitempty"`
-	FlowYAML        string           `json:"flow_yaml,omitempty"`
-	PlannedActions  []string         `json:"planned_actions,omitempty"`
-	SuggestedVars   map[string]any   `json:"suggested_vars,omitempty"`
-	MatchedElements []FlowDraftMatch `json:"matched_elements,omitempty"`
-	Assumptions     []string         `json:"assumptions,omitempty"`
-	Warnings        []string         `json:"warnings,omitempty"`
-	Unresolved      []string         `json:"unresolved,omitempty"`
-	NextSteps       []string         `json:"next_steps,omitempty"`
+	Intent            string                    `json:"intent"`
+	FlowName          string                    `json:"flow_name"`
+	Flow              *Flow                     `json:"flow,omitempty"`
+	FlowYAML          string                    `json:"flow_yaml,omitempty"`
+	InitialValidation *FlowDraftValidation      `json:"initial_validation,omitempty"`
+	Validation        *FlowDraftValidation      `json:"validation,omitempty"`
+	AutoRepaired      bool                      `json:"auto_repaired,omitempty"`
+	SelectorRepairs   []FlowDraftSelectorRepair `json:"selector_repairs,omitempty"`
+	PlannedActions    []string                  `json:"planned_actions,omitempty"`
+	SuggestedVars     map[string]any            `json:"suggested_vars,omitempty"`
+	MatchedElements   []FlowDraftMatch          `json:"matched_elements,omitempty"`
+	Assumptions       []string                  `json:"assumptions,omitempty"`
+	Warnings          []string                  `json:"warnings,omitempty"`
+	Unresolved        []string                  `json:"unresolved,omitempty"`
+	NextSteps         []string                  `json:"next_steps,omitempty"`
 }
 
 type FlowDraftMatch struct {
@@ -42,6 +47,24 @@ type FlowDraftMatch struct {
 	Tag      string `json:"tag,omitempty"`
 	Text     string `json:"text,omitempty"`
 	Reason   string `json:"reason,omitempty"`
+}
+
+type FlowDraftValidation struct {
+	Valid bool   `json:"valid"`
+	Name  string `json:"name,omitempty"`
+	Steps int    `json:"steps,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+type FlowDraftSelectorRepair struct {
+	StepPath      string `json:"step_path"`
+	Action        string `json:"action,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Purpose       string `json:"purpose,omitempty"`
+	ObservedIndex int    `json:"observed_index,omitempty"`
+	FromSelector  string `json:"from_selector,omitempty"`
+	ToSelector    string `json:"to_selector,omitempty"`
+	Reason        string `json:"reason,omitempty"`
 }
 
 type draftIntentAction struct {
@@ -105,7 +128,7 @@ func BuildDraftFlow(options FlowDraftOptions) (*FlowDraft, error) {
 			Assumptions:     []string{},
 			Warnings:        []string{},
 			Unresolved:      []string{},
-			NextSteps:       []string{"Review the drafted selectors and TODO variables.", "Run tsplay.validate_flow before execution.", "Run tsplay.run_flow and iterate with tsplay.repair_flow_context if needed."},
+			NextSteps:       []string{"Review the drafted selectors and TODO variables.", "Review the auto validation result and any selector repairs.", "Run tsplay.run_flow and iterate with tsplay.repair_flow_context if needed."},
 			MatchedElements: []FlowDraftMatch{},
 		},
 	}
@@ -141,6 +164,17 @@ func BuildDraftFlow(options FlowDraftOptions) (*FlowDraft, error) {
 	}
 	if len(builder.draft.Unresolved) == 0 {
 		builder.draft.Unresolved = nil
+	}
+	builder.draft.InitialValidation = validateDraftFlow(builder.flow, options.Security)
+	repairs := repairDraftFlowSelectors(builder.flow, builder.observation, builder.draft.MatchedElements)
+	if len(repairs) > 0 {
+		builder.draft.AutoRepaired = true
+		builder.draft.SelectorRepairs = repairs
+		applyDraftSelectorRepairsToMatches(builder.draft.MatchedElements, repairs)
+	}
+	builder.draft.Validation = validateDraftFlow(builder.flow, options.Security)
+	if len(builder.draft.SelectorRepairs) == 0 {
+		builder.draft.SelectorRepairs = nil
 	}
 
 	encoded, err := yaml.Marshal(builder.flow)
@@ -880,6 +914,50 @@ func bestObservedSelector(element PageObservationElement) string {
 	return ""
 }
 
+func preferredObservedSelector(element PageObservationElement) string {
+	best := ""
+	bestScore := -1
+	for _, selector := range element.SelectorCandidates {
+		selector = strings.TrimSpace(selector)
+		if selector == "" {
+			continue
+		}
+		score := scoreObservedSelectorCandidate(selector)
+		if score > bestScore {
+			best = selector
+			bestScore = score
+		}
+	}
+	return best
+}
+
+func scoreObservedSelectorCandidate(selector string) int {
+	switch {
+	case strings.HasPrefix(selector, "[data-testid="):
+		return 100
+	case strings.HasPrefix(selector, "[data-test="):
+		return 98
+	case strings.HasPrefix(selector, "[data-cy="):
+		return 96
+	case strings.HasPrefix(selector, "#"):
+		return 90
+	case strings.Contains(selector, "[name="):
+		return 82
+	case strings.Contains(selector, "[placeholder="):
+		return 78
+	case strings.HasPrefix(selector, "[aria-label="):
+		return 76
+	case strings.HasPrefix(selector, "role="):
+		return 72
+	case strings.HasPrefix(selector, "text="):
+		return 68
+	case strings.HasPrefix(selector, "xpath="):
+		return 10
+	default:
+		return 40
+	}
+}
+
 func selectorFromDraftXPath(xpath string) string {
 	xpath = strings.TrimSpace(xpath)
 	if xpath == "" {
@@ -1002,4 +1080,152 @@ func draftHasAnyPlannedAction(actions []string, wants ...string) bool {
 		}
 	}
 	return false
+}
+
+func validateDraftFlow(flow *Flow, security *FlowSecurityPolicy) *FlowDraftValidation {
+	validation := &FlowDraftValidation{
+		Valid: false,
+	}
+	if flow == nil {
+		validation.Error = "flow is nil"
+		return validation
+	}
+	validation.Name = flow.Name
+	validation.Steps = len(flow.Steps)
+	if err := ValidateFlow(flow); err != nil {
+		validation.Error = err.Error()
+		return validation
+	}
+	if security != nil {
+		if err := ValidateFlowSecurity(flow, *security); err != nil {
+			validation.Error = err.Error()
+			return validation
+		}
+	}
+	validation.Valid = true
+	return validation
+}
+
+type draftSelectorRepairTarget struct {
+	Preferred     string
+	ObservedIndex int
+	Purpose       string
+}
+
+func repairDraftFlowSelectors(flow *Flow, observation *PageObservation, matches []FlowDraftMatch) []FlowDraftSelectorRepair {
+	if flow == nil || observation == nil || len(observation.Elements) == 0 {
+		return nil
+	}
+	targets := buildDraftSelectorRepairTargets(observation.Elements, matches)
+	if len(targets) == 0 {
+		return nil
+	}
+	repairs := []FlowDraftSelectorRepair{}
+	repairDraftSelectorStepSequence(flow.Steps, "", targets, &repairs)
+	return repairs
+}
+
+func buildDraftSelectorRepairTargets(elements []PageObservationElement, matches []FlowDraftMatch) map[string]draftSelectorRepairTarget {
+	purposeByIndex := map[int]string{}
+	for _, match := range matches {
+		if match.Source != "observed_element" || match.Index == 0 || strings.TrimSpace(match.Purpose) == "" {
+			continue
+		}
+		if _, ok := purposeByIndex[match.Index]; !ok {
+			purposeByIndex[match.Index] = match.Purpose
+		}
+	}
+
+	targets := map[string]draftSelectorRepairTarget{}
+	for _, element := range elements {
+		preferred := preferredObservedSelector(element)
+		if preferred == "" {
+			continue
+		}
+		target := draftSelectorRepairTarget{
+			Preferred:     preferred,
+			ObservedIndex: element.Index,
+			Purpose:       purposeByIndex[element.Index],
+		}
+		for _, selector := range element.SelectorCandidates {
+			selector = strings.TrimSpace(selector)
+			if selector == "" {
+				continue
+			}
+			targets[selector] = target
+		}
+	}
+	return targets
+}
+
+func repairDraftSelectorStepSequence(steps []FlowStep, parentPath string, targets map[string]draftSelectorRepairTarget, repairs *[]FlowDraftSelectorRepair) {
+	for index := range steps {
+		stepPath := flowStepPath(parentPath, index+1)
+		repairDraftSelectorStep(&steps[index], stepPath, targets, repairs)
+	}
+}
+
+func repairDraftSelectorStep(step *FlowStep, stepPath string, targets map[string]draftSelectorRepairTarget, repairs *[]FlowDraftSelectorRepair) {
+	if step == nil {
+		return
+	}
+	current := strings.TrimSpace(step.Selector)
+	if current != "" && len(flowReferences(current)) == 0 {
+		if target, ok := targets[current]; ok && target.Preferred != "" && target.Preferred != current {
+			*repairs = append(*repairs, FlowDraftSelectorRepair{
+				StepPath:      stepPath,
+				Action:        step.Action,
+				Name:          step.Name,
+				Purpose:       target.Purpose,
+				ObservedIndex: target.ObservedIndex,
+				FromSelector:  current,
+				ToSelector:    target.Preferred,
+				Reason:        "Replaced a weaker selector candidate with the preferred selector from the page observation.",
+			})
+			step.Selector = target.Preferred
+		}
+	}
+	if step.Condition != nil {
+		repairDraftSelectorStep(step.Condition, stepPath+".condition", targets, repairs)
+	}
+	if len(step.Steps) > 0 {
+		nestedPath := stepPath
+		if step.Action == "on_error" {
+			nestedPath = stepPath + ".try"
+		}
+		repairDraftSelectorStepSequence(step.Steps, nestedPath, targets, repairs)
+	}
+	if len(step.Then) > 0 {
+		repairDraftSelectorStepSequence(step.Then, stepPath+".then", targets, repairs)
+	}
+	if len(step.Else) > 0 {
+		repairDraftSelectorStepSequence(step.Else, stepPath+".else", targets, repairs)
+	}
+	if len(step.OnError) > 0 {
+		repairDraftSelectorStepSequence(step.OnError, stepPath+".on_error", targets, repairs)
+	}
+}
+
+func applyDraftSelectorRepairsToMatches(matches []FlowDraftMatch, repairs []FlowDraftSelectorRepair) {
+	if len(matches) == 0 || len(repairs) == 0 {
+		return
+	}
+	selectorByIndex := map[int]string{}
+	for _, repair := range repairs {
+		if repair.ObservedIndex == 0 || strings.TrimSpace(repair.ToSelector) == "" {
+			continue
+		}
+		selectorByIndex[repair.ObservedIndex] = repair.ToSelector
+	}
+	if len(selectorByIndex) == 0 {
+		return
+	}
+	for index := range matches {
+		if matches[index].Source != "observed_element" || matches[index].Index == 0 {
+			continue
+		}
+		if selector, ok := selectorByIndex[matches[index].Index]; ok {
+			matches[index].Selector = selector
+		}
+	}
 }

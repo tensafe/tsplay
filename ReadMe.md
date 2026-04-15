@@ -308,7 +308,7 @@ go run . -action srv -flow-root script -artifact-root artifacts
 | `tsplay.list_actions` | 返回 Flow 可用 action 及参数 schema |
 | `tsplay.flow_schema` | 返回 Flow JSON Schema、生成规则、selector 策略、authoring checklist 和 action manifest |
 | `tsplay.flow_examples` | 返回带 focus_actions 的参考示例和示例选择提示 |
-| `tsplay.draft_flow` | 输入用户意图和页面 URL / observation，自动观察页面并草拟可校验 Flow |
+| `tsplay.draft_flow` | 输入用户意图和页面 URL / observation，自动观察页面、草拟 Flow、自动校验，并在必要时做一轮 selector 修正 |
 | `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot、可交互元素和候选 selector |
 | `tsplay.repair_flow_context` | 根据失败 Flow 和 run result 组织修复上下文，附带失败分类、修复焦点和校验清单 |
 | `tsplay.validate_flow` | 只校验 Flow，不启动浏览器 |
@@ -320,9 +320,10 @@ go run . -action srv -flow-root script -artifact-root artifacts
 2. 调 `tsplay.flow_examples`，拿到参考模板
 3. 如果已经有明确 URL 和用户意图，优先调 `tsplay.draft_flow`
 4. 如果需要更细粒度控制，也可以先调 `tsplay.observe_page` 再把 observation 传给 `tsplay.draft_flow`
-5. 草拟好的 Flow 先交给 `tsplay.validate_flow`
-6. 成功后再调用 `tsplay.run_flow`
-7. 失败时把原 Flow 和 run result 交给 `tsplay.repair_flow_context`
+5. 查看 `tsplay.draft_flow` 返回里的 `validation` 和 `selector_repairs`
+6. 如需单独二次校验，再调 `tsplay.validate_flow`
+7. 成功后再调用 `tsplay.run_flow`
+8. 失败时把原 Flow 和 run result 交给 `tsplay.repair_flow_context`
 
 ### 从用户意图草拟 Flow
 
@@ -340,7 +341,16 @@ go run . -action srv -flow-root script -artifact-root artifacts
 - 自动打开页面并观察可交互元素
 - 尽量匹配搜索、导出、上传、登录、下拉选择等常见动作
 - 生成一份结构化 Flow YAML
+- 自动跑一遍与 `tsplay.validate_flow` 对齐的校验
+- 如果 observation 里存在更稳的候选 selector，会自动修正一轮
 - 标出匹配到的元素、建议变量、假设项和未解决部分
+
+如果希望校验放开高风险动作，也可以和 `tsplay.validate_flow` 一样传：
+
+- `allow_lua`
+- `allow_javascript`
+- `allow_file_access`
+- `allow_browser_state`
 
 如果已经提前调过 `tsplay.observe_page`，也可以把 observation JSON 直接传给 `tsplay.draft_flow`，避免重复打开页面。
 

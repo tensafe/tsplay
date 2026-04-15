@@ -196,6 +196,71 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	if err := ValidateFlow(flow); err != nil {
 		t.Fatalf("validate draft flow: %v", err)
 	}
+	validation, ok := draft["validation"].(map[string]any)
+	if !ok || validation["valid"] != true {
+		t.Fatalf("expected validation.valid=true, got %#v", draft["validation"])
+	}
+}
+
+func TestHandleDraftFlowToolAutoRepairsSelectors(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#query", "[data-testid=\"order-query\"]"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "搜索订单",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	if draft["auto_repaired"] != true {
+		t.Fatalf("expected auto_repaired=true, got %#v", draft["auto_repaired"])
+	}
+	repairs, ok := draft["selector_repairs"].([]any)
+	if !ok || len(repairs) == 0 {
+		t.Fatalf("expected selector repairs, got %#v", draft["selector_repairs"])
+	}
+	flowYAML, ok := draft["flow_yaml"].(string)
+	if !ok || !strings.Contains(flowYAML, `[data-testid="order-query"]`) {
+		t.Fatalf("expected repaired selector in flow yaml, got %q", flowYAML)
+	}
 }
 
 func TestHandleDraftFlowToolRequiresIntentAndObservationOrURL(t *testing.T) {

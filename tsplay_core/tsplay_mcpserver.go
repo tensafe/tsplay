@@ -277,7 +277,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	), handleFlowExamplesTool)
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.draft_flow",
-		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation. If observation is omitted, the tool will open the page first."),
+		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation, then auto-validate it and do one selector repair pass when a better observed selector exists. If observation is omitted, the tool will open the page first."),
 		mcp.WithString("intent",
 			mcp.Description("User intent in natural language, for example 搜索订单并导出 or upload a file and submit."),
 			mcp.Required(),
@@ -299,6 +299,18 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithNumber("max_elements",
 			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
+		),
+		mcp.WithBoolean("allow_lua",
+			mcp.Description("Allow lua during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_javascript",
+			mcp.Description("Allow execute_script and evaluate during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_file_access",
+			mcp.Description("Allow upload/download/screenshot/save_html actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_browser_state",
+			mcp.Description("Allow browser storage/cookie actions during the auto validation pass."),
 		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -500,12 +512,14 @@ func handleDraftFlowToolWithOptions(
 		}
 	}
 
+	security := flowSecurityPolicyFromToolRequest(request, options)
 	draft, err := BuildDraftFlow(FlowDraftOptions{
 		Intent:       intent,
 		URL:          url,
 		FlowName:     request.GetString("flow_name", ""),
 		ArtifactRoot: options.ArtifactRoot,
 		Observation:  observation,
+		Security:     &security,
 	})
 	if err != nil {
 		return newJSONToolResult(map[string]any{

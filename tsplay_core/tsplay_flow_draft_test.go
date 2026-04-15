@@ -74,6 +74,67 @@ func TestBuildDraftFlowSearchAndExport(t *testing.T) {
 	if draft.SuggestedVars["order_query"] != "TODO" {
 		t.Fatalf("expected TODO order_query, got %#v", draft.SuggestedVars["order_query"])
 	}
+	if draft.Validation == nil || !draft.Validation.Valid {
+		t.Fatalf("expected final validation to pass, got %#v", draft.Validation)
+	}
+}
+
+func TestBuildDraftFlowAutoRepairsSelectors(t *testing.T) {
+	observation := &PageObservation{
+		URL:          "https://example.com/orders",
+		Title:        "Orders",
+		ArtifactRoot: t.TempDir(),
+		Elements: []PageObservationElement{
+			{
+				Index:              1,
+				Tag:                "input",
+				Type:               "text",
+				ID:                 "query",
+				Label:              "Order keyword",
+				Placeholder:        "Search orders",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`#query`, `[data-testid="order-query"]`},
+				Attributes:         map[string]string{"data-testid": "order-query"},
+			},
+			{
+				Index:              2,
+				Tag:                "button",
+				Type:               "button",
+				ID:                 "search-button",
+				Text:               "Search",
+				Visible:            true,
+				Enabled:            true,
+				SelectorCandidates: []string{`#search-button`, `text="Search"`},
+			},
+		},
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:      "搜索订单",
+		Observation: observation,
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if draft.InitialValidation == nil || !draft.InitialValidation.Valid {
+		t.Fatalf("expected initial validation to pass, got %#v", draft.InitialValidation)
+	}
+	if !draft.AutoRepaired {
+		t.Fatalf("expected selector auto repair, got %#v", draft)
+	}
+	if len(draft.SelectorRepairs) == 0 {
+		t.Fatalf("expected selector repairs, got %#v", draft.SelectorRepairs)
+	}
+	if !strings.Contains(draft.FlowYAML, `[data-testid="order-query"]`) {
+		t.Fatalf("expected repaired selector in yaml: %s", draft.FlowYAML)
+	}
+	if strings.Contains(draft.FlowYAML, "\n    selector: \"#query\"") || strings.Contains(draft.FlowYAML, "\n    selector: '#query'") {
+		t.Fatalf("expected weak selector to be replaced: %s", draft.FlowYAML)
+	}
+	if draft.Validation == nil || !draft.Validation.Valid {
+		t.Fatalf("expected final validation to pass, got %#v", draft.Validation)
+	}
 }
 
 func TestBuildDraftFlowTitleAndTableExtraction(t *testing.T) {
@@ -182,5 +243,8 @@ func TestBuildDraftFlowUploadIntent(t *testing.T) {
 	}
 	if draft.SuggestedVars["upload_file_path"] != "TODO" {
 		t.Fatalf("expected TODO upload path, got %#v", draft.SuggestedVars["upload_file_path"])
+	}
+	if draft.Validation == nil || !draft.Validation.Valid {
+		t.Fatalf("expected structural validation to pass, got %#v", draft.Validation)
 	}
 }
