@@ -640,12 +640,48 @@ func TestValidateFlowStrictAcceptsBrowserConfig(t *testing.T) {
 	}
 }
 
+func TestValidateFlowStrictAcceptsUseSession(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_use_session",
+		Browser: &FlowBrowserConfig{
+			UseSession: "admin",
+			Timeout:    30000,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+}
+
 func TestValidateFlowStrictRejectsPersistentWithStorageState(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
 		Name:          "browser_config_conflict",
 		Browser: &FlowBrowserConfig{
 			Persistent:   true,
+			StorageState: "states/admin.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected browser config conflict error")
+	}
+}
+
+func TestValidateFlowStrictRejectsUseSessionWithStorageState(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_config_use_session_conflict",
+		Browser: &FlowBrowserConfig{
+			UseSession:   "admin",
 			StorageState: "states/admin.json",
 		},
 		Steps: []FlowStep{
@@ -675,6 +711,37 @@ func TestValidateFlowSecurityRejectsFlowBrowserStateByDefault(t *testing.T) {
 	}
 	if err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy()); err == nil {
 		t.Fatalf("expected browser config security policy error")
+	}
+}
+
+func TestValidateFlowSecurityRejectsNamedSessionByDefault(t *testing.T) {
+	root := t.TempDir()
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     root,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_named_session_policy",
+		Browser: &FlowBrowserConfig{
+			UseSession: "admin",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{
+		FileInputRoot:  root,
+		FileOutputRoot: root,
+	}); err == nil {
+		t.Fatalf("expected named session security policy error")
 	}
 }
 
@@ -835,6 +902,82 @@ func TestRunFlowBrowserStorageStateRoundTrip(t *testing.T) {
 		Steps: []FlowStep{
 			{Action: "navigate", URL: server.URL + "/check"},
 			{Action: "assert_text", Selector: "#ready", Text: "abc123", Timeout: 3000},
+		},
+	}
+
+	result, err := RunFlow(loadFlow, FlowRunOptions{
+		Headless:     true,
+		Security:     security,
+		ArtifactRoot: root,
+	})
+	if err != nil {
+		t.Fatalf("load flow: %v", err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected load result: %#v", result)
+	}
+}
+
+func TestRunFlowBrowserUseSessionRoundTrip(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/seed":
+			fmt.Fprint(w, `<html><body><script>localStorage.setItem("token","named-session"); window.location.href="/check";</script></body></html>`)
+		case "/check":
+			fmt.Fprint(w, `<html><body><div id="ready"></div><script>document.getElementById("ready").textContent = localStorage.getItem("token") || "missing";</script></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	security := &FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileInputRoot:     root,
+		FileOutputRoot:    root,
+	}
+	headless := true
+
+	saveFlow := &Flow{
+		SchemaVersion: "1",
+		Name:          "save_browser_state_for_named_session",
+		Browser: &FlowBrowserConfig{
+			Headless:         &headless,
+			SaveStorageState: "states/admin.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL + "/seed"},
+			{Action: "assert_text", Selector: "#ready", Text: "named-session", Timeout: 3000},
+		},
+	}
+
+	if _, err := RunFlow(saveFlow, FlowRunOptions{
+		Headless:     true,
+		Security:     security,
+		ArtifactRoot: root,
+	}); err != nil {
+		t.Fatalf("save flow: %v", err)
+	}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     root,
+		StorageStatePath: "states/admin.json",
+	}); err != nil {
+		t.Fatalf("register named session: %v", err)
+	}
+
+	loadFlow := &Flow{
+		SchemaVersion: "1",
+		Name:          "load_browser_state_from_named_session",
+		Browser: &FlowBrowserConfig{
+			UseSession: "admin",
+			Headless:   &headless,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL + "/check"},
+			{Action: "assert_text", Selector: "#ready", Text: "named-session", Timeout: 3000},
 		},
 	}
 

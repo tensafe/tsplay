@@ -21,10 +21,12 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
 		"tsplay.list_actions",
+		"tsplay.list_sessions",
 		"tsplay.observe_page",
 		"tsplay.repair_flow",
 		"tsplay.repair_flow_context",
 		"tsplay.run_flow",
+		"tsplay.save_session",
 		"tsplay.validate_flow",
 	}
 	if !reflect.DeepEqual(names, want) {
@@ -55,6 +57,87 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 	}
 	if !foundNavigate {
 		t.Fatalf("navigate action not found in manifest")
+	}
+}
+
+func TestHandleSaveSessionToolWithStorageStateJSON(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name":          "admin",
+				"storage_state": `{"cookies":[],"origins":[]}`,
+			},
+		},
+	}
+
+	result, err := handleSaveSessionToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	session, ok := payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %#v", payload["session"])
+	}
+	if session["name"] != "admin" {
+		t.Fatalf("unexpected session name: %#v", session["name"])
+	}
+	browser, ok := session["browser"].(map[string]any)
+	if !ok || browser["use_session"] != "admin" {
+		t.Fatalf("expected browser use_session, got %#v", session["browser"])
+	}
+	if _, err := os.Stat(filepath.Join(options.ArtifactRoot, "sessions", "storage", "admin.json")); err != nil {
+		t.Fatalf("expected saved storage state file: %v", err)
+	}
+}
+
+func TestHandleListSessionsTool(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     options.ArtifactRoot,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:         "operator",
+		ArtifactRoot: options.ArtifactRoot,
+		Profile:      "crm",
+		Session:      "operator",
+	}); err != nil {
+		t.Fatalf("seed operator session: %v", err)
+	}
+
+	result, err := handleListSessionsToolWithOptions(context.Background(), mcp.CallToolRequest{}, options)
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	sessions, ok := payload["sessions"].([]any)
+	if !ok || len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %#v", payload["sessions"])
+	}
+	first, ok := sessions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session item, got %#v", sessions[0])
+	}
+	if _, ok := first["browser"].(map[string]any); !ok {
+		t.Fatalf("expected browser snippet, got %#v", first["browser"])
+	}
+	if _, ok := first["resolved_browser"].(map[string]any); !ok {
+		t.Fatalf("expected resolved_browser snippet, got %#v", first["resolved_browser"])
 	}
 }
 
@@ -114,6 +197,7 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 
 	foundExtractExample := false
 	foundBrowserExample := false
+	foundNamedSessionExample := false
 	for _, example := range examples {
 		item, ok := example.(map[string]any)
 		if !ok {
@@ -136,12 +220,18 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 		if item["name"] == "browser_session_with_storage_state" {
 			foundBrowserExample = true
 		}
+		if item["name"] == "reuse_named_session" {
+			foundNamedSessionExample = true
+		}
 	}
 	if !foundExtractExample {
 		t.Fatalf("missing extract_text_and_set_var example")
 	}
 	if !foundBrowserExample {
 		t.Fatalf("missing browser_session_with_storage_state example")
+	}
+	if !foundNamedSessionExample {
+		t.Fatalf("missing reuse_named_session example")
 	}
 }
 

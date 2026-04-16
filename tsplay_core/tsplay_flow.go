@@ -31,6 +31,7 @@ type Flow struct {
 
 type FlowBrowserConfig struct {
 	Headless         *bool         `json:"headless,omitempty" yaml:"headless,omitempty"`
+	UseSession       string        `json:"use_session,omitempty" yaml:"use_session,omitempty"`
 	StorageState     string        `json:"storage_state,omitempty" yaml:"storage_state,omitempty"`
 	StorageStatePath string        `json:"storage_state_path,omitempty" yaml:"storage_state_path,omitempty"`
 	LoadStorageState string        `json:"load_storage_state,omitempty" yaml:"load_storage_state,omitempty"`
@@ -385,9 +386,20 @@ func validateFlowBrowserConfig(browser *FlowBrowserConfig) error {
 		return nil
 	}
 
+	if browser.UseSession != "" && strings.TrimSpace(browser.UseSession) == "" {
+		return fmt.Errorf("browser.use_session cannot be blank")
+	}
 	loadPath, err := browser.loadStorageStatePath()
 	if err != nil {
 		return err
+	}
+	if browser.UseSession != "" {
+		if loadPath != "" {
+			return fmt.Errorf("browser.use_session cannot be combined with browser.storage_state/load_storage_state")
+		}
+		if browser.wantsPersistentContext() {
+			return fmt.Errorf("browser.use_session cannot be combined with browser.persistent/profile/session")
+		}
 	}
 	if browser.wantsPersistentContext() && loadPath != "" {
 		return fmt.Errorf("browser.storage_state/load_storage_state is not supported together with persistent profile/session")
@@ -901,6 +913,20 @@ func validateFlowBrowserConfigSecurity(browser *FlowBrowserConfig, policy FlowSe
 	if strings.TrimSpace(policy.FileOutputRoot) == "" {
 		policy.FileOutputRoot = DefaultFlowArtifactRoot
 	}
+	if browser.UseSession != "" {
+		if !policy.AllowBrowserState {
+			return fmt.Errorf("flow browser config requires allow_browser_state=true only for trusted flows")
+		}
+		savedSession, err := LoadFlowSavedSession(browser.UseSession, policy.FileOutputRoot)
+		if err != nil {
+			return fmt.Errorf("resolve browser.use_session %q: %w", browser.UseSession, err)
+		}
+		if savedSession.Kind == flowSavedSessionKindStorageState && savedSession.StorageStatePath != "" {
+			if err := validateFlowFilePathValue("browser", "browser", "use_session", flowFileInputPath, savedSession.StorageStatePath, policy); err != nil {
+				return err
+			}
+		}
+	}
 	loadPath, err := browser.loadStorageStatePath()
 	if err != nil {
 		return err
@@ -1195,6 +1221,32 @@ func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserCo
 	config := FlowBrowserConfig{}
 	if flow != nil && flow.Browser != nil {
 		config = *flow.Browser
+	}
+	if strings.TrimSpace(config.UseSession) != "" {
+		savedConfig, err := ResolveFlowSavedSessionBrowserConfig(config.UseSession, flowBrowserStateRoot(options))
+		if err != nil {
+			return FlowBrowserConfig{}, fmt.Errorf("resolve browser.use_session %q: %w", config.UseSession, err)
+		}
+		if savedConfig != nil {
+			if savedConfig.StorageState != "" {
+				config.StorageState = savedConfig.StorageState
+			}
+			if savedConfig.StorageStatePath != "" {
+				config.StorageStatePath = savedConfig.StorageStatePath
+			}
+			if savedConfig.LoadStorageState != "" {
+				config.LoadStorageState = savedConfig.LoadStorageState
+			}
+			if savedConfig.Persistent {
+				config.Persistent = true
+			}
+			if savedConfig.Profile != "" {
+				config.Profile = savedConfig.Profile
+			}
+			if savedConfig.Session != "" {
+				config.Session = savedConfig.Session
+			}
+		}
 	}
 	if config.Headless == nil {
 		headless := options.Headless

@@ -309,11 +309,13 @@ go run . -action srv -flow-root script -artifact-root artifacts
 | `tsplay.flow_schema` | 返回 Flow JSON Schema、生成规则、selector 策略、authoring checklist 和 action manifest |
 | `tsplay.flow_examples` | 返回带 focus_actions 的参考示例和示例选择提示 |
 | `tsplay.draft_flow` | 输入用户意图和页面 URL / observation，自动观察页面、草拟 Flow、自动校验，并在必要时做一轮 selector 修正 |
+| `tsplay.list_sessions` | 列出已保存的命名浏览器会话，并返回可直接写进 Flow 的 `browser.use_session` 片段 |
 | `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot、可交互元素和候选 selector |
 | `tsplay.repair_flow` | 输入原始 Flow + repair_hints + 可选失败现场，直接返回统一的 repair_request 和可喂给模型的 prompt |
 | `tsplay.repair_flow_context` | 根据失败 Flow 和 run result 组织修复上下文，附带失败分类、修复焦点、统一结构的 repair_hints 和校验清单 |
 | `tsplay.validate_flow` | 只校验 Flow，不启动浏览器 |
 | `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace |
+| `tsplay.save_session` | 把 storage state 或 persistent profile 注册成命名会话，后续 Flow 可直接按名字复用 |
 
 ### 推荐给 Agent 的调用顺序
 
@@ -323,8 +325,10 @@ go run . -action srv -flow-root script -artifact-root artifacts
 4. 如果需要更细粒度控制，也可以先调 `tsplay.observe_page` 再把 observation 传给 `tsplay.draft_flow`
 5. 查看 `tsplay.draft_flow` 返回里的 `validation`、`selector_repairs` 和 `repair_hints`
 6. 如需单独二次校验，再调 `tsplay.validate_flow`
-7. 成功后再调用 `tsplay.run_flow`
-8. 失败时可直接调 `tsplay.repair_flow`，或者先调 `tsplay.repair_flow_context` 再交给 `tsplay.repair_flow`
+7. 如果业务要长期复用登录态，可在成功后用 `tsplay.save_session`
+8. 后续 Flow 直接用 `browser.use_session`
+9. 成功后再调用 `tsplay.run_flow`
+10. 失败时可直接调 `tsplay.repair_flow`，或者先调 `tsplay.repair_flow_context` 再交给 `tsplay.repair_flow`
 
 `tsplay.draft_flow` 和 `tsplay.repair_flow_context` 现在都会返回同一种 `repair_hints` 结构，而 `tsplay.repair_flow` 会把原始 Flow、repair_hints、失败现场、规则和 prompt 统一收口成一个 repair_request。
 
@@ -404,6 +408,7 @@ steps:
 支持的 `browser` 字段：
 
 - `headless`
+- `use_session`
 - `storage_state` / `storage_state_path` / `load_storage_state`
 - `save_storage_state`
 - `persistent`
@@ -416,9 +421,44 @@ steps:
 说明：
 
 - `storage_state`、`storage_state_path`、`load_storage_state` 是同义入口，表示运行前加载登录态
+- `use_session` 会从 `tsplay.save_session` 保存的命名会话里自动展开为 storage state 或 persistent profile 配置
 - `save_storage_state` 会在 Flow 结束后把当前登录态保存回文件
 - `profile` / `session` 会启用 persistent browser context，目录放在 artifact root 下
-- `persistent profile/session` 目前不能和 `storage_state` 同时使用
+- `persistent profile/session` 目前不能和 `storage_state` 或 `use_session` 同时使用
+
+### 显式会话工具
+
+如果希望业务方只记“会话名”，可以先保存一个命名会话：
+
+```json
+{
+  "name": "admin",
+  "storage_state_path": "states/admin.json"
+}
+```
+
+或者把 persistent profile 注册成命名会话：
+
+```json
+{
+  "name": "crm-admin",
+  "profile": "crm",
+  "session": "admin"
+}
+```
+
+之后调用 `tsplay.list_sessions` 会看到类似返回：
+
+- `browser: { "use_session": "admin" }`
+- `resolved_browser: { "storage_state": "sessions/storage/admin.json" }`
+
+这样后续 Flow 里只需要写：
+
+```yaml
+browser:
+  use_session: admin
+  headless: true
+```
 
 ## Action 速查
 

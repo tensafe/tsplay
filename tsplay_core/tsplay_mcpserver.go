@@ -266,6 +266,36 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithReadOnlyHintAnnotation(true),
 	), handleFlowListActionsTool)
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.list_sessions",
+		mcp.WithDescription("List named reusable browser sessions saved under the artifact root. Returns browser snippets such as use_session for direct Flow reuse."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleListSessionsToolWithOptions(ctx, request, options)
+	})
+
+	mcpServer.AddTool(mcp.NewTool("tsplay.save_session",
+		mcp.WithDescription("Save or register a named reusable browser session. Either store storage_state JSON, copy a storage_state file, or point at a persistent profile/session."),
+		mcp.WithString("name",
+			mcp.Description("Stable session alias, for example admin or finance_export."),
+			mcp.Required(),
+		),
+		mcp.WithString("storage_state",
+			mcp.Description("Optional storage state JSON content to save under this session name."),
+		),
+		mcp.WithString("storage_state_path",
+			mcp.Description("Optional existing storage state file path relative to the artifact root."),
+		),
+		mcp.WithString("profile",
+			mcp.Description("Optional persistent profile name to register instead of a storage_state file."),
+		),
+		mcp.WithString("session",
+			mcp.Description("Optional session name inside the persistent profile."),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleSaveSessionToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.flow_schema",
 		mcp.WithDescription("Return the JSON Schema and generation rules for TSPlay Flow. Use this before generating or repairing flows."),
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -469,6 +499,67 @@ func handleFlowListActionsTool(
 ) (*mcp.CallToolResult, error) {
 	return newJSONToolResult(map[string]any{
 		"actions": buildFlowActionManifest(),
+	})
+}
+
+func handleListSessionsTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleListSessionsToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleListSessionsToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	sessions, err := ListFlowSavedSessions(options.ArtifactRoot)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	items := make([]map[string]any, 0, len(sessions))
+	for _, session := range sessions {
+		items = append(items, BuildFlowSavedSessionView(session, options.ArtifactRoot))
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":       true,
+		"sessions": items,
+	})
+}
+
+func handleSaveSessionTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleSaveSessionToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleSaveSessionToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	session, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             request.GetString("name", ""),
+		ArtifactRoot:     options.ArtifactRoot,
+		StorageStateJSON: request.GetString("storage_state", ""),
+		StorageStatePath: request.GetString("storage_state_path", ""),
+		Profile:          request.GetString("profile", ""),
+		Session:          request.GetString("session", ""),
+	})
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":      true,
+		"session": BuildFlowSavedSessionView(*session, options.ArtifactRoot),
 	})
 }
 

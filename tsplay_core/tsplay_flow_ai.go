@@ -66,6 +66,7 @@ func BuildFlowJSONSchema() map[string]any {
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"headless":           map[string]any{"type": "boolean"},
+					"use_session":        map[string]any{"type": "string", "description": "Reuse a named saved session created by tsplay.save_session."},
 					"storage_state":      map[string]any{"type": "string", "description": "Load browser storage state from a file relative to the artifact root."},
 					"storage_state_path": map[string]any{"type": "string", "description": "Alias of storage_state."},
 					"load_storage_state": map[string]any{"type": "string", "description": "Alias of storage_state."},
@@ -487,6 +488,25 @@ steps:
 `,
 		},
 		{
+			"name":          "reuse_named_session",
+			"description":   "Reference a named reusable session alias instead of hardcoding storage_state paths in every Flow.",
+			"focus_actions": []string{"navigate", "assert_visible"},
+			"when_to_use":   "A business team already saved a login session with tsplay.save_session and wants future flows to reuse it by name.",
+			"flow": `schema_version: "1"
+name: admin_orders_from_named_session
+browser:
+  use_session: admin
+  headless: true
+  timeout: 30000
+steps:
+  - action: navigate
+    url: https://example.com/admin/orders
+  - action: assert_visible
+    selector: "#orders-table"
+    timeout: 10000
+`,
+		},
+		{
 			"name":           "lua_escape_hatch",
 			"description":    "Use lua only for cases not yet expressible by structured actions.",
 			"focus_actions":  []string{"lua"},
@@ -512,7 +532,7 @@ func flowSchemaGenerationRules() []string {
 		`Always include schema_version: "1".`,
 		"Prefer named parameters over args for readability and validation.",
 		"Generate structured Flow first. Use lua only as an explicit escape hatch.",
-		"Put session-wide browser concerns such as headless, storage_state, timeout, viewport, user_agent, or persistent profile naming in the top-level browser block.",
+		"Put session-wide browser concerns such as headless, use_session, storage_state, timeout, viewport, user_agent, or persistent profile naming in the top-level browser block.",
 		"Turn visible page facts into variables with extract_text + save_as, then use set_var when later steps need a stable derived value.",
 		"Use assert_visible/assert_text for business checks, retry for flaky page interactions, if for optional page states, foreach for lists, on_error for local recovery, and wait_until for polling conditions.",
 		"Keep steps small and named so trace artifacts and repair context point to an exact failure location.",
