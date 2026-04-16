@@ -78,6 +78,7 @@ type FlowStep struct {
 	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
 	SavePath     string   `json:"save_path,omitempty" yaml:"save_path,omitempty"`
 	Pattern      string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	From         any      `json:"from,omitempty" yaml:"from,omitempty"`
 	Index        int      `json:"index,omitempty" yaml:"index,omitempty"`
 	ContextIndex int      `json:"context_index,omitempty" yaml:"context_index,omitempty"`
 	Times        int      `json:"times,omitempty" yaml:"times,omitempty"`
@@ -154,6 +155,7 @@ type FlowSecurityPolicy struct {
 	AllowJavaScript   bool   `json:"allow_javascript"`
 	AllowFileAccess   bool   `json:"allow_file_access"`
 	AllowBrowserState bool   `json:"allow_browser_state"`
+	AllowHTTP         bool   `json:"allow_http"`
 	FileInputRoot     string `json:"file_input_root,omitempty"`
 	FileOutputRoot    string `json:"file_output_root,omitempty"`
 }
@@ -216,6 +218,8 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"get_html":              {Args: []flowArgSpec{{Name: "selector"}}},
 	"get_all_links":         {Args: []flowArgSpec{{Name: "selector"}}},
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
+	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
+	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"find_element":          {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"find_elements":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"is_visible":            {Args: []flowArgSpec{{Name: "selector", Required: true}}},
@@ -243,6 +247,7 @@ func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
 		AllowJavaScript:   true,
 		AllowFileAccess:   true,
 		AllowBrowserState: true,
+		AllowHTTP:         true,
 	}
 }
 
@@ -327,6 +332,15 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 				return err
 			}
 			knownVars[step.SaveAs] = nil
+			continue
+		}
+		if step.Action == "http_request" {
+			if err := validateHTTPRequestFlowStep(stepPath, step, spec, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
 			continue
 		}
 
@@ -650,6 +664,67 @@ func validateSetVarFlowStep(stepPath string, step FlowStep, knownVars map[string
 	return nil
 }
 
+func validateHTTPRequestFlowStep(stepPath string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+	if len(step.Args) > 0 {
+		if err := validateFlowStepArgs(stepPath, step, spec, knownVars); err != nil {
+			return err
+		}
+	} else {
+		if err := validateFlowStepNamedParams(stepPath, step, spec, knownVars); err != nil {
+			return err
+		}
+	}
+
+	bodyModes := 0
+	for _, name := range []string{"body", "json", "form"} {
+		value, ok := step.param(name)
+		if !ok || value == nil {
+			continue
+		}
+		bodyModes++
+	}
+	hasMultipart := false
+	for _, name := range []string{"multipart_files", "multipart_fields"} {
+		value, ok := step.param(name)
+		if !ok || value == nil {
+			continue
+		}
+		if listLen(value) == 0 {
+			if typed, ok := value.(map[string]any); ok && len(typed) == 0 {
+				continue
+			}
+		}
+		hasMultipart = true
+		break
+	}
+	if hasMultipart {
+		bodyModes++
+	}
+	if bodyModes > 1 {
+		return fmt.Errorf("step %s action %q accepts only one of body, json, form, or multipart data", stepPath, step.Action)
+	}
+
+	if value, ok := step.param("response_as"); ok && len(flowReferences(value)) == 0 {
+		responseAs := strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
+		switch responseAs {
+		case "", "auto", "text", "json":
+		default:
+			return fmt.Errorf("step %s action %q parameter %q must be one of auto, text, or json", stepPath, step.Action, "response_as")
+		}
+	}
+
+	if value, ok := step.param("timeout"); ok && len(flowReferences(value)) == 0 {
+		timeout, err := intParam(value)
+		if err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, step.Action, "timeout", err)
+		}
+		if timeout < 1 {
+			return fmt.Errorf("step %s action %q parameter %q must be at least 1", stepPath, step.Action, "timeout")
+		}
+	}
+	return nil
+}
+
 func validateFlowStepArgs(stepIndex string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
 	if len(step.presentNamedParams()) > 0 {
 		return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepIndex, step.Action)
@@ -754,6 +829,11 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 			return nil
 		}
 		return fmt.Errorf("must be a string")
+	case "bool":
+		if _, ok := value.(bool); ok {
+			return nil
+		}
+		return fmt.Errorf("must be a boolean")
 	case "int":
 		if isIntegerValue(value) {
 			return nil
@@ -769,6 +849,11 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 			return nil
 		}
 		return fmt.Errorf("must be a list of strings")
+	case "object":
+		if _, ok := value.(map[string]any); ok {
+			return nil
+		}
+		return fmt.Errorf("must be an object")
 	case "steps":
 		if _, ok := value.([]FlowStep); ok {
 			return nil
@@ -791,12 +876,16 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "file_path", "save_path", "pattern", "item_var", "index_var":
+	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
 		return "string"
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
+		return "bool"
 	case "timeout", "index", "context_index", "times", "interval_ms":
 		return "int"
 	case "seconds":
 		return "number"
+	case "headers", "query", "form", "multipart_files", "multipart_fields":
+		return "object"
 	case "files":
 		return "string_list"
 	case "steps":
@@ -805,6 +894,8 @@ func flowParamType(name string) string {
 		return "items"
 	case "condition":
 		return "condition"
+	case "from", "json":
+		return "any"
 	default:
 		return ""
 	}
@@ -835,6 +926,9 @@ func validateFlowStepSequenceSecurity(steps []FlowStep, policy FlowSecurityPolic
 			option := flowActionSecurityOption(group)
 			return fmt.Errorf("step %s action %q is disabled by security policy; set %s=true only for trusted flows", stepPath, step.Action, option)
 		}
+		if stepRequiresFileAccess(step) && !policy.AllowFileAccess {
+			return fmt.Errorf("step %s action %q is disabled by security policy; set allow_file_access=true only for trusted flows", stepPath, step.Action)
+		}
 		if err := forEachNestedFlowStepSequence(step, stepPath, func(nestedSteps []FlowStep, nestedPath string) error {
 			return validateFlowStepSequenceSecurity(nestedSteps, policy, nestedPath)
 		}); err != nil {
@@ -850,6 +944,8 @@ func flowActionSecurityGroup(action string) string {
 		return "lua"
 	case "execute_script", "evaluate":
 		return "javascript"
+	case "http_request":
+		return "http"
 	case "screenshot", "screenshot_element", "save_html", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
@@ -869,6 +965,8 @@ func flowActionSecurityOption(group string) string {
 		return "allow_file_access"
 	case "browser_state":
 		return "allow_browser_state"
+	case "http":
+		return "allow_http"
 	default:
 		return "allow_unsafe"
 	}
@@ -884,9 +982,35 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 		return policy.AllowFileAccess
 	case "browser_state":
 		return policy.AllowBrowserState
+	case "http":
+		return policy.AllowHTTP
 	default:
 		return true
 	}
+}
+
+func stepRequiresFileAccess(step FlowStep) bool {
+	required := false
+	_ = forEachFlowFilePathValue(step, func(_ string, _ flowFilePathRole, value any) error {
+		if value == nil {
+			return nil
+		}
+		if typed, ok := value.(string); ok && strings.TrimSpace(typed) == "" {
+			return nil
+		}
+		if typed, ok := value.([]string); ok && len(typed) == 0 {
+			return nil
+		}
+		if typed, ok := value.([]any); ok && len(typed) == 0 {
+			return nil
+		}
+		if typed, ok := value.(map[string]any); ok && len(typed) == 0 {
+			return nil
+		}
+		required = true
+		return nil
+	})
+	return required
 }
 
 type flowFilePathRole string
@@ -1025,6 +1149,13 @@ func validateFlowFilePathValue(stepIndex string, action string, name string, rol
 			}
 		}
 		return nil
+	case map[string]any:
+		for _, item := range typed {
+			if err := validateFlowFilePathValue(stepIndex, action, name, role, item, policy); err != nil {
+				return err
+			}
+		}
+		return nil
 	case string:
 		root := flowFileRootForRole(role, policy)
 		if root == "" {
@@ -1084,6 +1215,8 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"path": flowFileOutputPath}
 	case "download_file", "download_url":
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
+	case "http_request":
+		return map[string]flowFilePathRole{"multipart_files": flowFileInputPath, "save_path": flowFileOutputPath}
 	case "upload_file":
 		return map[string]flowFilePathRole{"file_path": flowFileInputPath}
 	case "upload_multiple_files":
@@ -2089,6 +2222,10 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowExtractTextStep(L, ctx, step)
 	case "set_var":
 		return runFlowSetVarStep(ctx, step)
+	case "http_request":
+		return runFlowHTTPRequestStep(L, ctx, step)
+	case "json_extract":
+		return runFlowJSONExtractStep(ctx, step)
 	case "assert_visible":
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
@@ -2552,6 +2689,9 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	}
 	addString("save_path", step.SavePath)
 	addString("pattern", step.Pattern)
+	if step.From != nil {
+		params["from"] = step.From
+	}
 	if step.Index != 0 {
 		params["index"] = step.Index
 	}
@@ -2610,6 +2750,24 @@ func (step FlowStep) param(name string) (any, bool) {
 			return value, true
 		}
 	}
+	if len(step.Args) > 0 {
+		spec, ok := flowActionSpecs[step.Action]
+		if ok {
+			for i, value := range step.Args {
+				if i < len(spec.Args) && spec.Args[i].Name == name {
+					return value, true
+				}
+			}
+			if spec.VarArgName == name {
+				if len(step.Args) <= len(spec.Args) {
+					return nil, false
+				}
+				items := make([]any, 0, len(step.Args)-len(spec.Args))
+				items = append(items, step.Args[len(spec.Args):]...)
+				return items, true
+			}
+		}
+	}
 
 	switch name {
 	case "url":
@@ -2649,6 +2807,11 @@ func (step FlowStep) param(name string) (any, bool) {
 		return stringParam(step.SavePath)
 	case "pattern":
 		return stringParam(step.Pattern)
+	case "from":
+		if step.From == nil {
+			return nil, false
+		}
+		return step.From, true
 	case "index":
 		if step.Index == 0 {
 			return nil, false

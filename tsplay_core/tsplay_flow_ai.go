@@ -34,6 +34,7 @@ func BuildFlowJSONSchema() map[string]any {
 		"files":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"save_path":         map[string]any{"type": "string"},
 		"pattern":           map[string]any{"type": "string"},
+		"from":              map[string]any{"description": "Input value for json_extract. Can be a variable placeholder or structured data."},
 		"index":             map[string]any{"type": "integer"},
 		"context_index":     map[string]any{"type": "integer"},
 	}
@@ -244,10 +245,16 @@ func flowParamJSONSchema(name string) map[string]any {
 		"description": "Full variable placeholder, for example {{timeout_ms}}.",
 	}
 	switch flowParamType(name) {
+	case "any":
+		return map[string]any{}
+	case "bool":
+		return map[string]any{"oneOf": []any{map[string]any{"type": "boolean"}, placeholder}}
 	case "int":
 		return map[string]any{"oneOf": []any{map[string]any{"type": "integer"}, placeholder}}
 	case "number":
 		return map[string]any{"oneOf": []any{map[string]any{"type": "number"}, placeholder}}
+	case "object":
+		return map[string]any{"oneOf": []any{map[string]any{"type": "object"}, placeholder}}
 	case "string_list":
 		return map[string]any{"oneOf": []any{map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, placeholder}}
 	default:

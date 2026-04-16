@@ -1229,6 +1229,59 @@ steps:
 	}
 }
 
+func TestHandleValidateFlowToolRejectsHTTPWithoutAllow(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: validate_http_from_mcp
+steps:
+  - action: http_request
+    url: https://example.com/api
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != false {
+		t.Fatalf("expected invalid flow, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "allow_http") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+
+	allowedRequest := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: validate_http_from_mcp
+steps:
+  - action: http_request
+    url: https://example.com/api
+`,
+				"allow_http": true,
+			},
+		},
+	}
+	result, err = handleValidateFlowTool(context.Background(), allowedRequest)
+	if err != nil {
+		t.Fatalf("validate flow with allow_http: %v", err)
+	}
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != true {
+		t.Fatalf("expected valid flow, got %#v", payload)
+	}
+}
+
 func TestHandleValidateFlowToolRestrictsFlowPathRoot(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

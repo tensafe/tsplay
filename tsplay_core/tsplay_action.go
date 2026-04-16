@@ -85,6 +85,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"intercept_request", intercept_request, "拦截网络请求", "Intercept and modify network requests. Example: intercept_request(function(request) return 'https://example.com' end). Parameters: callback (function, pattern) - A Lua function to handle intercepted requests."},
 	{"block_request", block_request, "阻止指定的网络请求", "Block specific network requests. Example: block_request('*.png'). Parameters: pattern (string) - The pattern of requests to block."},
 	{"get_response", get_response, "获取网络请求的响应", "Get the response of a network request. Example: get_response('https://example.com/api'). Parameters: url (string) - The URL of the request to get the response for."},
+	{"http_request", http_request, "发起 HTTP 请求", "Send an HTTP request. Example: http_request({url='https://example.com/api', method='POST', json={query='山东'}}). Parameters: config (table) - Request settings such as url, method, headers, query, json, form, multipart_files, and response_as."},
+	{"json_extract", json_extract, "提取 JSON 路径值", "Extract a value from JSON-like data. Example: json_extract(response, '$.body.text'). Parameters: value (any) - The JSON object, array, or JSON string; path (string) - A path like $.body.text or $.items[0]."},
 
 	// StateStorage 管理 / State Storage Management
 	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},

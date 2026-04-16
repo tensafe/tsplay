@@ -2,6 +2,7 @@ package tsplay_core
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -617,6 +618,59 @@ func TestValidateFlowSecurityRejectsBrowserStateByDefault(t *testing.T) {
 	}
 }
 
+func TestValidateFlowSecurityRejectsHTTPByDefault(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "http_policy",
+		Steps: []FlowStep{
+			{Action: "http_request", URL: "https://example.com/api"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy())
+	if err == nil {
+		t.Fatalf("expected http security policy error")
+	}
+	if !strings.Contains(err.Error(), "allow_http") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateFlowSecurityRejectsHTTPRequestFileAccessWithoutAllow(t *testing.T) {
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "http_file_policy",
+		Steps: []FlowStep{
+			{
+				Action: "http_request",
+				URL:    "https://example.com/api",
+				With: map[string]any{
+					"multipart_files": map[string]any{"image": "captcha.png"},
+				},
+			},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	err := ValidateFlowSecurity(flow, FlowSecurityPolicy{
+		AllowHTTP:      true,
+		FileInputRoot:  root,
+		FileOutputRoot: root,
+	})
+	if err == nil {
+		t.Fatalf("expected http file access security policy error")
+	}
+	if !strings.Contains(err.Error(), "allow_file_access") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestValidateFlowStrictAcceptsBrowserConfig(t *testing.T) {
 	headless := true
 	flow := &Flow{
@@ -842,6 +896,148 @@ func TestRunFlowAssertVisibleAndText(t *testing.T) {
 	}
 	if result.Trace[2].OutputSummary == "" {
 		t.Fatalf("expected assert_text output summary")
+	}
+}
+
+func TestRunFlowHTTPRequestAndJSONExtract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("q"); got != "山东" {
+			t.Fatalf("unexpected query: %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"answer":"山东","items":["山东","济南"]}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "http_json_extract",
+		Steps: []FlowStep{
+			{
+				Action: "http_request",
+				URL:    server.URL,
+				SaveAs: "api_result",
+				With: map[string]any{
+					"query":       map[string]any{"q": "山东"},
+					"response_as": "json",
+				},
+			},
+			{
+				Action: "json_extract",
+				From:   "{{api_result}}",
+				Path:   "$.body.answer",
+				SaveAs: "answer",
+			},
+			{
+				Action: "json_extract",
+				From:   "{{api_result}}",
+				Path:   "$.body.items[1]",
+				SaveAs: "city",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowHTTP: true},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["answer"]; got != "山东" {
+		t.Fatalf("answer = %#v", got)
+	}
+	if got := result.Vars["city"]; got != "济南" {
+		t.Fatalf("city = %#v", got)
+	}
+	apiResult, ok := result.Vars["api_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("api_result = %#v", result.Vars["api_result"])
+	}
+	if got := apiResult["status"]; got != 200 {
+		t.Fatalf("status = %#v", got)
+	}
+}
+
+func TestRunFlowHTTPRequestMultipartAndSavePath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.txt"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		if got := r.FormValue("scene"); got != "login" {
+			t.Fatalf("unexpected scene: %q", got)
+		}
+		file, _, err := r.FormFile("image")
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart content: %v", err)
+		}
+		if string(content) != "captcha-image" {
+			t.Fatalf("unexpected multipart content: %q", string(content))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"ABCD"}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "http_multipart",
+		Steps: []FlowStep{
+			{
+				Action:   "http_request",
+				URL:      server.URL,
+				SaveAs:   "ocr_result",
+				SavePath: "responses/ocr.json",
+				With: map[string]any{
+					"multipart_files":  map[string]any{"image": "captcha.txt"},
+					"multipart_fields": map[string]any{"scene": "login"},
+					"response_as":      "json",
+				},
+			},
+			{
+				Action: "json_extract",
+				From:   "{{ocr_result}}",
+				Path:   "$.body.text",
+				SaveAs: "captcha_text",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["captcha_text"]; got != "ABCD" {
+		t.Fatalf("captcha_text = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "ocr.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"text":"ABCD"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
 	}
 }
 

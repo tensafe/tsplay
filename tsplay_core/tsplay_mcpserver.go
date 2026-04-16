@@ -378,6 +378,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_browser_state",
 			mcp.Description("Allow browser storage/cookie actions during the auto validation pass."),
 		),
+		mcp.WithBoolean("allow_http",
+			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
+		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleDraftFlowToolWithOptions(ctx, request, options)
@@ -491,6 +494,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_browser_state",
 			mcp.Description("Allow browser storage/cookie export actions for this request. Defaults to false."),
 		),
+		mcp.WithBoolean("allow_http",
+			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleValidateFlowToolWithOptions(ctx, request, options)
@@ -522,6 +528,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_browser_state",
 			mcp.Description("Allow browser storage/cookie export actions for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_http",
+			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
 		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1080,6 +1089,7 @@ func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPl
 		AllowJavaScript:   request.GetBool("allow_javascript", false),
 		AllowFileAccess:   request.GetBool("allow_file_access", false),
 		AllowBrowserState: request.GetBool("allow_browser_state", false),
+		AllowHTTP:         request.GetBool("allow_http", false),
 		FileInputRoot:     options.ArtifactRoot,
 		FileOutputRoot:    options.ArtifactRoot,
 	}
@@ -1140,6 +1150,8 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["foreach"] = "Run nested Flow steps once for each item in a list."
 	descriptions["on_error"] = "Run nested Flow steps and execute an error handler block if they fail."
 	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
+	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
+	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
