@@ -22,6 +22,7 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 		"tsplay.flow_schema",
 		"tsplay.list_actions",
 		"tsplay.observe_page",
+		"tsplay.repair_flow",
 		"tsplay.repair_flow_context",
 		"tsplay.run_flow",
 		"tsplay.validate_flow",
@@ -543,6 +544,177 @@ steps:
 	}
 	if !strings.Contains(payload["error"].(string), "run_result or trace") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+}
+
+func TestHandleRepairFlowToolWithRepairHints(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: upload_orders
+steps:
+  - action: navigate
+    url: https://example.com/upload
+  - action: wait_for_selector
+    selector: "#fileInput"
+    timeout: 10000
+  - action: upload_file
+    selector: "#fileInput"
+    file_path: "{{upload_file_path}}"
+`,
+				"repair_hints": `{
+  "draft": {
+    "repair_hints": [
+      {
+        "priority": 1,
+        "source": "draft_validation",
+        "step_path": "3",
+        "action": "upload_file",
+        "targets": ["security_policy", "action"],
+        "reason": "The drafted step is valid structurally, but it is blocked by the current safety flags.",
+        "suggestion": "Inspect step 3 first. If this is a trusted automation, rerun draft_flow or validate_flow with allow_file_access=true; otherwise replace the step with a lower-risk action.",
+        "error": "step 3 action \"upload_file\" is disabled by security policy; set allow_file_access=true only for trusted flows",
+        "failure_category": "validation"
+      }
+    ]
+  }
+}`,
+			},
+		},
+	}
+
+	result, err := handleRepairFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("repair flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	repair, ok := payload["repair"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected repair payload, got %#v", payload["repair"])
+	}
+	targetSteps, ok := repair["target_steps"].([]any)
+	if !ok || len(targetSteps) != 1 || targetSteps[0] != "3" {
+		t.Fatalf("expected target step 3, got %#v", repair["target_steps"])
+	}
+	prompt, ok := repair["prompt"].(string)
+	if !ok || !strings.Contains(prompt, "Original flow:") || !strings.Contains(prompt, "step=3 action=upload_file") {
+		t.Fatalf("unexpected repair prompt: %q", prompt)
+	}
+}
+
+func TestHandleRepairFlowToolBuildsContextFromRunResult(t *testing.T) {
+	artifactRoot := t.TempDir()
+	artifactDir := filepath.Join(artifactRoot, "run-1", "02-click")
+	if err := os.MkdirAll(artifactDir, 0755); err != nil {
+		t.Fatalf("create artifact dir: %v", err)
+	}
+	domPath := filepath.Join(artifactDir, "dom_snapshot.json")
+	htmlPath := filepath.Join(artifactDir, "page.html")
+	screenshotPath := filepath.Join(artifactDir, "failure.png")
+	if err := os.WriteFile(domPath, []byte(`{"tag":"button","text":"Export orders"}`), 0600); err != nil {
+		t.Fatalf("write dom snapshot: %v", err)
+	}
+	if err := os.WriteFile(htmlPath, []byte(`<html><body>secret full html should stay on disk</body></html>`), 0600); err != nil {
+		t.Fatalf("write html: %v", err)
+	}
+	if err := os.WriteFile(screenshotPath, []byte("png"), 0600); err != nil {
+		t.Fatalf("write screenshot: %v", err)
+	}
+
+	resultPayload := FlowResult{
+		Name:         "repair_me",
+		ArtifactRoot: artifactRoot,
+		Vars: map[string]any{
+			"orders_url": "https://example.com/orders",
+		},
+		Trace: []FlowStepTrace{
+			{
+				Index:      1,
+				Action:     "navigate",
+				Status:     "ok",
+				PageURL:    "https://example.com/orders",
+				DurationMS: 42,
+			},
+			{
+				Index:      2,
+				Name:       "click export",
+				Action:     "click",
+				Status:     "error",
+				Error:      "locator click: timeout",
+				PageURL:    "https://example.com/orders",
+				DurationMS: 15000,
+				Artifacts: &FlowStepArtifacts{
+					Directory:       artifactDir,
+					ScreenshotPath:  screenshotPath,
+					HTMLPath:        htmlPath,
+					DOMSnapshotPath: domPath,
+				},
+			},
+		},
+	}
+	wrappedRunResult, err := json.Marshal(map[string]any{
+		"ok":     false,
+		"error":  "flow failed",
+		"result": resultPayload,
+	})
+	if err != nil {
+		t.Fatalf("marshal run result: %v", err)
+	}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: repair_me
+vars:
+  orders_url: https://example.com/orders
+steps:
+  - action: navigate
+    url: "{{orders_url}}"
+  - name: click export
+    action: click
+    selector: 'text="Old export"'
+`,
+				"run_result":           string(wrappedRunResult),
+				"max_artifact_excerpt": 40,
+			},
+		},
+	}
+
+	toolResult, err := handleRepairFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{
+		ArtifactRoot: artifactRoot,
+	})
+	if err != nil {
+		t.Fatalf("repair flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, toolResult, &payload)
+	repair, ok := payload["repair"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected repair payload, got %#v", payload["repair"])
+	}
+	hints, ok := repair["repair_hints"].([]any)
+	if !ok || len(hints) == 0 {
+		t.Fatalf("expected repair hints, got %#v", repair["repair_hints"])
+	}
+	firstHint, ok := hints[0].(map[string]any)
+	if !ok || firstHint["source"] != "runtime_failure" || firstHint["step_path"] != "2" {
+		t.Fatalf("unexpected runtime repair hint: %#v", hints[0])
+	}
+	prompt, ok := repair["prompt"].(string)
+	if !ok || !strings.Contains(prompt, "Failure context:") || !strings.Contains(prompt, "step=2 action=click") {
+		t.Fatalf("unexpected repair prompt: %q", prompt)
+	}
+	if strings.Contains(prompt, "secret full html") {
+		t.Fatalf("repair prompt leaked full html: %s", prompt)
 	}
 }
 

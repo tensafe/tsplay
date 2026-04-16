@@ -346,6 +346,41 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		return handleRepairFlowContextToolWithOptions(ctx, request, options)
 	})
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.repair_flow",
+		mcp.WithDescription("Build a unified AI repair request for a TSPlay Flow. Accepts original flow plus repair_hints and optionally failed run context, then returns a ready-to-send repair prompt."),
+		mcp.WithString("flow",
+			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
+		),
+		mcp.WithString("flow_path",
+			mcp.Description("Flow YAML or JSON file path relative to the configured flow root. Use this or flow."),
+		),
+		mcp.WithString("format",
+			mcp.Description("Optional format hint: yaml or json."),
+			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithString("repair_hints",
+			mcp.Description("Optional JSON repair_hints array, or a wrapper such as draft/context/repair output that contains repair_hints."),
+		),
+		mcp.WithString("repair_context",
+			mcp.Description("Optional JSON FlowRepairContext, or a wrapper with context."),
+		),
+		mcp.WithString("run_result",
+			mcp.Description("Optional JSON returned by tsplay.run_flow. Used to build repair_context when repair_context is omitted."),
+		),
+		mcp.WithString("trace",
+			mcp.Description("Optional JSON trace array when run_result is not available."),
+		),
+		mcp.WithString("error",
+			mcp.Description("Optional top-level error message when building repair_context from run_result/trace."),
+		),
+		mcp.WithNumber("max_artifact_excerpt",
+			mcp.Description("Maximum characters of simplified DOM snapshot to include when building repair_context. Defaults to 4000."),
+		),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleRepairFlowToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.observe_page",
 		mcp.WithDescription("Open a page and return an AI-friendly observation: screenshot path, DOM snapshot path, and interactive elements with selector candidates."),
 		mcp.WithString("url",
@@ -582,6 +617,86 @@ func handleRepairFlowContextToolWithOptions(
 	return newJSONToolResult(map[string]any{
 		"ok":      true,
 		"context": context,
+	})
+}
+
+func handleRepairFlowTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleRepairFlowToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleRepairFlowToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	flow, err := flowFromToolRequestWithOptions(request, options)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	repairHints, err := ParseFlowRepairHintsInput(request.GetString("repair_hints", ""))
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	repairContext, err := ParseFlowRepairContextInput(request.GetString("repair_context", ""))
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	if repairContext == nil && (strings.TrimSpace(request.GetString("run_result", "")) != "" || strings.TrimSpace(request.GetString("trace", "")) != "") {
+		result, runError, parseErr := ParseFlowRunResultForRepair(
+			request.GetString("run_result", ""),
+			request.GetString("trace", ""),
+		)
+		if parseErr != nil {
+			return newJSONToolResult(map[string]any{
+				"ok":    false,
+				"error": parseErr.Error(),
+			})
+		}
+		repairContext, err = BuildFlowRepairContext(FlowRepairContextOptions{
+			Flow:               flow,
+			Result:             result,
+			Error:              firstNonEmpty(request.GetString("error", ""), runError),
+			ArtifactRoot:       options.ArtifactRoot,
+			MaxArtifactExcerpt: request.GetInt("max_artifact_excerpt", defaultFlowRepairArtifactExcerpt),
+		})
+		if err != nil {
+			return newJSONToolResult(map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+			})
+		}
+	}
+
+	repair, err := BuildFlowRepairRequest(FlowRepairRequestOptions{
+		Flow:        flow,
+		RepairHints: repairHints,
+		Context:     repairContext,
+	})
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+
+	return newJSONToolResult(map[string]any{
+		"ok":     true,
+		"repair": repair,
 	})
 }
 

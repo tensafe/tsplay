@@ -310,6 +310,7 @@ go run . -action srv -flow-root script -artifact-root artifacts
 | `tsplay.flow_examples` | 返回带 focus_actions 的参考示例和示例选择提示 |
 | `tsplay.draft_flow` | 输入用户意图和页面 URL / observation，自动观察页面、草拟 Flow、自动校验，并在必要时做一轮 selector 修正 |
 | `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot、可交互元素和候选 selector |
+| `tsplay.repair_flow` | 输入原始 Flow + repair_hints + 可选失败现场，直接返回统一的 repair_request 和可喂给模型的 prompt |
 | `tsplay.repair_flow_context` | 根据失败 Flow 和 run result 组织修复上下文，附带失败分类、修复焦点、统一结构的 repair_hints 和校验清单 |
 | `tsplay.validate_flow` | 只校验 Flow，不启动浏览器 |
 | `tsplay.run_flow` | 启动 Playwright 执行 Flow，并返回 trace |
@@ -323,9 +324,9 @@ go run . -action srv -flow-root script -artifact-root artifacts
 5. 查看 `tsplay.draft_flow` 返回里的 `validation`、`selector_repairs` 和 `repair_hints`
 6. 如需单独二次校验，再调 `tsplay.validate_flow`
 7. 成功后再调用 `tsplay.run_flow`
-8. 失败时把原 Flow 和 run result 交给 `tsplay.repair_flow_context`
+8. 失败时可直接调 `tsplay.repair_flow`，或者先调 `tsplay.repair_flow_context` 再交给 `tsplay.repair_flow`
 
-`tsplay.draft_flow` 和 `tsplay.repair_flow_context` 现在都会返回同一种 `repair_hints` 结构，所以可以把“草拟后修复”和“运行失败后修复”接到同一个 AI 修复入口。
+`tsplay.draft_flow` 和 `tsplay.repair_flow_context` 现在都会返回同一种 `repair_hints` 结构，而 `tsplay.repair_flow` 会把原始 Flow、repair_hints、失败现场、规则和 prompt 统一收口成一个 repair_request。
 
 ### 从用户意图草拟 Flow
 
