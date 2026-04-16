@@ -19,6 +19,7 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	want := []string{
 		"tsplay.delete_session",
 		"tsplay.draft_flow",
+		"tsplay.export_session_flow_snippet",
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
 		"tsplay.get_session",
@@ -238,6 +239,97 @@ func TestHandleGetSessionToolForPersistentProfile(t *testing.T) {
 	}
 	if _, ok := physical["profile_dir"].(string); !ok {
 		t.Fatalf("expected profile_dir, got %#v", physical["profile_dir"])
+	}
+}
+
+func TestHandleExportSessionFlowSnippetToolForStorageState(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     options.ArtifactRoot,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name": "admin",
+			},
+		},
+	}
+	result, err := handleExportSessionFlowSnippetToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("export session flow snippet: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	snippets, ok := payload["snippets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snippets, got %#v", payload["snippets"])
+	}
+	browser, ok := snippets["browser"].(map[string]any)
+	if !ok || browser["use_session"] != "admin" {
+		t.Fatalf("expected browser use_session snippet, got %#v", snippets["browser"])
+	}
+	browserYAML, ok := snippets["browser_yaml"].(string)
+	if !ok || !strings.Contains(browserYAML, "use_session: admin") {
+		t.Fatalf("unexpected browser_yaml: %#v", snippets["browser_yaml"])
+	}
+	expandedBrowserYAML, ok := snippets["expanded_browser_yaml"].(string)
+	if !ok || !strings.Contains(expandedBrowserYAML, "storage_state: sessions/storage/admin.json") {
+		t.Fatalf("unexpected expanded_browser_yaml: %#v", snippets["expanded_browser_yaml"])
+	}
+	flowYAML, ok := snippets["flow_yaml"].(string)
+	if !ok || !strings.Contains(flowYAML, "schema_version: \"1\"") || !strings.Contains(flowYAML, "steps: []") {
+		t.Fatalf("unexpected flow_yaml: %#v", snippets["flow_yaml"])
+	}
+}
+
+func TestHandleExportSessionFlowSnippetToolForPersistentProfile(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:         "crm-admin",
+		ArtifactRoot: options.ArtifactRoot,
+		Profile:      "crm",
+		Session:      "admin",
+	}); err != nil {
+		t.Fatalf("seed crm-admin session: %v", err)
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name": "crm-admin",
+			},
+		},
+	}
+	result, err := handleExportSessionFlowSnippetToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("export session flow snippet: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	snippets, ok := payload["snippets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snippets, got %#v", payload["snippets"])
+	}
+	expandedBrowserYAML, ok := snippets["expanded_browser_yaml"].(string)
+	if !ok {
+		t.Fatalf("expected expanded_browser_yaml, got %#v", snippets["expanded_browser_yaml"])
+	}
+	if !strings.Contains(expandedBrowserYAML, "persistent: true") || !strings.Contains(expandedBrowserYAML, "profile: crm") || !strings.Contains(expandedBrowserYAML, "session: admin") {
+		t.Fatalf("unexpected expanded_browser_yaml: %#v", snippets["expanded_browser_yaml"])
+	}
+	expandedFlowYAML, ok := snippets["expanded_flow_yaml"].(string)
+	if !ok || !strings.Contains(expandedFlowYAML, "name: reuse_crm-admin_session_expanded") {
+		t.Fatalf("unexpected expanded_flow_yaml: %#v", snippets["expanded_flow_yaml"])
 	}
 }
 

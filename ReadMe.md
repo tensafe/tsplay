@@ -310,6 +310,7 @@ go run . -action srv -flow-root script -artifact-root artifacts
 | `tsplay.flow_examples` | 返回带 focus_actions 的参考示例和示例选择提示 |
 | `tsplay.draft_flow` | 输入用户意图和页面 URL / observation，自动观察页面、草拟 Flow、自动校验，并在必要时做一轮 selector 修正 |
 | `tsplay.delete_session` | 删除命名浏览器会话注册；storage-state 会话会顺手删除复制出的 state 文件，persistent profile 数据会保留 |
+| `tsplay.export_session_flow_snippet` | 导出单个命名会话对应的可复制 `browser` / Flow YAML 片段，包含 `use_session` 和展开版两种写法 |
 | `tsplay.get_session` | 读取单个命名浏览器会话的详情，返回展开后的 browser 配置和物理路径 |
 | `tsplay.list_sessions` | 列出已保存的命名浏览器会话，并返回可直接写进 Flow 的 `browser.use_session` 片段 |
 | `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot、可交互元素和候选 selector |
@@ -330,10 +331,11 @@ go run . -action srv -flow-root script -artifact-root artifacts
 7. 如果业务要长期复用登录态，可在成功后用 `tsplay.save_session`
 8. 调 `tsplay.list_sessions` 看命名会话、最近使用时间和来源说明
 9. 如需查看某个会话的展开配置和物理路径，再调 `tsplay.get_session`
-10. 后续 Flow 直接用 `browser.use_session`
-11. 不再需要时可调 `tsplay.delete_session`
-12. 成功后再调用 `tsplay.run_flow`
-13. 失败时可直接调 `tsplay.repair_flow`，或者先调 `tsplay.repair_flow_context` 再交给 `tsplay.repair_flow`
+10. 如果想直接拿可粘贴的 YAML，再调 `tsplay.export_session_flow_snippet`
+11. 后续 Flow 直接用 `browser.use_session`
+12. 不再需要时可调 `tsplay.delete_session`
+13. 成功后再调用 `tsplay.run_flow`
+14. 失败时可直接调 `tsplay.repair_flow`，或者先调 `tsplay.repair_flow_context` 再交给 `tsplay.repair_flow`
 
 `tsplay.draft_flow` 和 `tsplay.repair_flow_context` 现在都会返回同一种 `repair_hints` 结构，而 `tsplay.repair_flow` 会把原始 Flow、repair_hints、失败现场、规则和 prompt 统一收口成一个 repair_request。
 
@@ -472,6 +474,21 @@ steps:
 - `expanded_browser`
 - `physical_paths.metadata_path`
 - `physical_paths.storage_state_path` 或 `physical_paths.profile_dir`
+
+如果想直接拿可粘贴进 Flow 文件的片段，可以再调 `tsplay.export_session_flow_snippet`：
+
+```json
+{
+  "name": "admin"
+}
+```
+
+返回里会包含：
+
+- `snippets.browser_yaml`
+- `snippets.expanded_browser_yaml`
+- `snippets.flow_yaml`
+- `snippets.expanded_flow_yaml`
 
 这样后续 Flow 里只需要写：
 

@@ -284,6 +284,17 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		return handleGetSessionToolWithOptions(ctx, request, options)
 	})
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.export_session_flow_snippet",
+		mcp.WithDescription("Export copy-ready browser and Flow YAML snippets for one named browser session, including both use_session and expanded browser variants."),
+		mcp.WithString("name",
+			mcp.Description("Existing saved session alias."),
+			mcp.Required(),
+		),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleExportSessionFlowSnippetToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.delete_session",
 		mcp.WithDescription("Delete a named reusable browser session registration. Storage-state sessions also remove the copied storage-state file; persistent profile data is kept."),
 		mcp.WithString("name",
@@ -575,6 +586,32 @@ func handleGetSessionToolWithOptions(
 	return newJSONToolResult(map[string]any{
 		"ok":      true,
 		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+	})
+}
+
+func handleExportSessionFlowSnippetTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleExportSessionFlowSnippetToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleExportSessionFlowSnippetToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	session, err := LoadFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":       true,
+		"session":  BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+		"snippets": BuildFlowSavedSessionFlowSnippet(*session, options.ArtifactRoot),
 	})
 }
 
