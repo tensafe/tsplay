@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>选项选择示例</title>
+</head>
+<body>
+<h1>请选择一个选项</h1>
+
+<label for="options">选择框：</label>
+<select id="options" name="options">
+    <option value="">-- 请选择 --</option>
+    <option value="1">选项 1</option>
+    <option value="2">选项 2</option>
+    <option value="3" selected>选项 3（默认选中）</option>
+    <option value="4" disabled>选项 4（禁用）</option>
+    <option value="5">选项 5</option>
+    <optgroup label="分组选项">
+        <option value="6">分组选项 1</option>
+        <option value="7">分组选项 2</option>
+    </optgroup>
+</select>
+
+<p>选择一个选项后，可以提交表单或进行其他操作。</p>
+</body>
+</html>

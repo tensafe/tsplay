@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/c-bata/go-prompt"
@@ -14,12 +15,12 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"tsplay/tsplay"
+	"tsplay/tsplay_core"
 )
 
 func completer(d prompt.Document) []prompt.Suggest {
 	s := []prompt.Suggest{}
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		sug := prompt.Suggest{
 			Text:        fn.Name,
 			Description: fn.Description_en,
@@ -31,7 +32,7 @@ func completer(d prompt.Document) []prompt.Suggest {
 
 func createReadlineCompleter() *readline.PrefixCompleter {
 	var items []readline.PrefixCompleterInterface
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		items = append(items, &readline.PrefixCompleter{
 			Name:    []rune(fn.Name),
 			Dynamic: false,
@@ -53,10 +54,15 @@ func createReadlineCompleter() *readline.PrefixCompleter {
 }
 
 var g_headless = false
+var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
 
 func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
 	tsfile := flag.String("script", "", "tsplay script file")
+	flowfile := flag.String("flow", "", "tsplay flow file")
+	addr := flag.String("addr", ":8080", "server listen address")
+	flowRoot := flag.String("flow-root", tsplay_core.DefaultMCPFlowPathRoot, "allowed root directory for MCP flow_path")
+	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -64,12 +70,19 @@ func main() {
 
 	err := playwright.Install()
 	if err != nil {
-		log.Println("could not install playwright browsers: %v", err)
+		log.Printf("could not install playwright browsers: %v", err)
 	}
 
 	g_headless = *isheadless
+	g_artifactRoot = *artifactRoot
 
-	if len(*tsfile) != 0 {
+	if len(*flowfile) != 0 {
+		flow, err := tsplay_core.LoadFlowFile(*flowfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		run_flow(flow)
+	} else if len(*tsfile) != 0 {
 		// 加载tsfile内容..
 		content, err := ioutil.ReadFile(*tsfile)
 		if err != nil {
@@ -88,7 +101,29 @@ func main() {
 			fmt.Println("Start As GPT.")
 		case "srv":
 			fmt.Println("Start As Web.")
+			tsplay_core.McpServerMCP(*addr, tsplay_core.TSPlayMCPServerOptions{
+				FlowPathRoot: *flowRoot,
+				ArtifactRoot: *artifactRoot,
+			})
 		}
+	}
+}
+
+func run_flow(flow *tsplay_core.Flow) {
+	result, err := tsplay_core.RunFlow(flow, tsplay_core.FlowRunOptions{
+		Headless:     g_headless,
+		ArtifactRoot: g_artifactRoot,
+	})
+	if result != nil {
+		encoded, marshalErr := json.MarshalIndent(result, "", "  ")
+		if marshalErr != nil {
+			log.Printf("could not encode flow result: %v", marshalErr)
+		} else {
+			fmt.Println(string(encoded))
+		}
+	}
+	if err != nil {
+		log.Fatalf("error running flow: %v", err)
 	}
 }
 
@@ -109,7 +144,7 @@ func cli_mode() {
 	defer L.Close()
 
 	// 注册 Go 函数到 Lua
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
@@ -281,7 +316,7 @@ func run_script(script string) {
 	L.SetGlobal("page", ud_p)
 
 	// 注册 Go 函数到 Lua
-	for _, fn := range tsplay.GlobalPlayWrightFunc {
+	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
