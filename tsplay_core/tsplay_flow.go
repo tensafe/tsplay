@@ -1,7 +1,9 @@
 package tsplay_core
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -100,6 +103,9 @@ type FlowResult struct {
 	Vars         map[string]any  `json:"vars,omitempty"`
 	Trace        []FlowStepTrace `json:"trace"`
 	ArtifactRoot string          `json:"artifact_root,omitempty"`
+	RunID        string          `json:"run_id,omitempty"`
+	RunRoot      string          `json:"run_root,omitempty"`
+	SessionID    string          `json:"session_id,omitempty"`
 }
 
 type FlowStepTrace struct {
@@ -145,16 +151,27 @@ func (artifacts FlowStepArtifacts) empty() bool {
 }
 
 type FlowContext struct {
-	Vars         map[string]any
-	Security     *FlowSecurityPolicy
-	ArtifactRoot string
-	RunID        string
+	Vars          map[string]any
+	Security      *FlowSecurityPolicy
+	ArtifactRoot  string
+	RunID         string
+	RunRoot       string
+	Context       context.Context
+	SessionID     string
+	ClientName    string
+	ClientVersion string
 }
 
 type FlowRunOptions struct {
-	Headless     bool
-	Security     *FlowSecurityPolicy
-	ArtifactRoot string
+	Headless      bool
+	Security      *FlowSecurityPolicy
+	ArtifactRoot  string
+	Context       context.Context
+	RunID         string
+	RunRoot       string
+	SessionID     string
+	ClientName    string
+	ClientVersion string
 }
 
 type FlowSecurityPolicy struct {
@@ -1745,7 +1762,6 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not start Playwright: %w", err)
 	}
-	defer pw.Stop()
 
 	L := lua.NewState()
 	defer L.Close()
@@ -1757,19 +1773,32 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	var browser playwright.Browser
 	var context playwright.BrowserContext
 	var page playwright.Page
+	closePlaywright := sync.OnceFunc(func() {
+		if page != nil {
+			_ = page.Close()
+		}
+		if context != nil {
+			_ = context.Close()
+		}
+		if browser != nil {
+			_ = browser.Close()
+		}
+		_ = pw.Stop()
+	})
+	defer closePlaywright()
 	if browserConfig.wantsPersistentContext() {
 		context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
 		if err != nil {
 			return nil, err
 		}
-		defer context.Close()
 	} else {
 		browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
 		if err != nil {
 			return nil, err
 		}
-		defer browser.Close()
 	}
+	stopWatcher := watchContextCancel(options.Context, closePlaywright)
+	defer stopWatcher()
 	setFlowBrowserGlobals(L, browser, context, page)
 
 	return RunFlowInStateWithOptions(L, flow, options)
@@ -1781,11 +1810,17 @@ func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserCo
 		config = *flow.Browser
 	}
 	if strings.TrimSpace(config.UseSession) != "" {
-		savedConfig, err := ResolveFlowSavedSessionBrowserConfig(config.UseSession, flowBrowserStateRoot(options))
+		actor := FlowSavedSessionAccessInfo{
+			SessionID:     options.SessionID,
+			ClientName:    options.ClientName,
+			ClientVersion: options.ClientVersion,
+			RunID:         options.RunID,
+		}
+		savedConfig, err := ResolveFlowSavedSessionBrowserConfig(config.UseSession, flowBrowserStateRoot(options), actor)
 		if err != nil {
 			return FlowBrowserConfig{}, fmt.Errorf("resolve browser.use_session %q: %w", config.UseSession, err)
 		}
-		if _, err := MarkFlowSavedSessionUsed(config.UseSession, flowBrowserStateRoot(options)); err != nil {
+		if _, err := MarkFlowSavedSessionUsed(config.UseSession, flowBrowserStateRoot(options), actor); err != nil {
 			return FlowBrowserConfig{}, fmt.Errorf("mark browser.use_session %q as used: %w", config.UseSession, err)
 		}
 		if savedConfig != nil {
@@ -1945,18 +1980,44 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	ensureFlowActionGlobals(L)
 
 	artifactRoot := flowArtifactRoot(options)
+	runID := strings.TrimSpace(options.RunID)
+	if runID == "" {
+		runID = newFlowRunID(flow)
+	}
+	runRoot := strings.TrimSpace(options.RunRoot)
+	if runRoot == "" && strings.TrimSpace(artifactRoot) != "" {
+		if root, err := prepareRuntimeFileRoot(artifactRoot); err == nil {
+			runRoot = filepath.Join(root, runID)
+		}
+	}
+	runContext := options.Context
+	if runContext == nil {
+		runContext = context.Background()
+	}
 	ctx := &FlowContext{
-		Vars:         map[string]any{},
-		Security:     options.Security,
-		ArtifactRoot: artifactRoot,
-		RunID:        newFlowRunID(flow),
+		Vars:          map[string]any{},
+		Security:      options.Security,
+		ArtifactRoot:  artifactRoot,
+		RunID:         runID,
+		RunRoot:       runRoot,
+		Context:       runContext,
+		SessionID:     options.SessionID,
+		ClientName:    options.ClientName,
+		ClientVersion: options.ClientVersion,
 	}
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))
 	}
 
-	result := &FlowResult{Name: flow.Name, Vars: ctx.Vars, ArtifactRoot: artifactRoot}
+	result := &FlowResult{
+		Name:         flow.Name,
+		Vars:         ctx.Vars,
+		ArtifactRoot: artifactRoot,
+		RunID:        runID,
+		RunRoot:      runRoot,
+		SessionID:    options.SessionID,
+	}
 	traces, err := runFlowStepSequence(L, ctx, flow.Steps, "", 0, 0)
 	result.Trace = append(result.Trace, traces...)
 	saveErr := saveFlowBrowserStateFromConfig(L, flow, options)
@@ -1988,6 +2049,9 @@ func ensureFlowActionGlobals(L *lua.LState) {
 func runFlowStepSequence(L *lua.LState, ctx *FlowContext, steps []FlowStep, parentPath string, attempt int, iteration int) ([]FlowStepTrace, error) {
 	traces := make([]FlowStepTrace, 0, len(steps))
 	for i, step := range steps {
+		if err := flowRunContextError(ctx); err != nil {
+			return traces, err
+		}
 		stepPath := flowStepPath(parentPath, i+1)
 		trace, err := runFlowStepWithTrace(L, ctx, step, i+1, stepPath, attempt, iteration)
 		traces = append(traces, trace)
@@ -1999,6 +2063,20 @@ func runFlowStepSequence(L *lua.LState, ctx *FlowContext, steps []FlowStep, pare
 }
 
 func runFlowStepWithTrace(L *lua.LState, ctx *FlowContext, step FlowStep, index int, stepPath string, attempt int, iteration int) (FlowStepTrace, error) {
+	if err := flowRunContextError(ctx); err != nil {
+		return FlowStepTrace{
+			Index:      index,
+			Path:       stepPath,
+			Attempt:    attempt,
+			Iteration:  iteration,
+			Name:       step.Name,
+			Action:     step.Action,
+			Status:     "error",
+			Error:      err.Error(),
+			StartedAt:  time.Now().Format(time.RFC3339Nano),
+			FinishedAt: time.Now().Format(time.RFC3339Nano),
+		}, err
+	}
 	traceArgs := traceStepParams(step, ctx)
 	trace := FlowStepTrace{
 		Index:       index,
@@ -2088,7 +2166,9 @@ func runFlowRetryStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath s
 		restoreFlowVars(L, ctx, snapshot)
 		lastErr = err
 		if intervalMS > 0 && attempt < times {
-			time.Sleep(time.Duration(intervalMS) * time.Millisecond)
+			if err := sleepWithFlowContext(ctx, time.Duration(intervalMS)*time.Millisecond); err != nil {
+				return nil, allAttempts, err
+			}
 		}
 	}
 	return map[string]any{
@@ -2161,6 +2241,9 @@ func runFlowForeachStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath
 
 	children := []FlowStepTrace{}
 	for index, item := range items {
+		if err := flowRunContextError(ctx); err != nil {
+			return nil, children, err
+		}
 		setFlowVar(L, ctx, itemVar, item)
 		if indexVar != "" {
 			setFlowVar(L, ctx, indexVar, index+1)
@@ -2374,6 +2457,9 @@ func runFlowWaitUntilStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPa
 	attempts := []FlowStepTrace{}
 	var lastErr error
 	for attempt := 1; ; attempt++ {
+		if err := flowRunContextError(ctx); err != nil {
+			return nil, attempts, err
+		}
 		conditionTrace, err := runFlowStepWithTrace(L, ctx, *step.Condition, 0, stepPath+".condition", attempt, 0)
 		attempts = append(attempts, conditionTrace)
 		if err == nil && flowValueTruthy(conditionTrace.Output) {
@@ -2391,7 +2477,45 @@ func runFlowWaitUntilStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPa
 			}
 			return nil, attempts, fmt.Errorf("wait_until timed out after %dms", timeout)
 		}
-		time.Sleep(time.Duration(intervalMS) * time.Millisecond)
+		if err := sleepWithFlowContext(ctx, time.Duration(intervalMS)*time.Millisecond); err != nil {
+			return nil, attempts, err
+		}
+	}
+}
+
+func flowRunContextError(ctx *FlowContext) error {
+	if ctx == nil || ctx.Context == nil {
+		return nil
+	}
+	err := ctx.Context.Err()
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("flow run timed out")
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("flow run canceled")
+	default:
+		return err
+	}
+}
+
+func sleepWithFlowContext(ctx *FlowContext, duration time.Duration) error {
+	if duration <= 0 {
+		return flowRunContextError(ctx)
+	}
+	if ctx == nil || ctx.Context == nil {
+		time.Sleep(duration)
+		return nil
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Context.Done():
+		return flowRunContextError(ctx)
 	}
 }
 
@@ -2721,14 +2845,21 @@ func compactTraceValue(value any, depth int) any {
 
 func captureFlowFailureArtifacts(L *lua.LState, ctx *FlowContext, trace FlowStepTrace) FlowStepArtifacts {
 	artifacts := FlowStepArtifacts{}
-	if ctx == nil || strings.TrimSpace(ctx.ArtifactRoot) == "" {
+	if ctx == nil {
 		return artifacts
 	}
 
-	root, err := prepareRuntimeFileRoot(ctx.ArtifactRoot)
-	if err != nil {
-		artifacts.CaptureError = fmt.Sprintf("prepare artifact root: %v", err)
-		return artifacts
+	root := strings.TrimSpace(ctx.RunRoot)
+	if root == "" {
+		if strings.TrimSpace(ctx.ArtifactRoot) == "" {
+			return artifacts
+		}
+		preparedRoot, err := prepareRuntimeFileRoot(ctx.ArtifactRoot)
+		if err != nil {
+			artifacts.CaptureError = fmt.Sprintf("prepare artifact root: %v", err)
+			return artifacts
+		}
+		root = filepath.Join(preparedRoot, ctx.RunID)
 	}
 	stepID := fmt.Sprintf("%02d", trace.Index)
 	if strings.Contains(trace.Path, ".") {
@@ -2737,7 +2868,7 @@ func captureFlowFailureArtifacts(L *lua.LState, ctx *FlowContext, trace FlowStep
 	if trace.Attempt > 0 {
 		stepID = fmt.Sprintf("%s-attempt-%02d", stepID, trace.Attempt)
 	}
-	dir := filepath.Join(root, ctx.RunID, fmt.Sprintf("%s-%s", stepID, sanitizeArtifactSegment(trace.Action)))
+	dir := filepath.Join(root, fmt.Sprintf("%s-%s", stepID, sanitizeArtifactSegment(trace.Action)))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		artifacts.CaptureError = fmt.Sprintf("create artifact directory: %v", err)
 		return artifacts

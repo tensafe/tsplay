@@ -120,17 +120,17 @@ func TestBuildDraftFlowAutoRepairsSelectors(t *testing.T) {
 	if draft.InitialValidation == nil || !draft.InitialValidation.Valid {
 		t.Fatalf("expected initial validation to pass, got %#v", draft.InitialValidation)
 	}
-	if !draft.AutoRepaired {
-		t.Fatalf("expected selector auto repair, got %#v", draft)
+	if draft.AutoRepaired {
+		t.Fatalf("expected stable selector ranking to avoid auto repair, got %#v", draft)
 	}
-	if len(draft.SelectorRepairs) == 0 {
-		t.Fatalf("expected selector repairs, got %#v", draft.SelectorRepairs)
+	if len(draft.SelectorRepairs) != 0 {
+		t.Fatalf("expected selector repairs to be empty, got %#v", draft.SelectorRepairs)
 	}
 	if !strings.Contains(draft.FlowYAML, `[data-testid="order-query"]`) {
-		t.Fatalf("expected repaired selector in yaml: %s", draft.FlowYAML)
+		t.Fatalf("expected stable selector in yaml: %s", draft.FlowYAML)
 	}
 	if strings.Contains(draft.FlowYAML, "\n    selector: \"#query\"") || strings.Contains(draft.FlowYAML, "\n    selector: '#query'") {
-		t.Fatalf("expected weak selector to be replaced: %s", draft.FlowYAML)
+		t.Fatalf("expected weak selector to be avoided: %s", draft.FlowYAML)
 	}
 	if draft.Validation == nil || !draft.Validation.Valid {
 		t.Fatalf("expected final validation to pass, got %#v", draft.Validation)

@@ -916,6 +916,9 @@ func scoreDraftKeywords(haystack string, keywords []string) int {
 }
 
 func bestObservedSelector(element PageObservationElement) string {
+	if selector := preferredObservedSelector(element); strings.TrimSpace(selector) != "" {
+		return selector
+	}
 	for _, selector := range element.SelectorCandidates {
 		if strings.TrimSpace(selector) != "" {
 			return selector

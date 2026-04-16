@@ -18,26 +18,41 @@ const (
 
 var flowSavedSessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
+type FlowSavedSessionAccessInfo struct {
+	SessionID     string
+	ClientName    string
+	ClientVersion string
+	RunID         string
+}
+
 type FlowSavedSession struct {
-	Name             string `json:"name"`
-	Kind             string `json:"kind"`
-	StorageStatePath string `json:"storage_state_path,omitempty"`
-	Profile          string `json:"profile,omitempty"`
-	Session          string `json:"session,omitempty"`
-	SourceType       string `json:"source_type,omitempty"`
-	Source           string `json:"source,omitempty"`
-	CreatedAt        string `json:"created_at,omitempty"`
-	UpdatedAt        string `json:"updated_at,omitempty"`
-	LastUsedAt       string `json:"last_used_at,omitempty"`
+	Name                string `json:"name"`
+	Kind                string `json:"kind"`
+	StorageStatePath    string `json:"storage_state_path,omitempty"`
+	Profile             string `json:"profile,omitempty"`
+	Session             string `json:"session,omitempty"`
+	SourceType          string `json:"source_type,omitempty"`
+	Source              string `json:"source,omitempty"`
+	CreatedAt           string `json:"created_at,omitempty"`
+	UpdatedAt           string `json:"updated_at,omitempty"`
+	LastUsedAt          string `json:"last_used_at,omitempty"`
+	OwnerSessionID      string `json:"owner_session_id,omitempty"`
+	OwnerClientName     string `json:"owner_client_name,omitempty"`
+	OwnerClientVersion  string `json:"owner_client_version,omitempty"`
+	LastUsedBySessionID string `json:"last_used_by_session_id,omitempty"`
+	LastUsedByRunID     string `json:"last_used_by_run_id,omitempty"`
 }
 
 type FlowSavedSessionSaveOptions struct {
-	Name             string
-	ArtifactRoot     string
-	StorageStateJSON string
-	StorageStatePath string
-	Profile          string
-	Session          string
+	Name               string
+	ArtifactRoot       string
+	StorageStateJSON   string
+	StorageStatePath   string
+	Profile            string
+	Session            string
+	OwnerSessionID     string
+	OwnerClientName    string
+	OwnerClientVersion string
 }
 
 type FlowSavedSessionDeleteResult struct {
@@ -63,6 +78,16 @@ func SaveFlowSavedSession(options FlowSavedSessionSaveOptions) (*FlowSavedSessio
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
+	actor := FlowSavedSessionAccessInfo{
+		SessionID:     strings.TrimSpace(options.OwnerSessionID),
+		ClientName:    strings.TrimSpace(options.OwnerClientName),
+		ClientVersion: strings.TrimSpace(options.OwnerClientVersion),
+	}
+	if existing != nil {
+		if err := validateFlowSavedSessionAccess(existing, actor, "overwritten"); err != nil {
+			return nil, err
+		}
+	}
 
 	session := &FlowSavedSession{
 		Name:      name,
@@ -72,7 +97,13 @@ func SaveFlowSavedSession(options FlowSavedSessionSaveOptions) (*FlowSavedSessio
 	if existing != nil {
 		session.CreatedAt = existing.CreatedAt
 		session.LastUsedAt = existing.LastUsedAt
+		session.OwnerSessionID = existing.OwnerSessionID
+		session.OwnerClientName = existing.OwnerClientName
+		session.OwnerClientVersion = existing.OwnerClientVersion
+		session.LastUsedBySessionID = existing.LastUsedBySessionID
+		session.LastUsedByRunID = existing.LastUsedByRunID
 	}
+	applyFlowSavedSessionOwner(session, actor)
 
 	storageStateJSON := strings.TrimSpace(options.StorageStateJSON)
 	storageStatePath := strings.TrimSpace(options.StorageStatePath)
@@ -187,9 +218,12 @@ func ListFlowSavedSessions(artifactRoot string) ([]FlowSavedSession, error) {
 	return sessions, nil
 }
 
-func ResolveFlowSavedSessionBrowserConfig(name string, artifactRoot string) (*FlowBrowserConfig, error) {
+func ResolveFlowSavedSessionBrowserConfig(name string, artifactRoot string, access ...FlowSavedSessionAccessInfo) (*FlowBrowserConfig, error) {
 	session, err := LoadFlowSavedSession(name, artifactRoot)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateFlowSavedSessionAccess(session, normalizeFlowSavedSessionAccess(access), "used"); err != nil {
 		return nil, err
 	}
 	switch session.Kind {
@@ -202,9 +236,13 @@ func ResolveFlowSavedSessionBrowserConfig(name string, artifactRoot string) (*Fl
 	}
 }
 
-func MarkFlowSavedSessionUsed(name string, artifactRoot string) (*FlowSavedSession, error) {
+func MarkFlowSavedSessionUsed(name string, artifactRoot string, access ...FlowSavedSessionAccessInfo) (*FlowSavedSession, error) {
 	session, err := LoadFlowSavedSession(name, artifactRoot)
 	if err != nil {
+		return nil, err
+	}
+	actor := normalizeFlowSavedSessionAccess(access)
+	if err := validateFlowSavedSessionAccess(session, actor, "used"); err != nil {
 		return nil, err
 	}
 	root, err := flowSavedSessionRegistryRoot(artifactRoot)
@@ -212,15 +250,24 @@ func MarkFlowSavedSessionUsed(name string, artifactRoot string) (*FlowSavedSessi
 		return nil, err
 	}
 	session.LastUsedAt = time.Now().Format(time.RFC3339Nano)
+	if actor.SessionID != "" {
+		session.LastUsedBySessionID = actor.SessionID
+	}
+	if actor.RunID != "" {
+		session.LastUsedByRunID = actor.RunID
+	}
 	if err := writeFlowSavedSession(root, session); err != nil {
 		return nil, err
 	}
 	return session, nil
 }
 
-func DeleteFlowSavedSession(name string, artifactRoot string) (*FlowSavedSessionDeleteResult, error) {
+func DeleteFlowSavedSession(name string, artifactRoot string, access ...FlowSavedSessionAccessInfo) (*FlowSavedSessionDeleteResult, error) {
 	session, err := LoadFlowSavedSession(name, artifactRoot)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateFlowSavedSessionAccess(session, normalizeFlowSavedSessionAccess(access), "deleted"); err != nil {
 		return nil, err
 	}
 	root, err := flowSavedSessionRegistryRoot(artifactRoot)
@@ -262,6 +309,40 @@ func DeleteFlowSavedSession(name string, artifactRoot string) (*FlowSavedSession
 	return result, nil
 }
 
+func normalizeFlowSavedSessionAccess(access []FlowSavedSessionAccessInfo) FlowSavedSessionAccessInfo {
+	if len(access) == 0 {
+		return FlowSavedSessionAccessInfo{}
+	}
+	return access[0]
+}
+
+func applyFlowSavedSessionOwner(session *FlowSavedSession, actor FlowSavedSessionAccessInfo) {
+	if session == nil || strings.TrimSpace(actor.SessionID) == "" {
+		return
+	}
+	if strings.TrimSpace(session.OwnerSessionID) == "" {
+		session.OwnerSessionID = actor.SessionID
+	}
+	if strings.TrimSpace(session.OwnerClientName) == "" && strings.TrimSpace(actor.ClientName) != "" {
+		session.OwnerClientName = actor.ClientName
+	}
+	if strings.TrimSpace(session.OwnerClientVersion) == "" && strings.TrimSpace(actor.ClientVersion) != "" {
+		session.OwnerClientVersion = actor.ClientVersion
+	}
+}
+
+func validateFlowSavedSessionAccess(session *FlowSavedSession, actor FlowSavedSessionAccessInfo, operation string) error {
+	if session == nil {
+		return nil
+	}
+	ownerSession := strings.TrimSpace(session.OwnerSessionID)
+	actorSession := strings.TrimSpace(actor.SessionID)
+	if ownerSession == "" || actorSession == "" || ownerSession == actorSession {
+		return nil
+	}
+	return fmt.Errorf("session %q is owned by MCP session %q and cannot be %s from session %q", session.Name, ownerSession, operation, actorSession)
+}
+
 func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) map[string]any {
 	view := map[string]any{
 		"name":       session.Name,
@@ -283,6 +364,29 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 	}
 	if session.Source != "" {
 		view["source"] = session.Source
+	}
+	if session.OwnerSessionID != "" || session.OwnerClientName != "" || session.OwnerClientVersion != "" {
+		owner := map[string]any{}
+		if session.OwnerSessionID != "" {
+			owner["session_id"] = session.OwnerSessionID
+		}
+		if session.OwnerClientName != "" {
+			owner["client_name"] = session.OwnerClientName
+		}
+		if session.OwnerClientVersion != "" {
+			owner["client_version"] = session.OwnerClientVersion
+		}
+		view["owner"] = owner
+	}
+	if session.LastUsedBySessionID != "" || session.LastUsedByRunID != "" {
+		lastUsedBy := map[string]any{}
+		if session.LastUsedBySessionID != "" {
+			lastUsedBy["session_id"] = session.LastUsedBySessionID
+		}
+		if session.LastUsedByRunID != "" {
+			lastUsedBy["run_id"] = session.LastUsedByRunID
+		}
+		view["last_used_by"] = lastUsedBy
 	}
 	switch session.Kind {
 	case flowSavedSessionKindStorageState:

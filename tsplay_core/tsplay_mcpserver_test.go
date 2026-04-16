@@ -633,16 +633,15 @@ func TestHandleDraftFlowToolAutoRepairsSelectors(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected draft payload, got %#v", payload["draft"])
 	}
-	if draft["auto_repaired"] != true {
-		t.Fatalf("expected auto_repaired=true, got %#v", draft["auto_repaired"])
+	if _, ok := draft["auto_repaired"]; ok {
+		t.Fatalf("expected auto_repaired to be omitted when the best selector is chosen up front, got %#v", draft["auto_repaired"])
 	}
-	repairs, ok := draft["selector_repairs"].([]any)
-	if !ok || len(repairs) == 0 {
-		t.Fatalf("expected selector repairs, got %#v", draft["selector_repairs"])
+	if repairs, ok := draft["selector_repairs"]; ok && repairs != nil {
+		t.Fatalf("expected selector_repairs to be omitted, got %#v", draft["selector_repairs"])
 	}
 	flowYAML, ok := draft["flow_yaml"].(string)
 	if !ok || !strings.Contains(flowYAML, `[data-testid="order-query"]`) {
-		t.Fatalf("expected repaired selector in flow yaml, got %q", flowYAML)
+		t.Fatalf("expected stable selector in flow yaml, got %q", flowYAML)
 	}
 }
 
