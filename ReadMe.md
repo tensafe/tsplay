@@ -310,7 +310,7 @@ go run . -action srv -flow-root script -artifact-root artifacts
 | `tsplay.flow_examples` | 返回带 focus_actions 的参考示例和示例选择提示 |
 | `tsplay.draft_flow` | 输入用户意图和页面 URL / observation，自动观察页面、草拟 Flow、自动校验，并在必要时做一轮 selector 修正 |
 | `tsplay.delete_session` | 删除命名浏览器会话注册；storage-state 会话会顺手删除复制出的 state 文件，persistent profile 数据会保留 |
-| `tsplay.export_session_flow_snippet` | 导出单个命名会话对应的可复制 `browser` / Flow YAML 片段，包含 `use_session` 和展开版两种写法 |
+| `tsplay.export_session_flow_snippet` | 导出单个命名会话对应的可复制 `browser` / Flow 片段；支持 `browser` / `flow`、展开版，以及 YAML / JSON |
 | `tsplay.get_session` | 读取单个命名浏览器会话的详情，返回展开后的 browser 配置和物理路径 |
 | `tsplay.list_sessions` | 列出已保存的命名浏览器会话，并返回可直接写进 Flow 的 `browser.use_session` 片段 |
 | `tsplay.observe_page` | 打开页面并返回截图路径、DOM snapshot、可交互元素和候选 selector |
@@ -479,16 +479,35 @@ steps:
 
 ```json
 {
-  "name": "admin"
+  "name": "admin",
+  "format": "browser"
 }
 ```
 
 返回里会包含：
 
-- `snippets.browser_yaml`
-- `snippets.expanded_browser_yaml`
-- `snippets.flow_yaml`
-- `snippets.expanded_flow_yaml`
+- `export.format`
+- `export.target`
+- `export.encoding`
+- `export.snippet`
+- `export.snippet_data`
+
+`format` 默认是 `all`，会把常用片段一次性都返回出来。也支持指定导出一种：
+
+- `browser` / `browser_yaml`
+- `expanded_browser` / `expanded_browser_yaml`
+- `flow` / `flow_yaml`
+- `expanded_flow` / `expanded_flow_yaml`
+- `browser_json`
+- `expanded_browser_json`
+- `flow_json`
+- `expanded_flow_json`
+
+比如：
+
+- 想只拿推荐的 `browser:` YAML，就传 `format: "browser"`
+- 想只拿完整 Flow YAML，就传 `format: "flow"`
+- 想给上层 AI 或程序直接消费 JSON，就传 `format: "flow_json"` 或 `expanded_flow_json`
 
 这样后续 Flow 里只需要写：
 

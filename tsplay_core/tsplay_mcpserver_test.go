@@ -269,9 +269,16 @@ func TestHandleExportSessionFlowSnippetToolForStorageState(t *testing.T) {
 	if payload["ok"] != true {
 		t.Fatalf("expected ok=true, got %#v", payload)
 	}
-	snippets, ok := payload["snippets"].(map[string]any)
+	exported, ok := payload["export"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected snippets, got %#v", payload["snippets"])
+		t.Fatalf("expected export payload, got %#v", payload["export"])
+	}
+	if exported["format"] != "all" {
+		t.Fatalf("expected format all, got %#v", exported["format"])
+	}
+	snippets, ok := exported["snippets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snippets, got %#v", exported["snippets"])
 	}
 	browser, ok := snippets["browser"].(map[string]any)
 	if !ok || browser["use_session"] != "admin" {
@@ -305,7 +312,8 @@ func TestHandleExportSessionFlowSnippetToolForPersistentProfile(t *testing.T) {
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Arguments: map[string]any{
-				"name": "crm-admin",
+				"name":   "crm-admin",
+				"format": "expanded_flow_json",
 			},
 		},
 	}
@@ -316,20 +324,63 @@ func TestHandleExportSessionFlowSnippetToolForPersistentProfile(t *testing.T) {
 
 	var payload map[string]any
 	decodeToolText(t, result, &payload)
-	snippets, ok := payload["snippets"].(map[string]any)
+	exported, ok := payload["export"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected snippets, got %#v", payload["snippets"])
+		t.Fatalf("expected export payload, got %#v", payload["export"])
 	}
-	expandedBrowserYAML, ok := snippets["expanded_browser_yaml"].(string)
+	if exported["format"] != "expanded_flow_json" {
+		t.Fatalf("unexpected export format: %#v", exported["format"])
+	}
+	if exported["target"] != "flow" || exported["encoding"] != "json" || exported["variant"] != "expanded" {
+		t.Fatalf("unexpected export metadata: %#v", exported)
+	}
+	snippet, ok := exported["snippet"].(string)
 	if !ok {
-		t.Fatalf("expected expanded_browser_yaml, got %#v", snippets["expanded_browser_yaml"])
+		t.Fatalf("expected snippet string, got %#v", exported["snippet"])
 	}
-	if !strings.Contains(expandedBrowserYAML, "persistent: true") || !strings.Contains(expandedBrowserYAML, "profile: crm") || !strings.Contains(expandedBrowserYAML, "session: admin") {
-		t.Fatalf("unexpected expanded_browser_yaml: %#v", snippets["expanded_browser_yaml"])
+	if !strings.Contains(snippet, "\"persistent\": true") || !strings.Contains(snippet, "\"profile\": \"crm\"") || !strings.Contains(snippet, "\"session\": \"admin\"") {
+		t.Fatalf("unexpected json snippet: %#v", snippet)
 	}
-	expandedFlowYAML, ok := snippets["expanded_flow_yaml"].(string)
-	if !ok || !strings.Contains(expandedFlowYAML, "name: reuse_crm-admin_session_expanded") {
-		t.Fatalf("unexpected expanded_flow_yaml: %#v", snippets["expanded_flow_yaml"])
+	snippetData, ok := exported["snippet_data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snippet_data, got %#v", exported["snippet_data"])
+	}
+	browser, ok := snippetData["browser"].(map[string]any)
+	if !ok || browser["persistent"] != true {
+		t.Fatalf("unexpected browser in snippet_data: %#v", snippetData["browser"])
+	}
+}
+
+func TestHandleExportSessionFlowSnippetToolRejectsUnknownFormat(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     options.ArtifactRoot,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name":   "admin",
+				"format": "json",
+			},
+		},
+	}
+	result, err := handleExportSessionFlowSnippetToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("export session flow snippet: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "unsupported format") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
 	}
 }
 

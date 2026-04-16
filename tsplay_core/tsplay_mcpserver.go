@@ -285,10 +285,13 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.export_session_flow_snippet",
-		mcp.WithDescription("Export copy-ready browser and Flow YAML snippets for one named browser session, including both use_session and expanded browser variants."),
+		mcp.WithDescription("Export copy-ready browser or Flow snippets for one named browser session. Supports YAML and JSON, plus recommended and expanded variants."),
 		mcp.WithString("name",
 			mcp.Description("Existing saved session alias."),
 			mcp.Required(),
+		),
+		mcp.WithString("format",
+			mcp.Description("Optional export format. Default all. Supported values: all, browser, expanded_browser, flow, expanded_flow, browser_json, expanded_browser_json, flow_json, expanded_flow_json."),
 		),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -608,11 +611,25 @@ func handleExportSessionFlowSnippetToolWithOptions(
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
-		"ok":       true,
-		"session":  BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
-		"snippets": BuildFlowSavedSessionFlowSnippet(*session, options.ArtifactRoot),
-	})
+	exported, err := ExportFlowSavedSessionFlowSnippet(*session, options.ArtifactRoot, request.GetString("format", ""))
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	result := map[string]any{
+		"ok":      true,
+		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+		"export":  exported,
+	}
+	if snippets, ok := exported["snippets"]; ok {
+		result["snippets"] = snippets
+	}
+	if snippet, ok := exported["snippet"]; ok {
+		result["snippet"] = snippet
+	}
+	return newJSONToolResult(result)
 }
 
 func handleDeleteSessionTool(
