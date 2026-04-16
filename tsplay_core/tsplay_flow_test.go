@@ -992,6 +992,16 @@ func TestRunFlowBrowserUseSessionRoundTrip(t *testing.T) {
 	if result == nil || len(result.Trace) != 2 {
 		t.Fatalf("unexpected load result: %#v", result)
 	}
+	session, err := LoadFlowSavedSession("admin", root)
+	if err != nil {
+		t.Fatalf("load named session: %v", err)
+	}
+	if session.LastUsedAt == "" {
+		t.Fatalf("expected last_used_at to be set")
+	}
+	if session.SourceType != "storage_state_path" {
+		t.Fatalf("expected source_type storage_state_path, got %q", session.SourceType)
+	}
 }
 
 func TestRunFlowTraceCapturesLuaFailureDetails(t *testing.T) {

@@ -17,6 +17,7 @@ import (
 func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	names := toolNamesForTest(NewTSPlayMCPServer())
 	want := []string{
+		"tsplay.delete_session",
 		"tsplay.draft_flow",
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
@@ -88,6 +89,12 @@ func TestHandleSaveSessionToolWithStorageStateJSON(t *testing.T) {
 	if session["name"] != "admin" {
 		t.Fatalf("unexpected session name: %#v", session["name"])
 	}
+	if session["source_type"] != "inline_storage_state" {
+		t.Fatalf("expected source_type inline_storage_state, got %#v", session["source_type"])
+	}
+	if _, ok := session["source"].(string); !ok {
+		t.Fatalf("expected source description, got %#v", session["source"])
+	}
 	browser, ok := session["browser"].(map[string]any)
 	if !ok || browser["use_session"] != "admin" {
 		t.Fatalf("expected browser use_session, got %#v", session["browser"])
@@ -138,6 +145,48 @@ func TestHandleListSessionsTool(t *testing.T) {
 	}
 	if _, ok := first["resolved_browser"].(map[string]any); !ok {
 		t.Fatalf("expected resolved_browser snippet, got %#v", first["resolved_browser"])
+	}
+	if _, ok := first["source"].(string); !ok {
+		t.Fatalf("expected source description, got %#v", first["source"])
+	}
+}
+
+func TestHandleDeleteSessionTool(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     options.ArtifactRoot,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name": "admin",
+			},
+		},
+	}
+	result, err := handleDeleteSessionToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("delete session: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	deleted, ok := payload["deleted"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected deleted payload, got %#v", payload["deleted"])
+	}
+	if deleted["deleted_storage_state"] != true {
+		t.Fatalf("expected deleted_storage_state=true, got %#v", deleted["deleted_storage_state"])
+	}
+	if _, err := os.Stat(filepath.Join(options.ArtifactRoot, "sessions", "registry", "admin.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected metadata file to be removed, stat err=%v", err)
 	}
 }
 

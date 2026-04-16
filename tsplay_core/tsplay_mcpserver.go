@@ -267,10 +267,21 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	), handleFlowListActionsTool)
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.list_sessions",
-		mcp.WithDescription("List named reusable browser sessions saved under the artifact root. Returns browser snippets such as use_session for direct Flow reuse."),
+		mcp.WithDescription("List named reusable browser sessions saved under the artifact root, including last_used_at, source, and browser snippets such as use_session for direct Flow reuse."),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleListSessionsToolWithOptions(ctx, request, options)
+	})
+
+	mcpServer.AddTool(mcp.NewTool("tsplay.delete_session",
+		mcp.WithDescription("Delete a named reusable browser session registration. Storage-state sessions also remove the copied storage-state file; persistent profile data is kept."),
+		mcp.WithString("name",
+			mcp.Description("Existing saved session alias."),
+			mcp.Required(),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleDeleteSessionToolWithOptions(ctx, request, options)
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.save_session",
@@ -528,6 +539,31 @@ func handleListSessionsToolWithOptions(
 	return newJSONToolResult(map[string]any{
 		"ok":       true,
 		"sessions": items,
+	})
+}
+
+func handleDeleteSessionTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleDeleteSessionToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleDeleteSessionToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	deleted, err := DeleteFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":      true,
+		"deleted": deleted,
 	})
 }
 

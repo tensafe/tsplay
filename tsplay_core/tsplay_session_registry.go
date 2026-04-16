@@ -24,8 +24,11 @@ type FlowSavedSession struct {
 	StorageStatePath string `json:"storage_state_path,omitempty"`
 	Profile          string `json:"profile,omitempty"`
 	Session          string `json:"session,omitempty"`
+	SourceType       string `json:"source_type,omitempty"`
+	Source           string `json:"source,omitempty"`
 	CreatedAt        string `json:"created_at,omitempty"`
 	UpdatedAt        string `json:"updated_at,omitempty"`
+	LastUsedAt       string `json:"last_used_at,omitempty"`
 }
 
 type FlowSavedSessionSaveOptions struct {
@@ -35,6 +38,16 @@ type FlowSavedSessionSaveOptions struct {
 	StorageStatePath string
 	Profile          string
 	Session          string
+}
+
+type FlowSavedSessionDeleteResult struct {
+	Name                  string `json:"name"`
+	Kind                  string `json:"kind"`
+	DeletedStorageState   bool   `json:"deleted_storage_state"`
+	StorageStatePath      string `json:"storage_state_path,omitempty"`
+	DeletedProfileData    bool   `json:"deleted_profile_data"`
+	ProfileDataDeleteHint string `json:"profile_data_delete_hint,omitempty"`
+	DeletedMetadataPath   string `json:"deleted_metadata_path"`
 }
 
 func SaveFlowSavedSession(options FlowSavedSessionSaveOptions) (*FlowSavedSession, error) {
@@ -58,6 +71,7 @@ func SaveFlowSavedSession(options FlowSavedSessionSaveOptions) (*FlowSavedSessio
 	}
 	if existing != nil {
 		session.CreatedAt = existing.CreatedAt
+		session.LastUsedAt = existing.LastUsedAt
 	}
 
 	storageStateJSON := strings.TrimSpace(options.StorageStateJSON)
@@ -84,10 +98,22 @@ func SaveFlowSavedSession(options FlowSavedSessionSaveOptions) (*FlowSavedSessio
 			return nil, fmt.Errorf("write session storage state %q: %w", targetAbs, err)
 		}
 		session.StorageStatePath = filepath.ToSlash(targetPath)
+		if storageStateJSON != "" {
+			session.SourceType = "inline_storage_state"
+			session.Source = "saved from inline storage_state JSON"
+		} else {
+			session.SourceType = "storage_state_path"
+			session.Source = fmt.Sprintf("copied from storage_state_path %s", filepath.ToSlash(storageStatePath))
+		}
 	case profile != "":
 		session.Kind = flowSavedSessionKindProfile
 		session.Profile = profile
 		session.Session = profileSession
+		session.SourceType = "persistent_profile"
+		session.Source = fmt.Sprintf("registered persistent profile %s", profile)
+		if profileSession != "" {
+			session.Source = fmt.Sprintf("%s session %s", session.Source, profileSession)
+		}
 	default:
 		return nil, fmt.Errorf("save_session requires storage_state, storage_state_path, or profile")
 	}
@@ -148,6 +174,11 @@ func ListFlowSavedSessions(artifactRoot string) ([]FlowSavedSession, error) {
 		sessions = append(sessions, session)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
+		leftRecent := firstNonEmpty(sessions[i].LastUsedAt, sessions[i].UpdatedAt, sessions[i].CreatedAt)
+		rightRecent := firstNonEmpty(sessions[j].LastUsedAt, sessions[j].UpdatedAt, sessions[j].CreatedAt)
+		if leftRecent != rightRecent {
+			return leftRecent > rightRecent
+		}
 		if sessions[i].Name == sessions[j].Name {
 			return sessions[i].UpdatedAt > sessions[j].UpdatedAt
 		}
@@ -171,6 +202,66 @@ func ResolveFlowSavedSessionBrowserConfig(name string, artifactRoot string) (*Fl
 	}
 }
 
+func MarkFlowSavedSessionUsed(name string, artifactRoot string) (*FlowSavedSession, error) {
+	session, err := LoadFlowSavedSession(name, artifactRoot)
+	if err != nil {
+		return nil, err
+	}
+	root, err := flowSavedSessionRegistryRoot(artifactRoot)
+	if err != nil {
+		return nil, err
+	}
+	session.LastUsedAt = time.Now().Format(time.RFC3339Nano)
+	if err := writeFlowSavedSession(root, session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func DeleteFlowSavedSession(name string, artifactRoot string) (*FlowSavedSessionDeleteResult, error) {
+	session, err := LoadFlowSavedSession(name, artifactRoot)
+	if err != nil {
+		return nil, err
+	}
+	root, err := flowSavedSessionRegistryRoot(artifactRoot)
+	if err != nil {
+		return nil, err
+	}
+	metadataPath := flowSavedSessionMetadataPath(root, session.Name)
+	result := &FlowSavedSessionDeleteResult{
+		Name:                session.Name,
+		Kind:                session.Kind,
+		DeletedMetadataPath: metadataPath,
+	}
+	if session.StorageStatePath != "" {
+		result.StorageStatePath = session.StorageStatePath
+	}
+
+	if session.Kind == flowSavedSessionKindStorageState && session.StorageStatePath != "" {
+		storagePath, err := resolveFlowBrowserStatePath(session.StorageStatePath, flowFileInputPath, &FlowSecurityPolicy{
+			AllowBrowserState: true,
+			FileInputRoot:     root,
+			FileOutputRoot:    root,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("delete session storage state %q: %w", storagePath, err)
+		}
+		result.DeletedStorageState = true
+	}
+	if session.Kind == flowSavedSessionKindProfile {
+		result.DeletedProfileData = false
+		result.ProfileDataDeleteHint = "persistent profile data is kept; delete the profile directory explicitly only when you really want to remove the browser state"
+	}
+
+	if err := os.Remove(metadataPath); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("delete session metadata %q: %w", metadataPath, err)
+	}
+	return result, nil
+}
+
 func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) map[string]any {
 	view := map[string]any{
 		"name":       session.Name,
@@ -183,6 +274,15 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 	}
 	if session.CreatedAt != "" {
 		view["created_at"] = session.CreatedAt
+	}
+	if session.LastUsedAt != "" {
+		view["last_used_at"] = session.LastUsedAt
+	}
+	if session.SourceType != "" {
+		view["source_type"] = session.SourceType
+	}
+	if session.Source != "" {
+		view["source"] = session.Source
 	}
 	switch session.Kind {
 	case flowSavedSessionKindStorageState:

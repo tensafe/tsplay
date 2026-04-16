@@ -1227,6 +1227,9 @@ func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserCo
 		if err != nil {
 			return FlowBrowserConfig{}, fmt.Errorf("resolve browser.use_session %q: %w", config.UseSession, err)
 		}
+		if _, err := MarkFlowSavedSessionUsed(config.UseSession, flowBrowserStateRoot(options)); err != nil {
+			return FlowBrowserConfig{}, fmt.Errorf("mark browser.use_session %q as used: %w", config.UseSession, err)
+		}
 		if savedConfig != nil {
 			if savedConfig.StorageState != "" {
 				config.StorageState = savedConfig.StorageState
