@@ -38,7 +38,7 @@ func TestValidateFlowSecurityRejectsReadCSVWithoutAllow(t *testing.T) {
 func TestRunFlowReadCSVRows(t *testing.T) {
 	root := t.TempDir()
 	csvPath := filepath.Join(root, "users.csv")
-	if err := os.WriteFile(csvPath, []byte("name,phone\nAlice,13800000000\nBob,13900000000\n"), 0644); err != nil {
+	if err := os.WriteFile(csvPath, []byte("name,phone\nAlice,13800000000\nBob,13900000000\nCarol,13700000000\n"), 0644); err != nil {
 		t.Fatalf("write csv: %v", err)
 	}
 
@@ -79,8 +79,56 @@ func TestRunFlowReadCSVRows(t *testing.T) {
 	if got := result.Vars["summary"]; got != "hello Bob" {
 		t.Fatalf("summary = %#v", got)
 	}
-	if got := result.Vars["last_phone"]; got != "13900000000" {
+	if got := result.Vars["last_phone"]; got != "13700000000" {
 		t.Fatalf("last_phone = %#v", got)
+	}
+}
+
+func TestRunFlowReadCSVResumeWindow(t *testing.T) {
+	root := t.TempDir()
+	csvPath := filepath.Join(root, "users.csv")
+	if err := os.WriteFile(csvPath, []byte("name,phone\nAlice,13800000000\nBob,13900000000\nCarol,13700000000\n"), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "read_csv_resume",
+		Vars:          map[string]any{"resume_from_row": 3},
+		Steps: []FlowStep{
+			{
+				Action:   "read_csv",
+				FilePath: "users.csv",
+				SaveAs:   "rows",
+				With: map[string]any{
+					"start_row":        "{{resume_from_row}}",
+					"limit":            1,
+					"row_number_field": "source_row",
+				},
+			},
+			{Action: "set_var", SaveAs: "first_name", Value: "{{rows[0].name}}"},
+			{Action: "set_var", SaveAs: "first_source_row", Value: "{{rows[0].source_row}}"},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["first_name"]; got != "Bob" {
+		t.Fatalf("first_name = %#v", got)
+	}
+	if got := result.Vars["first_source_row"]; got != 3 {
+		t.Fatalf("first_source_row = %#v", got)
 	}
 }
 
@@ -166,6 +214,54 @@ func TestRunFlowReadExcelRangeWithHeaders(t *testing.T) {
 	}
 	if got := result.Vars["second_email"]; got != "bob@example.com" {
 		t.Fatalf("second_email = %#v", got)
+	}
+}
+
+func TestRunFlowReadExcelResumeWindow(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "users.xlsx")
+	if err := writeTestXLSXFile(xlsxPath); err != nil {
+		t.Fatalf("write xlsx: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "read_excel_resume",
+		Steps: []FlowStep{
+			{
+				Action:   "read_excel",
+				FilePath: "users.xlsx",
+				Sheet:    "Users",
+				SaveAs:   "rows",
+				With: map[string]any{
+					"start_row":        3,
+					"limit":            1,
+					"row_number_field": "source_row",
+				},
+			},
+			{Action: "set_var", SaveAs: "first_user", Value: `{{rows[0]["User Name"]}}`},
+			{Action: "set_var", SaveAs: "first_source_row", Value: "{{rows[0].source_row}}"},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["first_user"]; got != "Bob Li" {
+		t.Fatalf("first_user = %#v", got)
+	}
+	if got := result.Vars["first_source_row"]; got != 3 {
+		t.Fatalf("first_source_row = %#v", got)
 	}
 }
 

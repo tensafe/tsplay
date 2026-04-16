@@ -186,6 +186,33 @@ func flowSpecialActionSchemaConstraint(action string) map[string]any {
 			},
 		}
 	}
+	if action == "append_var" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "save_as", "value"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "save_as", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"value"},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
 	if action == "redis_set" {
 		return map[string]any{
 			"if": map[string]any{
@@ -210,6 +237,89 @@ func flowSpecialActionSchemaConstraint(action string) map[string]any {
 						},
 					},
 					buildFlowActionArgsSchema(action, flowActionSpecs[action]),
+				},
+			},
+		}
+	}
+	if action == "write_json" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "file_path", "value"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "file_path", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"value"},
+							},
+						},
+					},
+					map[string]any{
+						"required": []string{"action", "args"},
+						"properties": map[string]any{
+							"args": map[string]any{
+								"type":     "array",
+								"minItems": 2,
+								"maxItems": 2,
+								"prefixItems": []any{
+									flowParamJSONSchema("file_path"),
+									map[string]any{},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	if action == "write_csv" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "file_path", "value"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "file_path", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"value"},
+							},
+						},
+					},
+					map[string]any{
+						"required": []string{"action", "args"},
+						"properties": map[string]any{
+							"args": map[string]any{
+								"type":     "array",
+								"minItems": 2,
+								"maxItems": 3,
+								"prefixItems": []any{
+									flowParamJSONSchema("file_path"),
+									map[string]any{},
+									map[string]any{"oneOf": []any{map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, flowPlaceholderJSONSchema()}},
+								},
+							},
+						},
+					},
 				},
 			},
 		}
@@ -304,12 +414,16 @@ func buildFlowActionArgsSchema(action string, spec flowActionSpec) map[string]an
 	return argsSchema
 }
 
-func flowParamJSONSchema(name string) map[string]any {
-	placeholder := map[string]any{
+func flowPlaceholderJSONSchema() map[string]any {
+	return map[string]any{
 		"type":        "string",
 		"pattern":     placeholderPattern.String(),
 		"description": "Full variable placeholder, for example {{timeout_ms}}.",
 	}
+}
+
+func flowParamJSONSchema(name string) map[string]any {
+	placeholder := flowPlaceholderJSONSchema()
 	switch flowParamType(name) {
 	case "any":
 		return map[string]any{}
@@ -384,6 +498,64 @@ steps:
         text: "{{row.phone}}"
       - action: click
         selector: "#submit"
+`,
+		},
+		{
+			"name":          "resume_import_with_writeback",
+			"description":   "Resume a batch import from a source row and write a result ledger to JSON or CSV.",
+			"focus_actions": []string{"read_excel", "on_error", "append_var", "write_json", "write_csv"},
+			"when_to_use":   "The import may be resumed in chunks and each source row needs a durable success or failure record.",
+			"flow": `schema_version: "1"
+name: resume_import_with_writeback
+vars:
+  import_results: []
+  resume_from_row: 2
+steps:
+  - action: read_excel
+    file_path: imports/users.xlsx
+    sheet: Users
+    with:
+      start_row: "{{resume_from_row}}"
+      limit: 100
+      row_number_field: source_row
+    save_as: rows
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: on_error
+        steps:
+          - action: type_text
+            selector: "#name"
+            text: "{{row.name}}"
+          - action: click
+            selector: "#submit"
+          - action: append_var
+            save_as: import_results
+            with:
+              value:
+                source_row: "{{row.source_row}}"
+                status: success
+        on_error:
+          - action: append_var
+            save_as: import_results
+            with:
+              value:
+                source_row: "{{row.source_row}}"
+                status: failed
+                error: "{{last_error}}"
+  - action: write_json
+    file_path: reports/import-results.json
+    with:
+      value: "{{import_results}}"
+  - action: write_csv
+    file_path: reports/import-results.csv
+    with:
+      value: "{{import_results}}"
+      headers:
+        - source_row
+        - status
+        - error
 `,
 		},
 		{

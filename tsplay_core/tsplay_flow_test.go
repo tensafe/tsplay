@@ -255,6 +255,94 @@ func TestRunFlowForeachIteratesItems(t *testing.T) {
 	}
 }
 
+func TestRunFlowAppendVarAndWriteResults(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "append_and_write_results",
+		Steps: []FlowStep{
+			{
+				Action: "append_var",
+				SaveAs: "import_results",
+				With: map[string]any{
+					"value": map[string]any{
+						"source_row": 2,
+						"status":     "success",
+					},
+				},
+			},
+			{
+				Action: "append_var",
+				SaveAs: "import_results",
+				With: map[string]any{
+					"value": map[string]any{
+						"source_row": 3,
+						"status":     "failed",
+						"error":      "boom",
+					},
+				},
+			},
+			{
+				Action:   "write_json",
+				FilePath: "reports/import-results.json",
+				With: map[string]any{
+					"value": "{{import_results}}",
+				},
+			},
+			{
+				Action:   "write_csv",
+				FilePath: "reports/import-results.csv",
+				With: map[string]any{
+					"value": "{{import_results}}",
+					"headers": []any{
+						"source_row",
+						"status",
+						"error",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	items, ok := result.Vars["import_results"].([]any)
+	if !ok || len(items) != 2 {
+		t.Fatalf("import_results = %#v", result.Vars["import_results"])
+	}
+
+	jsonContent, err := os.ReadFile(filepath.Join(root, "reports", "import-results.json"))
+	if err != nil {
+		t.Fatalf("read json: %v", err)
+	}
+	if !strings.Contains(string(jsonContent), "\"status\": \"failed\"") {
+		t.Fatalf("unexpected json content: %s", string(jsonContent))
+	}
+
+	csvContent, err := os.ReadFile(filepath.Join(root, "reports", "import-results.csv"))
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	if !strings.Contains(string(csvContent), "source_row,status,error") {
+		t.Fatalf("missing csv header: %s", string(csvContent))
+	}
+	if !strings.Contains(string(csvContent), "3,failed,boom") {
+		t.Fatalf("missing csv row: %s", string(csvContent))
+	}
+}
+
 func TestRunFlowOnErrorHandlesFailure(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()

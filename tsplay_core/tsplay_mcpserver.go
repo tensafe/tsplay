@@ -1153,6 +1153,7 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["lua"] = "Run an inline Lua code block. Prefer structured actions for normal browser steps and use lua only as an escape hatch."
 	descriptions["extract_text"] = "Read text from a selector, optionally wait first, and optionally extract the first regex match."
 	descriptions["set_var"] = "Set a flow variable from a resolved value. Requires save_as; for non-string literals use with.value."
+	descriptions["append_var"] = "Append one resolved value to a list variable. Initializes the list when save_as does not exist yet."
 	descriptions["assert_visible"] = "Fail the flow unless the selector is visible. Optional timeout waits before asserting."
 	descriptions["assert_text"] = "Fail the flow unless the selected element text contains the expected text. Optional timeout polls before asserting."
 	descriptions["retry"] = "Retry nested Flow steps until they succeed or the retry count is exhausted."
@@ -1162,6 +1163,8 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
 	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
+	descriptions["write_json"] = "Write any resolved value to a local JSON file."
+	descriptions["write_csv"] = "Write resolved rows to a local CSV file, optionally with an explicit header order."
 	descriptions["redis_get"] = "Read one key from Redis using a named connection resolved from environment variables."
 	descriptions["redis_set"] = "Write one key to Redis with an optional TTL using a named connection resolved from environment variables."
 	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
@@ -1193,6 +1196,14 @@ func buildFlowActionManifest() []map[string]any {
 			item["notes"] = []string{
 				"Use value for strings or placeholders such as {{order_count}}.",
 				"Use with.value when the literal is a boolean, number, list, or object.",
+			}
+		}
+		if name == "append_var" {
+			item["requires_save_as"] = true
+			item["returns"] = "list<any>"
+			item["notes"] = []string{
+				"Use with.value when appending an object or list literal.",
+				"The list is created automatically when save_as does not exist yet.",
 			}
 		}
 		if name == "retry" {
@@ -1230,6 +1241,20 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "interval_ms", "type": "int", "required": false, "default": 500},
 			}
 		}
+		if name == "read_csv" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "with.start_row", "type": "int", "required": false},
+				{"name": "with.limit", "type": "int", "required": false},
+				{"name": "with.row_number_field", "type": "string", "required": false},
+			}
+			item["returns"] = "list<object>"
+			item["notes"] = []string{
+				"Use with.start_row to resume from a source row number in the CSV file.",
+				"Use with.limit to process one chunk at a time.",
+				"Use with.row_number_field to keep the original source row number in each row object.",
+			}
+		}
 		if name == "redis_set" {
 			item["args"] = []map[string]any{
 				{"name": "key", "type": "string", "required": true},
@@ -1244,12 +1269,39 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "sheet", "type": "string", "required": false},
 				{"name": "range", "type": "string", "required": false},
 				{"name": "with.headers", "type": "string_list", "required": false},
+				{"name": "with.start_row", "type": "int", "required": false},
+				{"name": "with.limit", "type": "int", "required": false},
+				{"name": "with.row_number_field", "type": "string", "required": false},
 			}
 			item["returns"] = "list<object>"
 			item["notes"] = []string{
 				"Omit range to read the whole sheet and use the first non-empty row as headers.",
 				"Use range such as A2:B20 to read one rectangular region from a larger sheet.",
 				"Use with.headers when the selected range contains data rows but not a header row.",
+				"Use with.start_row and with.limit to resume a chunked import by source row number.",
+				"Use with.row_number_field to keep the original sheet row number in each row object.",
+			}
+		}
+		if name == "write_json" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "value", "type": "any", "required": true},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.value when writing an object, list, or placeholder result.",
+			}
+		}
+		if name == "write_csv" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "value", "type": "any", "required": true},
+				{"name": "with.headers", "type": "string_list", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Value should be a list of row objects, row lists, or scalars.",
+				"Use with.headers to control CSV column order when writing objects.",
 			}
 		}
 		if group := flowActionSecurityGroup(name); group != "" {

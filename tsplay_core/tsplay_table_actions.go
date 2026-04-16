@@ -18,9 +18,18 @@ import (
 )
 
 type excelReadOptions struct {
-	Sheet   string
-	Range   string
-	Headers []string
+	Sheet          string
+	Range          string
+	Headers        []string
+	StartRow       int
+	Limit          int
+	RowNumberField string
+}
+
+type tableReadOptions struct {
+	StartRow       int
+	Limit          int
+	RowNumberField string
 }
 
 type excelRangeSpec struct {
@@ -37,7 +46,17 @@ type xlsxSheetInfo struct {
 
 func read_csv(L *lua.LState) int {
 	filePath := L.CheckString(1)
-	rows, err := loadCSVRows(filePath)
+	options := tableReadOptions{}
+	if L.GetTop() >= 2 && L.Get(2) != lua.LNil {
+		options.StartRow = L.CheckInt(2)
+	}
+	if L.GetTop() >= 3 && L.Get(3) != lua.LNil {
+		options.Limit = L.CheckInt(3)
+	}
+	if L.GetTop() >= 4 && L.Get(4) != lua.LNil {
+		options.RowNumberField = L.CheckString(4)
+	}
+	rows, err := loadCSVRows(filePath, options)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
@@ -63,6 +82,15 @@ func read_excel(L *lua.LState) int {
 		}
 		options.Headers = headers
 	}
+	if L.GetTop() >= 5 && L.Get(5) != lua.LNil {
+		options.StartRow = L.CheckInt(5)
+	}
+	if L.GetTop() >= 6 && L.Get(6) != lua.LNil {
+		options.Limit = L.CheckInt(6)
+	}
+	if L.GetTop() >= 7 && L.Get(7) != lua.LNil {
+		options.RowNumberField = L.CheckString(7)
+	}
 
 	rows, err := loadExcelRows(filePath, options)
 	if err != nil {
@@ -73,7 +101,10 @@ func read_excel(L *lua.LState) int {
 	return 1
 }
 
-func loadCSVRows(filePath string) ([]any, error) {
+func loadCSVRows(filePath string, options tableReadOptions) ([]any, error) {
+	if err := validateTableReadOptions(options); err != nil {
+		return nil, fmt.Errorf("read_csv options: %w", err)
+	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read_csv open %q: %w", filePath, err)
@@ -93,10 +124,23 @@ func loadCSVRows(filePath string) ([]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read_csv parse %q: %w", filePath, err)
 	}
-	return tableRowsToObjects(records, nil), nil
+	return tableRowsToObjects(records, tableRowsToObjectsOptions{
+		Headers:        nil,
+		SourceRowStart: 1,
+		StartRow:       options.StartRow,
+		Limit:          options.Limit,
+		RowNumberField: options.RowNumberField,
+	}), nil
 }
 
 func loadExcelRows(filePath string, options excelReadOptions) ([]any, error) {
+	if err := validateTableReadOptions(tableReadOptions{
+		StartRow:       options.StartRow,
+		Limit:          options.Limit,
+		RowNumberField: options.RowNumberField,
+	}); err != nil {
+		return nil, fmt.Errorf("read_excel options: %w", err)
+	}
 	if strings.ToLower(filepath.Ext(filePath)) != ".xlsx" {
 		return nil, fmt.Errorf("read_excel currently supports only .xlsx files")
 	}
@@ -150,7 +194,21 @@ func loadExcelRows(filePath string, options excelReadOptions) ([]any, error) {
 		}
 		records = rangeRows
 	}
-	return tableRowsToObjects(records, options.Headers), nil
+	sourceRowStart := 1
+	if strings.TrimSpace(options.Range) != "" {
+		spec, err := parseExcelRangeSpec(options.Range)
+		if err != nil {
+			return nil, fmt.Errorf("read_excel parse range %q from sheet %q in %q: %w", options.Range, selected.Name, filePath, err)
+		}
+		sourceRowStart = spec.StartRow
+	}
+	return tableRowsToObjects(records, tableRowsToObjectsOptions{
+		Headers:        options.Headers,
+		SourceRowStart: sourceRowStart,
+		StartRow:       options.StartRow,
+		Limit:          options.Limit,
+		RowNumberField: options.RowNumberField,
+	}), nil
 }
 
 func sliceExcelRange(records [][]string, rangeSpec string) ([][]string, error) {
@@ -222,9 +280,21 @@ func parseExcelRangeSpec(rangeSpec string) (excelRangeSpec, error) {
 	}, nil
 }
 
-func tableRowsToObjects(records [][]string, headers []string) []any {
-	if len(headers) > 0 {
-		return tableDataRowsToObjects(records, normalizeTableHeaders(headers))
+type tableRowsToObjectsOptions struct {
+	Headers        []string
+	SourceRowStart int
+	StartRow       int
+	Limit          int
+	RowNumberField string
+}
+
+func tableRowsToObjects(records [][]string, options tableRowsToObjectsOptions) []any {
+	sourceRowStart := options.SourceRowStart
+	if sourceRowStart < 1 {
+		sourceRowStart = 1
+	}
+	if len(options.Headers) > 0 {
+		return tableDataRowsToObjects(records, normalizeTableHeaders(options.Headers), sourceRowStart, options)
 	}
 
 	headerIndex := -1
@@ -239,13 +309,17 @@ func tableRowsToObjects(records [][]string, headers []string) []any {
 		return []any{}
 	}
 
-	return tableDataRowsToObjects(records[headerIndex+1:], normalizeTableHeaders(records[headerIndex]))
+	return tableDataRowsToObjects(records[headerIndex+1:], normalizeTableHeaders(records[headerIndex]), sourceRowStart+headerIndex+1, options)
 }
 
-func tableDataRowsToObjects(records [][]string, headers []string) []any {
+func tableDataRowsToObjects(records [][]string, headers []string, sourceRowStart int, options tableRowsToObjectsOptions) []any {
 	rows := make([]any, 0, len(records))
-	for _, record := range records {
+	for index, record := range records {
 		if rowIsEmpty(record) {
+			continue
+		}
+		sourceRow := sourceRowStart + index
+		if options.StartRow > 0 && sourceRow < options.StartRow {
 			continue
 		}
 		row := map[string]any{}
@@ -261,7 +335,13 @@ func tableDataRowsToObjects(records [][]string, headers []string) []any {
 			}
 			row[header] = value
 		}
+		if strings.TrimSpace(options.RowNumberField) != "" {
+			row[options.RowNumberField] = sourceRow
+		}
 		rows = append(rows, row)
+		if options.Limit > 0 && len(rows) >= options.Limit {
+			break
+		}
 	}
 	return rows
 }
@@ -293,6 +373,19 @@ func stringListValue(value any) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("must be a list of strings")
 	}
+}
+
+func validateTableReadOptions(options tableReadOptions) error {
+	if options.StartRow < 0 {
+		return fmt.Errorf("start_row must be at least 1 when provided")
+	}
+	if options.Limit < 0 {
+		return fmt.Errorf("limit must be at least 1 when provided")
+	}
+	if strings.TrimSpace(options.RowNumberField) == "" && options.RowNumberField != "" {
+		return fmt.Errorf("row_number_field cannot be blank")
+	}
+	return nil
 }
 
 func normalizeTableHeaders(headerRow []string) []string {
