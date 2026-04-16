@@ -77,6 +77,9 @@ func TestHandleFlowSchemaTool(t *testing.T) {
 	if _, ok := properties["steps"]; !ok {
 		t.Fatalf("expected steps property")
 	}
+	if _, ok := properties["browser"]; !ok {
+		t.Fatalf("expected browser property")
+	}
 	defs, ok := schema["$defs"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected $defs, got %#v", schema["$defs"])
@@ -110,6 +113,7 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 	}
 
 	foundExtractExample := false
+	foundBrowserExample := false
 	for _, example := range examples {
 		item, ok := example.(map[string]any)
 		if !ok {
@@ -129,9 +133,15 @@ func TestHandleFlowExamplesTool(t *testing.T) {
 		if item["name"] == "extract_text_and_set_var" {
 			foundExtractExample = true
 		}
+		if item["name"] == "browser_session_with_storage_state" {
+			foundBrowserExample = true
+		}
 	}
 	if !foundExtractExample {
 		t.Fatalf("missing extract_text_and_set_var example")
+	}
+	if !foundBrowserExample {
+		t.Fatalf("missing browser_session_with_storage_state example")
 	}
 }
 

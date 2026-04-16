@@ -94,69 +94,139 @@ var GlobalPlayWrightFunc = []LuaFunction{
 // 安全获得page
 func safe_page(L *lua.LState) playwright.Page {
 	pageUserData := L.GetGlobal("page")
-	if pageUserData == lua.LNil {
-		L.RaiseError("No 'page' object found in Lua context")
-		return nil
-	}
-
-	page, ok := pageUserData.(*lua.LUserData)
-	if !ok {
-		L.RaiseError("'page' is not of the expected type")
-		return nil
-	}
-
-	var playwrightPage playwright.Page
-
-	if page == nil {
-		browser := safe_browser(L)
-		if browser == nil {
+	if pageUserData != lua.LNil {
+		page, ok := pageUserData.(*lua.LUserData)
+		if !ok {
+			L.RaiseError("'page' is not of the expected type")
 			return nil
 		}
-
-		// 获取所有的页面
-		contexts := browser.Contexts()
-		if len(contexts) == 0 {
-			L.RaiseError("No browser contexts found")
-			return nil
+		if page != nil && page.Value != nil {
+			playwrightPage, ok := page.Value.(playwright.Page)
+			if !ok {
+				L.RaiseError("'page' does not contain a valid Playwright Page object")
+				return nil
+			}
+			return playwrightPage
 		}
+	}
 
-		context := contexts[0]
+	if context := safe_context(L); context != nil {
 		pages := context.Pages()
 		if len(pages) == 0 {
 			L.RaiseError("No page found")
 			return nil
 		}
-		playwrightPage = pages[0]
-	} else {
-		playwrightPage, ok = page.Value.(playwright.Page)
-		if !ok {
-			L.RaiseError("'page' does not contain a valid Playwright Page object")
-			return nil
-		}
+		return pages[0]
 	}
 
-	return playwrightPage
+	L.RaiseError("No 'page' object found in Lua context")
+	return nil
 }
 
 func safe_browser(L *lua.LState) playwright.Browser {
-	browserUserData := L.GetGlobal("browser")
-	if browserUserData == lua.LNil {
-		L.RaiseError("No 'page' object found in Lua context")
-		return nil
-	}
-
-	browser, ok := browserUserData.(*lua.LUserData)
+	playwrightBrowser, ok := flowBrowserFromState(L)
 	if !ok {
-		L.RaiseError("'page' is not of the expected type")
-		return nil
-	}
-
-	playwrightBrowser, ok := browser.Value.(playwright.Browser)
-	if !ok {
-		L.RaiseError("'page' does not contain a valid Playwright Page object")
+		L.RaiseError("No 'browser' object found in Lua context")
 		return nil
 	}
 	return playwrightBrowser
+}
+
+func safe_context(L *lua.LState) playwright.BrowserContext {
+	context, ok := flowBrowserContextFromState(L)
+	if !ok {
+		L.RaiseError("No 'context' object found in Lua context")
+		return nil
+	}
+	return context
+}
+
+func setFlowBrowserGlobals(L *lua.LState, browser playwright.Browser, context playwright.BrowserContext, page playwright.Page) {
+	if L == nil {
+		return
+	}
+	setUserDataGlobal := func(name string, value any) {
+		ud := L.NewUserData()
+		ud.Value = value
+		L.SetGlobal(name, ud)
+	}
+	setUserDataGlobal("browser", browser)
+	setUserDataGlobal("context", context)
+	setUserDataGlobal("page", page)
+}
+
+func flowBrowserFromState(L *lua.LState) (playwright.Browser, bool) {
+	if L == nil {
+		return nil, false
+	}
+	browserUserData := L.GetGlobal("browser")
+	if browserUserData == lua.LNil {
+		return nil, false
+	}
+
+	browser, ok := browserUserData.(*lua.LUserData)
+	if !ok || browser == nil || browser.Value == nil {
+		return nil, false
+	}
+
+	playwrightBrowser, ok := browser.Value.(playwright.Browser)
+	return playwrightBrowser, ok && playwrightBrowser != nil
+}
+
+func flowBrowserContextFromState(L *lua.LState) (playwright.BrowserContext, bool) {
+	if L == nil {
+		return nil, false
+	}
+	contextUserData := L.GetGlobal("context")
+	if contextUserData != lua.LNil {
+		context, ok := contextUserData.(*lua.LUserData)
+		if ok && context != nil && context.Value != nil {
+			playwrightContext, ok := context.Value.(playwright.BrowserContext)
+			if ok && playwrightContext != nil {
+				return playwrightContext, true
+			}
+		}
+	}
+
+	pageUserData := L.GetGlobal("page")
+	if pageUserData != lua.LNil {
+		page, ok := pageUserData.(*lua.LUserData)
+		if ok && page != nil && page.Value != nil {
+			playwrightPage, ok := page.Value.(playwright.Page)
+			if ok && playwrightPage != nil {
+				return playwrightPage.Context(), true
+			}
+		}
+	}
+
+	browser, ok := flowBrowserFromState(L)
+	if !ok {
+		return nil, false
+	}
+	contexts := browser.Contexts()
+	if len(contexts) == 0 {
+		return nil, false
+	}
+	return contexts[0], true
+}
+
+func flowBrowserContextsFromState(L *lua.LState) []playwright.BrowserContext {
+	if L == nil {
+		return nil
+	}
+	if context, ok := flowBrowserContextFromState(L); ok {
+		contexts := []playwright.BrowserContext{context}
+		if browser, ok := flowBrowserFromState(L); ok {
+			if browserContexts := browser.Contexts(); len(browserContexts) > 0 {
+				return browserContexts
+			}
+		}
+		return contexts
+	}
+	if browser, ok := flowBrowserFromState(L); ok {
+		return browser.Contexts()
+	}
+	return nil
 }
 
 //(1)页面导航
@@ -1435,11 +1505,6 @@ func is_aria_selected(L *lua.LState) int {
 //switch_to_tab(index) 切换到指定的标签页。
 
 func new_tab(L *lua.LState) int {
-	browser := safe_browser(L)
-	if browser == nil {
-		return 0
-	}
-
 	// 从 Lua 获取 URL
 	url := L.CheckString(1)
 	if url == "" {
@@ -1447,10 +1512,19 @@ func new_tab(L *lua.LState) int {
 		return 0
 	}
 
-	context, err := browser.NewContext()
-	if err != nil {
-		L.RaiseError(" browser new contexts failed: %v", err)
-		return 0
+	context := safe_context(L)
+	if context == nil {
+		browser := safe_browser(L)
+		if browser == nil {
+			return 0
+		}
+		var err error
+		context, err = browser.NewContext()
+		if err != nil {
+			L.RaiseError("browser new context failed: %v", err)
+			return 0
+		}
+		setFlowBrowserGlobals(L, browser, context, nil)
 	}
 	page, err := context.NewPage()
 	if err != nil {
@@ -1465,9 +1539,8 @@ func new_tab(L *lua.LState) int {
 		return 0
 	}
 
-	ud_p := L.NewUserData()
-	ud_p.Value = page
-	L.SetGlobal("page", ud_p)
+	browser, _ := flowBrowserFromState(L)
+	setFlowBrowserGlobals(L, browser, context, page)
 
 	fmt.Printf("Opened new tab with URL: %s\n", url)
 	return 0
@@ -1485,17 +1558,24 @@ func close_tab(L *lua.LState) int {
 		return 0
 	}
 
-	ud_p := L.NewUserData()
-	ud_p.Value = nil
-	L.SetGlobal("page", ud_p)
+	context, _ := flowBrowserContextFromState(L)
+	browser, _ := flowBrowserFromState(L)
+	nextPage := playwright.Page(nil)
+	if context != nil {
+		pages := context.Pages()
+		if len(pages) > 0 {
+			nextPage = pages[0]
+		}
+	}
+	setFlowBrowserGlobals(L, browser, context, nextPage)
 
 	fmt.Println("Current tab closed")
 	return 0
 }
 
 func switch_to_tab(L *lua.LState) int {
-	browser := safe_browser(L)
-	if browser == nil {
+	context := safe_context(L)
+	if context == nil {
 		return 0
 	}
 
@@ -1507,13 +1587,6 @@ func switch_to_tab(L *lua.LState) int {
 	}
 
 	// 获取所有的页面
-	contexts := browser.Contexts()
-	if len(contexts) == 0 {
-		L.RaiseError("No browser contexts found")
-		return 0
-	}
-
-	context := contexts[0]
 	pages := context.Pages()
 	if index >= len(pages) {
 		L.RaiseError("Tab index out of range: %d (total tabs: %d)", index, len(pages))
@@ -1528,9 +1601,8 @@ func switch_to_tab(L *lua.LState) int {
 		return 0
 	}
 
-	ud_p := L.NewUserData()
-	ud_p.Value = page
-	L.SetGlobal("page", ud_p)
+	browser, _ := flowBrowserFromState(L)
+	setFlowBrowserGlobals(L, browser, context, page)
 
 	fmt.Printf("Switched to tab at index: %d\n", index)
 	return 0
@@ -1665,16 +1737,9 @@ func get_response(L *lua.LState) int {
 }
 
 func get_storage_state(L *lua.LState) int {
-	// 获取浏览器对象
-	browser := safe_browser(L)
-	if browser == nil {
-		L.RaiseError("Failed to get browser object")
-		return 0
-	}
-
 	// 获取上下文索引（从 Lua 参数中获取，默认为第一个上下文）
 	contextIndex := L.OptInt(1, 1) - 1 // Lua 索引从 1 开始，Go 数组索引从 0 开始
-	contexts := browser.Contexts()
+	contexts := flowBrowserContextsFromState(L)
 
 	// 检查索引是否合法
 	if contextIndex < 0 || contextIndex >= len(contexts) {
@@ -1742,16 +1807,9 @@ func get_storage_state(L *lua.LState) int {
 //		return 1
 //	}
 func get_cookies_string(L *lua.LState) int {
-	// 获取浏览器对象
-	browser := safe_browser(L)
-	if browser == nil {
-		L.RaiseError("Failed to get browser object")
-		return 0
-	}
-
 	// 获取上下文索引（默认为第一个上下文）
 	contextIndex := L.OptInt(1, 1) - 1
-	contexts := browser.Contexts()
+	contexts := flowBrowserContextsFromState(L)
 
 	// 检查上下文索引是否合法
 	if contextIndex < 0 || contextIndex >= len(contexts) {

@@ -21,11 +21,31 @@ import (
 // It keeps most business logic declarative, while still allowing lua steps as
 // an escape hatch for advanced cases.
 type Flow struct {
-	SchemaVersion string         `json:"schema_version" yaml:"schema_version"`
-	Name          string         `json:"name" yaml:"name"`
-	Description   string         `json:"description,omitempty" yaml:"description,omitempty"`
-	Vars          map[string]any `json:"vars,omitempty" yaml:"vars,omitempty"`
-	Steps         []FlowStep     `json:"steps" yaml:"steps"`
+	SchemaVersion string             `json:"schema_version" yaml:"schema_version"`
+	Name          string             `json:"name" yaml:"name"`
+	Description   string             `json:"description,omitempty" yaml:"description,omitempty"`
+	Browser       *FlowBrowserConfig `json:"browser,omitempty" yaml:"browser,omitempty"`
+	Vars          map[string]any     `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Steps         []FlowStep         `json:"steps" yaml:"steps"`
+}
+
+type FlowBrowserConfig struct {
+	Headless         *bool         `json:"headless,omitempty" yaml:"headless,omitempty"`
+	StorageState     string        `json:"storage_state,omitempty" yaml:"storage_state,omitempty"`
+	StorageStatePath string        `json:"storage_state_path,omitempty" yaml:"storage_state_path,omitempty"`
+	LoadStorageState string        `json:"load_storage_state,omitempty" yaml:"load_storage_state,omitempty"`
+	SaveStorageState string        `json:"save_storage_state,omitempty" yaml:"save_storage_state,omitempty"`
+	Persistent       bool          `json:"persistent,omitempty" yaml:"persistent,omitempty"`
+	Profile          string        `json:"profile,omitempty" yaml:"profile,omitempty"`
+	Session          string        `json:"session,omitempty" yaml:"session,omitempty"`
+	Timeout          int           `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+	UserAgent        string        `json:"user_agent,omitempty" yaml:"user_agent,omitempty"`
+	Viewport         *FlowViewport `json:"viewport,omitempty" yaml:"viewport,omitempty"`
+}
+
+type FlowViewport struct {
+	Width  int `json:"width" yaml:"width"`
+	Height int `json:"height" yaml:"height"`
 }
 
 type FlowStep struct {
@@ -279,6 +299,10 @@ func ValidateFlowStrict(flow *Flow) error {
 		knownVars[name] = value
 	}
 
+	if err := validateFlowBrowserConfig(flow.Browser); err != nil {
+		return err
+	}
+
 	return validateFlowStepSequence(flow.Steps, knownVars, "")
 }
 
@@ -354,6 +378,41 @@ func copyKnownVars(knownVars map[string]any) map[string]any {
 		copied[name] = value
 	}
 	return copied
+}
+
+func validateFlowBrowserConfig(browser *FlowBrowserConfig) error {
+	if browser == nil {
+		return nil
+	}
+
+	loadPath, err := browser.loadStorageStatePath()
+	if err != nil {
+		return err
+	}
+	if browser.wantsPersistentContext() && loadPath != "" {
+		return fmt.Errorf("browser.storage_state/load_storage_state is not supported together with persistent profile/session")
+	}
+	if browser.Timeout < 0 {
+		return fmt.Errorf("browser.timeout must be at least 0")
+	}
+	if browser.SaveStorageState != "" && strings.TrimSpace(browser.SaveStorageState) == "" {
+		return fmt.Errorf("browser.save_storage_state cannot be blank")
+	}
+	if browser.Viewport != nil {
+		if browser.Viewport.Width < 1 {
+			return fmt.Errorf("browser.viewport.width must be at least 1")
+		}
+		if browser.Viewport.Height < 1 {
+			return fmt.Errorf("browser.viewport.height must be at least 1")
+		}
+	}
+	if strings.TrimSpace(browser.Profile) == "" && browser.Profile != "" {
+		return fmt.Errorf("browser.profile cannot be blank")
+	}
+	if strings.TrimSpace(browser.Session) == "" && browser.Session != "" {
+		return fmt.Errorf("browser.session cannot be blank")
+	}
+	return nil
 }
 
 func validateFlowControlStep(stepPath string, step FlowStep, knownVars map[string]any) error {
@@ -750,6 +809,9 @@ func ValidateFlowSecurity(flow *Flow, policy FlowSecurityPolicy) error {
 	if err := validateFlowFileAccessRoots(flow, policy); err != nil {
 		return err
 	}
+	if err := validateFlowBrowserConfigSecurity(flow.Browser, policy); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -827,6 +889,40 @@ func validateFlowFileAccessRoots(flow *Flow, policy FlowSecurityPolicy) error {
 		return nil
 	}
 	return validateFlowFileAccessRootsForSteps(flow.Steps, policy, "")
+}
+
+func validateFlowBrowserConfigSecurity(browser *FlowBrowserConfig, policy FlowSecurityPolicy) error {
+	if browser == nil {
+		return nil
+	}
+	if strings.TrimSpace(policy.FileInputRoot) == "" {
+		policy.FileInputRoot = DefaultFlowArtifactRoot
+	}
+	if strings.TrimSpace(policy.FileOutputRoot) == "" {
+		policy.FileOutputRoot = DefaultFlowArtifactRoot
+	}
+	loadPath, err := browser.loadStorageStatePath()
+	if err != nil {
+		return err
+	}
+	savePath := strings.TrimSpace(browser.SaveStorageState)
+	if !browser.usesBrowserState() {
+		return nil
+	}
+	if !policy.AllowBrowserState {
+		return fmt.Errorf("flow browser config requires allow_browser_state=true only for trusted flows")
+	}
+	if loadPath != "" {
+		if err := validateFlowFilePathValue("browser", "browser", "storage_state", flowFileInputPath, loadPath, policy); err != nil {
+			return err
+		}
+	}
+	if savePath != "" {
+		if err := validateFlowFilePathValue("browser", "browser", "save_storage_state", flowFileOutputPath, savePath, policy); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateFlowFileAccessRootsForSteps(steps []FlowStep, policy FlowSecurityPolicy, parentPath string) error {
@@ -1056,42 +1152,164 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 		}
 	}
 
+	browserConfig, err := resolveFlowBrowserConfig(flow, options)
+	if err != nil {
+		return nil, err
+	}
+
 	pw, err := playwright.Run()
 	if err != nil {
 		return nil, fmt.Errorf("could not start Playwright: %w", err)
 	}
 	defer pw.Stop()
 
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(options.Headless),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("could not launch browser: %w", err)
-	}
-	defer browser.Close()
-
-	page, err := browser.NewPage()
-	if err != nil {
-		return nil, fmt.Errorf("could not create page: %w", err)
-	}
-	defer page.Close()
-
 	L := lua.NewState()
 	defer L.Close()
-
-	udBrowser := L.NewUserData()
-	udBrowser.Value = browser
-	L.SetGlobal("browser", udBrowser)
-
-	udPage := L.NewUserData()
-	udPage.Value = page
-	L.SetGlobal("page", udPage)
 
 	for _, fn := range GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
+	var browser playwright.Browser
+	var context playwright.BrowserContext
+	var page playwright.Page
+	if browserConfig.wantsPersistentContext() {
+		context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
+		if err != nil {
+			return nil, err
+		}
+		defer context.Close()
+	} else {
+		browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
+		if err != nil {
+			return nil, err
+		}
+		defer browser.Close()
+	}
+	setFlowBrowserGlobals(L, browser, context, page)
+
 	return RunFlowInStateWithOptions(L, flow, options)
+}
+
+func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserConfig, error) {
+	config := FlowBrowserConfig{}
+	if flow != nil && flow.Browser != nil {
+		config = *flow.Browser
+	}
+	if config.Headless == nil {
+		headless := options.Headless
+		config.Headless = &headless
+	}
+	if _, err := config.loadStorageStatePath(); err != nil {
+		return FlowBrowserConfig{}, err
+	}
+	return config, nil
+}
+
+func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, options FlowRunOptions) (playwright.Browser, playwright.BrowserContext, playwright.Page, error) {
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(config.headlessValue()),
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("could not launch browser: %w", err)
+	}
+
+	contextOptions := playwright.BrowserNewContextOptions{}
+	if err := applyFlowBrowserContextOptions(&contextOptions, config, options.Security); err != nil {
+		browser.Close()
+		return nil, nil, nil, err
+	}
+	context, err := browser.NewContext(contextOptions)
+	if err != nil {
+		browser.Close()
+		return nil, nil, nil, fmt.Errorf("could not create browser context: %w", err)
+	}
+	page, err := context.NewPage()
+	if err != nil {
+		context.Close()
+		browser.Close()
+		return nil, nil, nil, fmt.Errorf("could not create page: %w", err)
+	}
+	applyFlowBrowserTimeouts(context, page, config)
+	return browser, context, page, nil
+}
+
+func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, stateRoot string) (playwright.BrowserContext, playwright.Page, error) {
+	loadPath, err := config.loadStorageStatePath()
+	if err != nil {
+		return nil, nil, err
+	}
+	if loadPath != "" {
+		return nil, nil, fmt.Errorf("browser storage_state/load_storage_state is not supported together with persistent profile/session")
+	}
+	userDataDir, err := config.persistentContextDir(stateRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	contextOptions := playwright.BrowserTypeLaunchPersistentContextOptions{
+		Headless: playwright.Bool(config.headlessValue()),
+	}
+	if config.UserAgent != "" {
+		contextOptions.UserAgent = playwright.String(config.UserAgent)
+	}
+	if config.Viewport != nil {
+		contextOptions.Viewport = &playwright.Size{Width: config.Viewport.Width, Height: config.Viewport.Height}
+	}
+	if config.Timeout > 0 {
+		contextOptions.Timeout = playwright.Float(float64(config.Timeout))
+	}
+	context, err := pw.Chromium.LaunchPersistentContext(userDataDir, contextOptions)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not launch persistent browser context: %w", err)
+	}
+	var page playwright.Page
+	pages := context.Pages()
+	if len(pages) > 0 {
+		page = pages[0]
+	} else {
+		page, err = context.NewPage()
+		if err != nil {
+			context.Close()
+			return nil, nil, fmt.Errorf("could not create page: %w", err)
+		}
+	}
+	applyFlowBrowserTimeouts(context, page, config)
+	return context, page, nil
+}
+
+func applyFlowBrowserContextOptions(options *playwright.BrowserNewContextOptions, config FlowBrowserConfig, security *FlowSecurityPolicy) error {
+	if options == nil {
+		return nil
+	}
+	if config.UserAgent != "" {
+		options.UserAgent = playwright.String(config.UserAgent)
+	}
+	if config.Viewport != nil {
+		options.Viewport = &playwright.Size{Width: config.Viewport.Width, Height: config.Viewport.Height}
+	}
+	loadPath, err := config.runtimeLoadStorageStatePath(security)
+	if err != nil {
+		return err
+	}
+	if loadPath != "" {
+		options.StorageStatePath = playwright.String(loadPath)
+	}
+	return nil
+}
+
+func applyFlowBrowserTimeouts(context playwright.BrowserContext, page playwright.Page, config FlowBrowserConfig) {
+	if config.Timeout <= 0 {
+		return
+	}
+	timeout := float64(config.Timeout)
+	if context != nil {
+		context.SetDefaultTimeout(timeout)
+		context.SetDefaultNavigationTimeout(timeout)
+	}
+	if page != nil {
+		page.SetDefaultTimeout(timeout)
+		page.SetDefaultNavigationTimeout(timeout)
+	}
 }
 
 func RunFlowInState(L *lua.LState, flow *Flow) (*FlowResult, error) {
@@ -1127,8 +1345,15 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	result := &FlowResult{Name: flow.Name, Vars: ctx.Vars, ArtifactRoot: artifactRoot}
 	traces, err := runFlowStepSequence(L, ctx, flow.Steps, "", 0, 0)
 	result.Trace = append(result.Trace, traces...)
+	saveErr := saveFlowBrowserStateFromConfig(L, flow, options)
 	if err != nil {
+		if saveErr != nil {
+			return result, fmt.Errorf("%w (also failed to save storage state: %v)", err, saveErr)
+		}
 		return result, err
+	}
+	if saveErr != nil {
+		return result, saveErr
 	}
 
 	return result, nil
@@ -1487,6 +1712,134 @@ func flowArtifactRoot(options FlowRunOptions) string {
 		return options.Security.FileOutputRoot
 	}
 	return ""
+}
+
+func flowBrowserStateRoot(options FlowRunOptions) string {
+	if root := flowArtifactRoot(options); strings.TrimSpace(root) != "" {
+		return root
+	}
+	return DefaultFlowArtifactRoot
+}
+
+func (browser FlowBrowserConfig) headlessValue() bool {
+	if browser.Headless == nil {
+		return false
+	}
+	return *browser.Headless
+}
+
+func (browser FlowBrowserConfig) loadStorageStatePath() (string, error) {
+	candidates := []string{}
+	for _, value := range []string{browser.StorageState, browser.StorageStatePath, browser.LoadStorageState} {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		candidates = append(candidates, trimmed)
+	}
+	if len(candidates) == 0 {
+		return "", nil
+	}
+	selected := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if candidate != selected {
+			return "", fmt.Errorf("browser.storage_state, browser.storage_state_path, and browser.load_storage_state must point to the same file when combined")
+		}
+	}
+	return selected, nil
+}
+
+func (browser FlowBrowserConfig) runtimeLoadStorageStatePath(security *FlowSecurityPolicy) (string, error) {
+	path, err := browser.loadStorageStatePath()
+	if err != nil || path == "" {
+		return path, err
+	}
+	return resolveFlowBrowserStatePath(path, flowFileInputPath, security)
+}
+
+func (browser FlowBrowserConfig) runtimeSaveStorageStatePath(security *FlowSecurityPolicy) (string, error) {
+	path := strings.TrimSpace(browser.SaveStorageState)
+	if path == "" {
+		return "", nil
+	}
+	return resolveFlowBrowserStatePath(path, flowFileOutputPath, security)
+}
+
+func (browser FlowBrowserConfig) usesBrowserState() bool {
+	loadPath, _ := browser.loadStorageStatePath()
+	return loadPath != "" || strings.TrimSpace(browser.SaveStorageState) != "" || browser.wantsPersistentContext()
+}
+
+func (browser FlowBrowserConfig) wantsPersistentContext() bool {
+	return browser.Persistent || strings.TrimSpace(browser.Profile) != "" || strings.TrimSpace(browser.Session) != ""
+}
+
+func (browser FlowBrowserConfig) persistentContextDir(root string) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = DefaultFlowArtifactRoot
+	}
+	rootReal, err := prepareRuntimeFileRoot(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve browser state root %q: %w", root, err)
+	}
+	segments := []string{rootReal, "profiles"}
+	if profile := strings.TrimSpace(browser.Profile); profile != "" {
+		segments = append(segments, sanitizeArtifactSegment(profile))
+	}
+	if session := strings.TrimSpace(browser.Session); session != "" {
+		segments = append(segments, sanitizeArtifactSegment(session))
+	}
+	if len(segments) == 2 {
+		segments = append(segments, "default")
+	}
+	dir := filepath.Join(segments...)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create persistent browser profile %q: %w", dir, err)
+	}
+	return dir, nil
+}
+
+func resolveFlowBrowserStatePath(path string, role flowFilePathRole, security *FlowSecurityPolicy) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", nil
+	}
+	policy := FlowSecurityPolicy{}
+	if security != nil {
+		policy = *security
+	}
+	root := flowFileRootForRole(role, policy)
+	if strings.TrimSpace(root) == "" {
+		root = DefaultFlowArtifactRoot
+		switch role {
+		case flowFileInputPath:
+			policy.FileInputRoot = root
+		case flowFileOutputPath:
+			policy.FileOutputRoot = root
+		}
+	}
+	return resolveRuntimeFilePath(path, role, policy)
+}
+
+func saveFlowBrowserStateFromConfig(L *lua.LState, flow *Flow, options FlowRunOptions) error {
+	if flow == nil || flow.Browser == nil {
+		return nil
+	}
+	path, err := flow.Browser.runtimeSaveStorageStatePath(options.Security)
+	if err != nil {
+		return err
+	}
+	if path == "" {
+		return nil
+	}
+	context, ok := flowBrowserContextFromState(L)
+	if !ok || context == nil {
+		return fmt.Errorf("browser.save_storage_state requires an active browser context")
+	}
+	if _, err := context.StorageState(path); err != nil {
+		return fmt.Errorf("save browser storage state to %q: %w", path, err)
+	}
+	return nil
 }
 
 func newFlowRunID(flow *Flow) string {

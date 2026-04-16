@@ -431,7 +431,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.run_flow",
-		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace."),
+		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace. Prefer browser config in the flow itself; the headless argument is only an override."),
 		mcp.WithString("flow",
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
@@ -793,8 +793,20 @@ func handleRunFlowToolWithOptions(
 	}
 
 	security := flowSecurityPolicyFromToolRequest(request, options)
+	if _, ok := request.GetArguments()["headless"]; ok {
+		headless := request.GetBool("headless", true)
+		if flow.Browser == nil {
+			flow.Browser = &FlowBrowserConfig{}
+		}
+		flow.Browser.Headless = &headless
+	} else if flow.Browser == nil || flow.Browser.Headless == nil {
+		headless := true
+		if flow.Browser == nil {
+			flow.Browser = &FlowBrowserConfig{}
+		}
+		flow.Browser.Headless = &headless
+	}
 	result, err := RunFlow(flow, FlowRunOptions{
-		Headless:     request.GetBool("headless", true),
 		Security:     &security,
 		ArtifactRoot: options.ArtifactRoot,
 	})

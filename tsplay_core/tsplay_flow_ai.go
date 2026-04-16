@@ -60,6 +60,32 @@ func BuildFlowJSONSchema() map[string]any {
 			},
 			"name":        map[string]any{"type": "string", "description": "Stable flow name, for example export_yesterday_orders."},
 			"description": map[string]any{"type": "string"},
+			"browser": map[string]any{
+				"type":                 "object",
+				"description":          "Optional browser launch/session config applied to the whole flow.",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"headless":           map[string]any{"type": "boolean"},
+					"storage_state":      map[string]any{"type": "string", "description": "Load browser storage state from a file relative to the artifact root."},
+					"storage_state_path": map[string]any{"type": "string", "description": "Alias of storage_state."},
+					"load_storage_state": map[string]any{"type": "string", "description": "Alias of storage_state."},
+					"save_storage_state": map[string]any{"type": "string", "description": "Save browser storage state to a file relative to the artifact root after the flow finishes."},
+					"persistent":         map[string]any{"type": "boolean", "description": "Use a persistent browser profile stored under the artifact root."},
+					"profile":            map[string]any{"type": "string", "description": "Persistent browser profile name."},
+					"session":            map[string]any{"type": "string", "description": "Optional session name inside the profile."},
+					"timeout":            map[string]any{"type": "integer", "minimum": 0, "description": "Default browser/page timeout in milliseconds."},
+					"user_agent":         map[string]any{"type": "string"},
+					"viewport": map[string]any{
+						"type":                 "object",
+						"additionalProperties": false,
+						"required":             []string{"width", "height"},
+						"properties": map[string]any{
+							"width":  map[string]any{"type": "integer", "minimum": 1},
+							"height": map[string]any{"type": "integer", "minimum": 1},
+						},
+					},
+				},
+			},
 			"vars": map[string]any{
 				"type":                 "object",
 				"description":          "Initial variables. Values can be referenced as {{var_name}}.",
@@ -436,6 +462,31 @@ steps:
 `,
 		},
 		{
+			"name":           "browser_session_with_storage_state",
+			"description":    "Reuse login state and browser profile settings at the flow level instead of pushing that logic into individual steps.",
+			"focus_actions":  []string{"navigate", "assert_visible"},
+			"when_to_use":    "The business flow depends on a stable login session, custom timeout, viewport, or user agent.",
+			"requires_allow": []string{"allow_browser_state"},
+			"flow": `schema_version: "1"
+name: admin_orders_with_saved_session
+browser:
+  headless: true
+  storage_state: states/admin.json
+  save_storage_state: states/admin-latest.json
+  timeout: 30000
+  user_agent: tsplay-bot/1.0
+  viewport:
+    width: 1440
+    height: 900
+steps:
+  - action: navigate
+    url: https://example.com/admin/orders
+  - action: assert_visible
+    selector: "#orders-table"
+    timeout: 10000
+`,
+		},
+		{
 			"name":           "lua_escape_hatch",
 			"description":    "Use lua only for cases not yet expressible by structured actions.",
 			"focus_actions":  []string{"lua"},
@@ -461,6 +512,7 @@ func flowSchemaGenerationRules() []string {
 		`Always include schema_version: "1".`,
 		"Prefer named parameters over args for readability and validation.",
 		"Generate structured Flow first. Use lua only as an explicit escape hatch.",
+		"Put session-wide browser concerns such as headless, storage_state, timeout, viewport, user_agent, or persistent profile naming in the top-level browser block.",
 		"Turn visible page facts into variables with extract_text + save_as, then use set_var when later steps need a stable derived value.",
 		"Use assert_visible/assert_text for business checks, retry for flaky page interactions, if for optional page states, foreach for lists, on_error for local recovery, and wait_until for polling conditions.",
 		"Keep steps small and named so trace artifacts and repair context point to an exact failure location.",

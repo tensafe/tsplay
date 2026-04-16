@@ -2,6 +2,8 @@ package tsplay_core
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -615,6 +617,92 @@ func TestValidateFlowSecurityRejectsBrowserStateByDefault(t *testing.T) {
 	}
 }
 
+func TestValidateFlowStrictAcceptsBrowserConfig(t *testing.T) {
+	headless := true
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_config",
+		Browser: &FlowBrowserConfig{
+			Headless:         &headless,
+			StorageState:     "states/admin.json",
+			SaveStorageState: "states/admin-latest.json",
+			Timeout:          30000,
+			UserAgent:        "tsplay-test/1.0",
+			Viewport:         &FlowViewport{Width: 1440, Height: 900},
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+}
+
+func TestValidateFlowStrictRejectsPersistentWithStorageState(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_config_conflict",
+		Browser: &FlowBrowserConfig{
+			Persistent:   true,
+			StorageState: "states/admin.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err == nil {
+		t.Fatalf("expected browser config conflict error")
+	}
+}
+
+func TestValidateFlowSecurityRejectsFlowBrowserStateByDefault(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_config_policy",
+		Browser: &FlowBrowserConfig{
+			StorageState: "states/admin.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy()); err == nil {
+		t.Fatalf("expected browser config security policy error")
+	}
+}
+
+func TestValidateFlowSecurityRestrictsBrowserStateRoot(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_state_root",
+		Browser: &FlowBrowserConfig{
+			StorageState: "../escape.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+	policy := FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileInputRoot:     t.TempDir(),
+		FileOutputRoot:    t.TempDir(),
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, policy); err == nil {
+		t.Fatalf("expected browser state root error")
+	}
+}
+
 func TestValidateFlowSecurityRestrictsFileOutputRoot(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
@@ -687,6 +775,79 @@ func TestRunFlowAssertVisibleAndText(t *testing.T) {
 	}
 	if result.Trace[2].OutputSummary == "" {
 		t.Fatalf("expected assert_text output summary")
+	}
+}
+
+func TestRunFlowBrowserStorageStateRoundTrip(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/seed":
+			fmt.Fprint(w, `<html><body><script>localStorage.setItem("token","abc123"); window.location.href="/check";</script></body></html>`)
+		case "/check":
+			fmt.Fprint(w, `<html><body><div id="ready"></div><script>document.getElementById("ready").textContent = localStorage.getItem("token") || "missing";</script></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	security := &FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileInputRoot:     root,
+		FileOutputRoot:    root,
+	}
+	headless := true
+
+	saveFlow := &Flow{
+		SchemaVersion: "1",
+		Name:          "save_browser_state",
+		Browser: &FlowBrowserConfig{
+			Headless:         &headless,
+			SaveStorageState: "states/admin.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL + "/seed"},
+			{Action: "assert_text", Selector: "#ready", Text: "abc123", Timeout: 3000},
+		},
+	}
+
+	if _, err := RunFlow(saveFlow, FlowRunOptions{
+		Headless:     true,
+		Security:     security,
+		ArtifactRoot: root,
+	}); err != nil {
+		t.Fatalf("save flow: %v", err)
+	}
+	statePath := filepath.Join(root, "states", "admin.json")
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("expected storage state file: %v", err)
+	}
+
+	loadFlow := &Flow{
+		SchemaVersion: "1",
+		Name:          "load_browser_state",
+		Browser: &FlowBrowserConfig{
+			Headless:     &headless,
+			StorageState: "states/admin.json",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL + "/check"},
+			{Action: "assert_text", Selector: "#ready", Text: "abc123", Timeout: 3000},
+		},
+	}
+
+	result, err := RunFlow(loadFlow, FlowRunOptions{
+		Headless:     true,
+		Security:     security,
+		ArtifactRoot: root,
+	})
+	if err != nil {
+		t.Fatalf("load flow: %v", err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected load result: %#v", result)
 	}
 }
 
