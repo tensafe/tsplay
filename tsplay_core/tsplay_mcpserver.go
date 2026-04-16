@@ -1225,7 +1225,16 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "items", "type": "items", "required": true},
 				{"name": "item_var", "type": "string", "required": true},
 				{"name": "index_var", "type": "string", "required": false},
+				{"name": "with.progress_key", "type": "string", "required": false},
+				{"name": "with.progress_connection", "type": "string", "required": false},
+				{"name": "with.progress_value", "type": "any", "required": false},
 				{"name": "steps", "type": "steps", "required": true},
+			}
+			item["notes"] = []string{
+				"Use with.progress_key to write a best-effort resume checkpoint after each successful iteration.",
+				"Use with.progress_connection to choose a named Redis connection; omit it to use the default connection.",
+				"When with.progress_value is omitted, TSPlay writes the next source row from source_row/row_number/row, or falls back to the next iteration number.",
+				"Checkpointing requires allow_redis=true, but it is skipped when Redis is not configured in the environment.",
 			}
 		}
 		if name == "on_error" {

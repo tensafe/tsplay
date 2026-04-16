@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -607,12 +608,26 @@ func validateForeachFlowStep(stepPath string, step FlowStep, knownVars map[strin
 		return fmt.Errorf("step %s action %q does not support args; use items, item_var, index_var, and steps", stepPath, step.Action)
 	}
 	present := step.presentNamedParams()
-	allowed := map[string]bool{"items": true, "item_var": true, "index_var": true, "steps": true}
+	allowed := map[string]bool{
+		"items":               true,
+		"item_var":            true,
+		"index_var":           true,
+		"steps":               true,
+		"progress_key":        true,
+		"progress_connection": true,
+		"progress_value":      true,
+	}
 	for name, value := range present {
 		if !allowed[name] {
 			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
 		}
 		if name == "steps" {
+			continue
+		}
+		if name == "progress_value" {
+			if err := validateFlowReferences(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
@@ -631,6 +646,21 @@ func validateForeachFlowStep(stepPath string, step FlowStep, knownVars map[strin
 	}
 	if indexVar, ok := step.param("index_var"); ok && !flowIdentifierPattern.MatchString(fmt.Sprint(indexVar)) {
 		return fmt.Errorf("step %s action %q index_var %q is not a valid variable name", stepPath, step.Action, indexVar)
+	}
+	if _, hasProgressConnection := step.param("progress_connection"); hasProgressConnection {
+		if _, hasProgressKey := step.param("progress_key"); !hasProgressKey {
+			return fmt.Errorf("step %s action %q progress_connection requires progress_key", stepPath, step.Action)
+		}
+	}
+	if _, hasProgressValue := step.param("progress_value"); hasProgressValue {
+		if _, hasProgressKey := step.param("progress_key"); !hasProgressKey {
+			return fmt.Errorf("step %s action %q progress_value requires progress_key", stepPath, step.Action)
+		}
+	}
+	if progressKey, ok := step.param("progress_key"); ok {
+		if len(flowReferences(progressKey)) == 0 && strings.TrimSpace(fmt.Sprint(progressKey)) == "" {
+			return fmt.Errorf("step %s action %q progress_key cannot be blank", stepPath, step.Action)
+		}
 	}
 	if len(step.Steps) == 0 {
 		return fmt.Errorf("step %s action %q requires nested steps", stepPath, step.Action)
@@ -1244,7 +1274,7 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
 		return "bool"
@@ -1262,7 +1292,7 @@ func flowParamType(name string) string {
 		return "items"
 	case "condition":
 		return "condition"
-	case "from", "json":
+	case "from", "json", "progress_value":
 		return "any"
 	default:
 		return ""
@@ -1293,6 +1323,9 @@ func validateFlowStepSequenceSecurity(steps []FlowStep, policy FlowSecurityPolic
 		if group != "" && !flowSecurityPolicyAllows(group, policy) {
 			option := flowActionSecurityOption(group)
 			return fmt.Errorf("step %s action %q is disabled by security policy; set %s=true only for trusted flows", stepPath, step.Action, option)
+		}
+		if stepUsesRedisCheckpoint(step) && !policy.AllowRedis {
+			return fmt.Errorf("step %s action %q progress checkpoint is disabled by security policy; set allow_redis=true only for trusted flows", stepPath, step.Action)
 		}
 		if stepRequiresFileAccess(step) && !policy.AllowFileAccess {
 			return fmt.Errorf("step %s action %q is disabled by security policy; set allow_file_access=true only for trusted flows", stepPath, step.Action)
@@ -1361,6 +1394,20 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 	default:
 		return true
 	}
+}
+
+func stepUsesRedisCheckpoint(step FlowStep) bool {
+	if step.Action != "foreach" {
+		return false
+	}
+	value, ok := step.param("progress_key")
+	if !ok {
+		return false
+	}
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text) != "" || len(flowReferences(value)) > 0
+	}
+	return value != nil
 }
 
 func stepRequiresFileAccess(step FlowStep) bool {
@@ -2102,6 +2149,10 @@ func runFlowForeachStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath
 	if indexVarValue, ok := step.param("index_var"); ok {
 		indexVar = fmt.Sprint(indexVarValue)
 	}
+	checkpoint, err := newFlowForeachCheckpoint(ctx, step)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	itemSnapshot, hadItem := snapshotSingleFlowVar(ctx, itemVar)
 	indexSnapshot, hadIndex := snapshotSingleFlowVar(ctx, indexVar)
@@ -2120,11 +2171,170 @@ func runFlowForeachStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath
 		if err != nil {
 			return nil, children, err
 		}
+		checkpoint.recordSuccess(L, ctx, item, iteration)
 	}
-	return map[string]any{
+	result := map[string]any{
 		"iterations": len(items),
 		"status":     "completed",
-	}, children, nil
+	}
+	if summary := checkpoint.summary(); summary != nil {
+		result["checkpoint"] = summary
+	}
+	return result, children, nil
+}
+
+type flowForeachCheckpoint struct {
+	enabled    bool
+	key        string
+	connection string
+	rawValue   any
+	value      any
+	writes     int
+	skipped    bool
+	skipReason string
+	lastError  string
+}
+
+func newFlowForeachCheckpoint(ctx *FlowContext, step FlowStep) (*flowForeachCheckpoint, error) {
+	progressKey, err := flowStepOptionalStringParam(ctx, step, "progress_key")
+	if err != nil {
+		return nil, err
+	}
+	progressKey = strings.TrimSpace(progressKey)
+	if progressKey == "" {
+		return &flowForeachCheckpoint{}, nil
+	}
+	connection, err := flowStepOptionalStringParam(ctx, step, "progress_connection")
+	if err != nil {
+		return nil, err
+	}
+	progressValue, _ := step.param("progress_value")
+	return &flowForeachCheckpoint{
+		enabled:    true,
+		key:        progressKey,
+		connection: connection,
+		rawValue:   progressValue,
+	}, nil
+}
+
+func (checkpoint *flowForeachCheckpoint) recordSuccess(_ *lua.LState, ctx *FlowContext, item any, iteration int) {
+	if checkpoint == nil || !checkpoint.enabled {
+		return
+	}
+	if !redisConnectionHasConfig(checkpoint.connection) {
+		checkpoint.skipped = true
+		checkpoint.skipReason = "redis connection not configured"
+		return
+	}
+	value, err := checkpoint.resolveValue(ctx, item, iteration)
+	if err != nil {
+		checkpoint.lastError = err.Error()
+		return
+	}
+	if _, err := redisSet(checkpoint.key, value, 0, checkpoint.connection); err != nil {
+		checkpoint.lastError = err.Error()
+		return
+	}
+	checkpoint.writes++
+	checkpoint.value = value
+	checkpoint.lastError = ""
+}
+
+func (checkpoint *flowForeachCheckpoint) resolveValue(ctx *FlowContext, item any, iteration int) (any, error) {
+	if checkpoint == nil || !checkpoint.enabled {
+		return nil, nil
+	}
+	if checkpoint.rawValue != nil {
+		return resolveValue(checkpoint.rawValue, ctx)
+	}
+	if nextRow, ok := flowForeachCheckpointNextRow(item); ok {
+		return nextRow, nil
+	}
+	return iteration + 1, nil
+}
+
+func (checkpoint *flowForeachCheckpoint) summary() map[string]any {
+	if checkpoint == nil || !checkpoint.enabled {
+		return nil
+	}
+	summary := map[string]any{
+		"key":        checkpoint.key,
+		"connection": firstNonEmpty(strings.TrimSpace(checkpoint.connection), redisDefaultConnection),
+		"writes":     checkpoint.writes,
+	}
+	if checkpoint.value != nil {
+		summary["last_value"] = checkpoint.value
+	}
+	if checkpoint.skipped {
+		summary["status"] = "skipped"
+		summary["reason"] = checkpoint.skipReason
+		return summary
+	}
+	if checkpoint.lastError != "" {
+		summary["status"] = "error"
+		summary["error"] = checkpoint.lastError
+		return summary
+	}
+	summary["status"] = "ok"
+	return summary
+}
+
+func flowForeachCheckpointNextRow(item any) (int, bool) {
+	record, ok := item.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	for _, field := range []string{"source_row", "row_number", "row"} {
+		value, ok := record[field]
+		if !ok {
+			continue
+		}
+		number, ok := flowValueAsInt(value)
+		if !ok || number < 1 {
+			continue
+		}
+		return number + 1, true
+	}
+	return 0, false
+}
+
+func flowValueAsInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int8:
+		return int(typed), true
+	case int16:
+		return int(typed), true
+	case int32:
+		return int(typed), true
+	case int64:
+		return int(typed), true
+	case uint:
+		return int(typed), true
+	case uint8:
+		return int(typed), true
+	case uint16:
+		return int(typed), true
+	case uint32:
+		return int(typed), true
+	case uint64:
+		return int(typed), true
+	case float32:
+		number := int(typed)
+		return number, float32(number) == typed
+	case float64:
+		number := int(typed)
+		return number, float64(number) == typed
+	case string:
+		number, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil {
+			return 0, false
+		}
+		return number, true
+	default:
+		return 0, false
+	}
 }
 
 func runFlowOnErrorStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath string) (any, []FlowStepTrace, string, error) {
