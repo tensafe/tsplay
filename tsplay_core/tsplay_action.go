@@ -45,6 +45,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"screenshot", screenshot, "截取整个页面的截图", "Take a screenshot of the entire page. Example: screenshot('screenshot.png'). Parameters: path (string) - The file path to save the screenshot."},
 	{"screenshot_element", screenshot_element, "截取指定元素的截图", "Take a screenshot of a specific element. Example: screenshot_element('#element-id', 'element.png'). Parameters: selector (string) - The selector of the element; path (string) - The file path to save the screenshot."},
 	{"save_html", save_html, "保存当前页面的 HTML 内容", "Save the HTML content of the page. Example: save_html('page.html'). Parameters: path (string) - The file path to save the HTML content."},
+	{"read_csv", read_csv, "读取本地 CSV 为行列表", "Read a local CSV file into a list of row objects. Example: read_csv('imports/users.csv'). Parameters: file_path (string) - The CSV file path. Returns: list<object> using the first non-empty row as headers."},
+	{"read_excel", read_excel, "读取本地 Excel 为行列表", "Read a local Excel .xlsx file into a list of row objects. Example: read_excel('imports/users.xlsx', 'Users'). Parameters: file_path (string) - The .xlsx file path; sheet (string, optional) - Sheet name. Returns: list<object> using the first non-empty row as headers."},
 
 	// 处理弹窗和对话框 / Handling Dialogs
 	{"accept_alert", accept_alert, "接受弹窗（点击确定）", "Accept an alert dialog. Example: accept_alert(). No parameters."},

@@ -74,6 +74,7 @@ type FlowStep struct {
 	Script       string   `json:"script,omitempty" yaml:"script,omitempty"`
 	Code         string   `json:"code,omitempty" yaml:"code,omitempty"`
 	Attribute    string   `json:"attribute,omitempty" yaml:"attribute,omitempty"`
+	Sheet        string   `json:"sheet,omitempty" yaml:"sheet,omitempty"`
 	Key          string   `json:"key,omitempty" yaml:"key,omitempty"`
 	FilePath     string   `json:"file_path,omitempty" yaml:"file_path,omitempty"`
 	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
@@ -178,8 +179,8 @@ type flowArgSpec struct {
 	Required bool
 }
 
-var placeholderPattern = regexp.MustCompile(`^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$`)
-var replacePattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+var placeholderPattern = regexp.MustCompile(`^\{\{\s*([^{}]+?)\s*\}\}$`)
+var replacePattern = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 var flowIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 var flowActionSpecs = map[string]flowActionSpec{
@@ -210,6 +211,8 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"screenshot":            {Args: []flowArgSpec{{Name: "path", Required: true}}},
 	"screenshot_element":    {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "path", Required: true}}},
 	"save_html":             {Args: []flowArgSpec{{Name: "path", Required: true}}},
+	"read_csv":              {Args: []flowArgSpec{{Name: "file_path", Required: true}}},
+	"read_excel":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "sheet"}}},
 	"accept_alert":          {},
 	"dismiss_alert":         {},
 	"set_alert_text":        {Args: []flowArgSpec{{Name: "text", Required: true}}},
@@ -881,21 +884,23 @@ func validateFlowParamValue(stepIndex string, action string, name string, value 
 }
 
 func validateFlowReferences(stepIndex string, action string, name string, value any, knownVars map[string]any) error {
-	for _, ref := range flowReferences(value) {
-		if _, ok := knownVars[ref]; !ok {
-			return fmt.Errorf("step %s action %q parameter %q references unknown variable %q", stepIndex, action, name, ref)
+	for _, ref := range flowReferenceExpressions(value) {
+		base, _, err := parseFlowVariableReference(ref)
+		if err != nil {
+			return fmt.Errorf("step %s action %q parameter %q has invalid placeholder %q: %w", stepIndex, action, name, ref, err)
+		}
+		if _, ok := knownVars[base]; !ok {
+			return fmt.Errorf("step %s action %q parameter %q references unknown variable %q", stepIndex, action, name, base)
 		}
 	}
 	return nil
 }
 
 func validateFlowParamType(name string, value any, knownVars map[string]any) error {
-	if ref, ok := fullPlaceholderRef(value); ok {
-		resolved, known := knownVars[ref]
-		if !known || resolved == nil {
-			return nil
-		}
+	if resolved, ok := resolveKnownPlaceholderValue(value, knownVars); ok {
 		value = resolved
+	} else if _, ok := fullPlaceholderExpression(value); ok {
+		return nil
 	}
 
 	switch flowParamType(name) {
@@ -951,7 +956,7 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
+	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
 		return "bool"
@@ -1023,7 +1028,7 @@ func flowActionSecurityGroup(action string) string {
 		return "http"
 	case "redis_get", "redis_set", "redis_del", "redis_incr":
 		return "redis"
-	case "screenshot", "screenshot_element", "save_html", "upload_file", "upload_multiple_files", "download_file", "download_url":
+	case "screenshot", "screenshot_element", "save_html", "read_csv", "read_excel", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
 		return "browser_state"
@@ -1294,6 +1299,8 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"path": flowFileOutputPath}
 	case "screenshot_element":
 		return map[string]flowFilePathRole{"path": flowFileOutputPath}
+	case "read_csv", "read_excel":
+		return map[string]flowFilePathRole{"file_path": flowFileInputPath}
 	case "download_file", "download_url":
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "http_request":
@@ -2777,6 +2784,7 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	addString("script", step.Script)
 	addString("code", step.Code)
 	addString("attribute", step.Attribute)
+	addString("sheet", step.Sheet)
 	addString("key", step.Key)
 	addString("file_path", step.FilePath)
 	if len(step.Files) > 0 {
@@ -2898,6 +2906,8 @@ func (step FlowStep) param(name string) (any, bool) {
 		return stringParam(step.Code)
 	case "attribute":
 		return stringParam(step.Attribute)
+	case "sheet":
+		return stringParam(step.Sheet)
 	case "key":
 		return stringParam(step.Key)
 	case "file_path":
@@ -3068,15 +3078,95 @@ func waitUntilIntervalMS(ctx *FlowContext, step FlowStep) (int, error) {
 	return intervalMS, nil
 }
 
+func flowReferenceExpressions(value any) []string {
+	refs := []string{}
+	switch typed := value.(type) {
+	case string:
+		matches := replacePattern.FindAllStringSubmatch(typed, -1)
+		for _, match := range matches {
+			if len(match) == 2 {
+				refs = append(refs, strings.TrimSpace(match[1]))
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			refs = append(refs, flowReferenceExpressions(item)...)
+		}
+	case []string:
+		for _, item := range typed {
+			refs = append(refs, flowReferenceExpressions(item)...)
+		}
+	case []FlowStep:
+		for _, item := range typed {
+			refs = append(refs, flowReferenceExpressions(item.presentNamedParams())...)
+		}
+	case *FlowStep:
+		if typed != nil {
+			refs = append(refs, flowReferenceExpressions(typed.presentNamedParams())...)
+		}
+	case FlowStep:
+		refs = append(refs, flowReferenceExpressions(typed.presentNamedParams())...)
+	case map[string]any:
+		for _, item := range typed {
+			refs = append(refs, flowReferenceExpressions(item)...)
+		}
+	}
+	return refs
+}
+
+func parseFlowVariableReference(ref string) (string, string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", "", fmt.Errorf("placeholder reference cannot be empty")
+	}
+
+	end := 0
+	for end < len(ref) {
+		r := rune(ref[end])
+		if end == 0 && !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '_') {
+			return "", "", fmt.Errorf("placeholder reference %q must start with a variable name", ref)
+		}
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_') {
+			break
+		}
+		end++
+	}
+	base := ref[:end]
+	if !flowIdentifierPattern.MatchString(base) {
+		return "", "", fmt.Errorf("placeholder reference %q starts with invalid variable name %q", ref, base)
+	}
+
+	rest := strings.TrimSpace(ref[end:])
+	if rest == "" {
+		return base, "$", nil
+	}
+	path := "$" + rest
+	if _, err := parseJSONPath(path); err != nil {
+		return "", "", fmt.Errorf("placeholder reference %q %w", ref, err)
+	}
+	return base, path, nil
+}
+
+func resolveFlowVariableReference(ref string, vars map[string]any) (any, error) {
+	base, path, err := parseFlowVariableReference(ref)
+	if err != nil {
+		return nil, err
+	}
+	value, ok := vars[base]
+	if !ok {
+		return nil, fmt.Errorf("unknown flow variable %q", base)
+	}
+	if path == "$" {
+		return value, nil
+	}
+	return extractJSONPathValue(value, path)
+}
+
 func resolveValue(value any, ctx *FlowContext) (any, error) {
 	switch typed := value.(type) {
 	case string:
 		if matches := placeholderPattern.FindStringSubmatch(typed); len(matches) == 2 {
-			value, ok := ctx.Vars[matches[1]]
-			if !ok {
-				return nil, fmt.Errorf("unknown flow variable %q", matches[1])
-			}
-			return value, nil
+			return resolveFlowVariableReference(matches[1], ctx.Vars)
 		}
 		var err error
 		resolved := replacePattern.ReplaceAllStringFunc(typed, func(token string) string {
@@ -3087,9 +3177,9 @@ func resolveValue(value any, ctx *FlowContext) (any, error) {
 			if len(matches) != 2 {
 				return token
 			}
-			value, ok := ctx.Vars[matches[1]]
-			if !ok {
-				err = fmt.Errorf("unknown flow variable %q", matches[1])
+			value, resolveErr := resolveFlowVariableReference(matches[1], ctx.Vars)
+			if resolveErr != nil {
+				err = resolveErr
 				return token
 			}
 			return fmt.Sprint(value)
@@ -3243,41 +3333,30 @@ func listLen(value any) int {
 
 func flowReferences(value any) []string {
 	refs := []string{}
-	switch typed := value.(type) {
-	case string:
-		matches := replacePattern.FindAllStringSubmatch(typed, -1)
-		for _, match := range matches {
-			if len(match) == 2 {
-				refs = append(refs, match[1])
-			}
+	for _, ref := range flowReferenceExpressions(value) {
+		base, _, err := parseFlowVariableReference(ref)
+		if err != nil {
+			refs = append(refs, ref)
+			continue
 		}
-	case []any:
-		for _, item := range typed {
-			refs = append(refs, flowReferences(item)...)
-		}
-	case []string:
-		for _, item := range typed {
-			refs = append(refs, flowReferences(item)...)
-		}
-	case []FlowStep:
-		for _, item := range typed {
-			refs = append(refs, flowReferences(item.presentNamedParams())...)
-		}
-	case *FlowStep:
-		if typed != nil {
-			refs = append(refs, flowReferences(typed.presentNamedParams())...)
-		}
-	case FlowStep:
-		refs = append(refs, flowReferences(typed.presentNamedParams())...)
-	case map[string]any:
-		for _, item := range typed {
-			refs = append(refs, flowReferences(item)...)
-		}
+		refs = append(refs, base)
 	}
 	return refs
 }
 
 func fullPlaceholderRef(value any) (string, bool) {
+	expr, ok := fullPlaceholderExpression(value)
+	if !ok {
+		return "", false
+	}
+	base, _, err := parseFlowVariableReference(expr)
+	if err != nil {
+		return "", false
+	}
+	return base, true
+}
+
+func fullPlaceholderExpression(value any) (string, bool) {
 	text, ok := value.(string)
 	if !ok {
 		return "", false
@@ -3286,7 +3365,23 @@ func fullPlaceholderRef(value any) (string, bool) {
 	if len(matches) != 2 {
 		return "", false
 	}
-	return matches[1], true
+	expr := strings.TrimSpace(matches[1])
+	if _, _, err := parseFlowVariableReference(expr); err != nil {
+		return "", false
+	}
+	return expr, true
+}
+
+func resolveKnownPlaceholderValue(value any, knownVars map[string]any) (any, bool) {
+	expr, ok := fullPlaceholderExpression(value)
+	if !ok {
+		return nil, false
+	}
+	resolved, err := resolveFlowVariableReference(expr, knownVars)
+	if err != nil || resolved == nil {
+		return nil, false
+	}
+	return resolved, true
 }
 
 func isIntegerValue(value any) bool {
@@ -3352,35 +3447,32 @@ func isNumberValue(value any) bool {
 }
 
 func isStringListValue(value any, knownVars map[string]any) bool {
-	if ref, ok := fullPlaceholderRef(value); ok {
-		resolved, known := knownVars[ref]
-		if !known || resolved == nil {
-			return true
-		}
+	if resolved, ok := resolveKnownPlaceholderValue(value, knownVars); ok {
 		value = resolved
+	} else if _, ok := fullPlaceholderExpression(value); ok {
+		return true
 	}
 
 	switch typed := value.(type) {
 	case []string:
 		for _, item := range typed {
-			if ref, ok := fullPlaceholderRef(item); ok {
-				resolved, known := knownVars[ref]
-				if known && resolved != nil {
-					if _, ok := resolved.(string); !ok {
-						return false
-					}
+			if resolved, ok := resolveKnownPlaceholderValue(item, knownVars); ok {
+				if _, ok := resolved.(string); !ok {
+					return false
 				}
+				continue
+			}
+			if _, ok := fullPlaceholderExpression(item); ok {
+				continue
 			}
 		}
 		return true
 	case []any:
 		for _, item := range typed {
-			if ref, ok := fullPlaceholderRef(item); ok {
-				resolved, known := knownVars[ref]
-				if !known || resolved == nil {
-					continue
-				}
+			if resolved, ok := resolveKnownPlaceholderValue(item, knownVars); ok {
 				item = resolved
+			} else if _, ok := fullPlaceholderExpression(item); ok {
+				continue
 			}
 			if _, ok := item.(string); !ok {
 				return false

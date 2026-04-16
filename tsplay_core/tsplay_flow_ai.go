@@ -30,6 +30,7 @@ func BuildFlowJSONSchema() map[string]any {
 		"script":            map[string]any{"type": "string"},
 		"code":              map[string]any{"type": "string"},
 		"attribute":         map[string]any{"type": "string"},
+		"sheet":             map[string]any{"type": "string", "description": "Optional Excel sheet name for read_excel."},
 		"key":               map[string]any{"type": "string"},
 		"connection":        map[string]any{"type": "string", "description": "Optional named external connection such as a Redis alias."},
 		"file_path":         map[string]any{"type": "string"},
@@ -296,6 +297,31 @@ func flowParamJSONSchema(name string) map[string]any {
 
 func BuildFlowExamples() []map[string]any {
 	return []map[string]any{
+		{
+			"name":          "import_rows_from_csv",
+			"description":   "Load local CSV rows and iterate through them to fill repeated form fields.",
+			"focus_actions": []string{"read_csv", "foreach", "type_text", "click"},
+			"when_to_use":   "A trusted local automation needs to read structured rows from a CSV file and submit them one by one.",
+			"flow": `schema_version: "1"
+name: import_rows_from_csv
+steps:
+  - action: read_csv
+    file_path: imports/users.csv
+    save_as: rows
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+`,
+		},
 		{
 			"name":          "search_and_collect_links",
 			"description":   "Open a search page, type a query, click submit, and save extracted links.",
