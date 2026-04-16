@@ -394,9 +394,27 @@ Excel 用法类似：
   save_as: rows
 ```
 
+如果 Excel 里前面有说明、标题或多块表，可以只读指定范围：
+
+```yaml
+- action: read_excel
+  file_path: imports/users.xlsx
+  sheet: Users
+  range: A2:B20
+  with:
+    headers:
+      - name
+      - phone
+  save_as: rows
+```
+
 规则说明：
 
-- `read_csv` 和 `read_excel` 都会把第一行非空行当成表头
+- `read_csv` 会把第一行非空行当成表头
+- `read_excel` 在不传 `range` 时，也会把第一行非空行当成表头
+- `read_excel.range` 支持 `A2:B20` 这类矩形区域
+- 如果 `range` 本身包含表头，就直接读取该范围
+- 如果 `range` 只有数据行，可通过 `with.headers` 显式指定列名
 - 返回结果是 `foreach` 可直接遍历的行对象列表
 - 表头是 `name`、`phone` 这种简单字段时，可直接写 `{{row.name}}`
 - 如果表头里有空格或特殊字符，可写成 `{{row["User Name"]}}`
@@ -733,7 +751,7 @@ browser:
 | `http_request` | 发起 HTTP 请求并返回结构化响应 | `url`, `with.method`, `with.headers`, `with.query`, `with.json`, `with.form`, `with.multipart_files`, `with.response_as` | Lua / Flow |
 | `json_extract` | 用 JSON 路径提取字段 | `from`, `path` | Lua / Flow |
 | `read_csv` | 读取本地 CSV 并返回行对象列表 | `file_path` | Lua / Flow |
-| `read_excel` | 读取本地 Excel `.xlsx` 并返回行对象列表 | `file_path`, `sheet?` | Lua / Flow |
+| `read_excel` | 读取本地 Excel `.xlsx` 并返回行对象列表 | `file_path`, `sheet?`, `range?`, `with.headers?` | Lua / Flow |
 | `redis_get` | 从 Redis 读取一个键 | `key`, `connection?` | Lua / Flow |
 | `redis_set` | 写入一个 Redis 键，可选 TTL | `key`, `value`, `ttl_seconds?`, `connection?` | Lua / Flow |
 | `redis_del` | 删除一个 Redis 键 | `key`, `connection?` | Lua / Flow |
@@ -790,6 +808,7 @@ browser:
 - `http_request` 如果要上传本地文件或保存响应到文件，还需要 `allow_file_access=true`
 - `read_csv` 和 `read_excel` 在 MCP 模式下需要显式传 `allow_file_access=true`
 - `read_excel` 当前支持 `.xlsx`，不支持 `.xls`
+- `read_excel.range` 支持 `A2:B20` 这类范围；数据区不含表头时可配 `with.headers`
 - `redis_*` 在 MCP 模式下需要显式传 `allow_redis=true`
 
 ## 项目结构

@@ -27,6 +27,7 @@ func BuildFlowJSONSchema() map[string]any {
 		"index_var":         map[string]any{"type": "string", "pattern": flowIdentifierPattern.String()},
 		"seconds":           map[string]any{"type": "number", "exclusiveMinimum": 0},
 		"path":              map[string]any{"type": "string"},
+		"range":             map[string]any{"type": "string", "description": "Optional Excel cell range such as A2:B20 for read_excel."},
 		"script":            map[string]any{"type": "string"},
 		"code":              map[string]any{"type": "string"},
 		"attribute":         map[string]any{"type": "string"},
@@ -213,6 +214,38 @@ func flowSpecialActionSchemaConstraint(action string) map[string]any {
 			},
 		}
 	}
+	if action == "read_excel" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "file_path"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "args"},
+						"properties": map[string]any{
+							"args": map[string]any{
+								"type":     "array",
+								"minItems": 1,
+								"maxItems": 3,
+								"prefixItems": []any{
+									flowParamJSONSchema("file_path"),
+									flowParamJSONSchema("sheet"),
+									flowParamJSONSchema("range"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
 	required := []string{}
 	switch action {
 	case "retry":
@@ -307,6 +340,37 @@ name: import_rows_from_csv
 steps:
   - action: read_csv
     file_path: imports/users.csv
+    save_as: rows
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+`,
+		},
+		{
+			"name":          "import_rows_from_excel_range",
+			"description":   "Read a bounded Excel range, assign explicit headers, and iterate through the rows.",
+			"focus_actions": []string{"read_excel", "foreach", "type_text", "click"},
+			"when_to_use":   "The sheet contains titles, notes, or multiple tables, so only one rectangular range should be imported.",
+			"flow": `schema_version: "1"
+name: import_rows_from_excel_range
+steps:
+  - action: read_excel
+    file_path: imports/users.xlsx
+    sheet: Users
+    range: A2:B20
+    with:
+      headers:
+        - name
+        - phone
     save_as: rows
   - action: foreach
     items: "{{rows}}"

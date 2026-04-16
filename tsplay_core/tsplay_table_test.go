@@ -122,6 +122,71 @@ func TestRunFlowReadExcelRows(t *testing.T) {
 	}
 }
 
+func TestRunFlowReadExcelRangeWithHeaders(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "users.xlsx")
+	if err := writeTestXLSXFile(xlsxPath); err != nil {
+		t.Fatalf("write xlsx: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "read_excel_range",
+		Steps: []FlowStep{
+			{
+				Action:   "read_excel",
+				FilePath: "users.xlsx",
+				Sheet:    "Imports",
+				Range:    "A2:B3",
+				SaveAs:   "rows",
+				With: map[string]any{
+					"headers": []any{"name", "email"},
+				},
+			},
+			{Action: "set_var", SaveAs: "first_name", Value: "{{rows[0].name}}"},
+			{Action: "set_var", SaveAs: "second_email", Value: "{{rows[1].email}}"},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["first_name"]; got != "Alice Chen" {
+		t.Fatalf("first_name = %#v", got)
+	}
+	if got := result.Vars["second_email"]; got != "bob@example.com" {
+		t.Fatalf("second_email = %#v", got)
+	}
+}
+
+func TestValidateFlowRejectsInvalidReadExcelRange(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "invalid_excel_range",
+		Steps: []FlowStep{
+			{Action: "read_excel", FilePath: "users.xlsx", Sheet: "Users", Range: "A1:B"},
+		},
+	}
+
+	err := ValidateFlow(flow)
+	if err == nil {
+		t.Fatalf("expected invalid range validation error")
+	}
+	if !strings.Contains(err.Error(), "range") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func writeTestXLSXFile(path string) error {
 	file, err := os.Create(path)
 	if err != nil {
@@ -137,16 +202,19 @@ func writeTestXLSXFile(path string) error {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>`,
 		"xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
     <sheet name="Users" sheetId="1" r:id="rId1"/>
+    <sheet name="Imports" sheetId="2" r:id="rId2"/>
   </sheets>
 </workbook>`,
 		"xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
 </Relationships>`,
 		"xl/worksheets/sheet1.xml": `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -154,6 +222,22 @@ func writeTestXLSXFile(path string) error {
     <row r="1">
       <c r="A1" t="inlineStr"><is><t>User Name</t></is></c>
       <c r="B1" t="inlineStr"><is><t>Email</t></is></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>Alice Chen</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>alice@example.com</t></is></c>
+    </row>
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>Bob Li</t></is></c>
+      <c r="B3" t="inlineStr"><is><t>bob@example.com</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`,
+		"xl/worksheets/sheet2.xml": `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="inlineStr"><is><t>Batch import rows</t></is></c>
     </row>
     <row r="2">
       <c r="A2" t="inlineStr"><is><t>Alice Chen</t></is></c>

@@ -1238,6 +1238,20 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "connection", "type": "string", "required": false},
 			}
 		}
+		if name == "read_excel" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "sheet", "type": "string", "required": false},
+				{"name": "range", "type": "string", "required": false},
+				{"name": "with.headers", "type": "string_list", "required": false},
+			}
+			item["returns"] = "list<object>"
+			item["notes"] = []string{
+				"Omit range to read the whole sheet and use the first non-empty row as headers.",
+				"Use range such as A2:B20 to read one rectangular region from a larger sheet.",
+				"Use with.headers when the selected range contains data rows but not a header row.",
+			}
+		}
 		if group := flowActionSecurityGroup(name); group != "" {
 			item["security_group"] = group
 			item["requires_allow"] = flowActionSecurityOption(group)

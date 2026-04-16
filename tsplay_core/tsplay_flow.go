@@ -71,6 +71,7 @@ type FlowStep struct {
 	Timeout      int      `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 	Seconds      float64  `json:"seconds,omitempty" yaml:"seconds,omitempty"`
 	Path         string   `json:"path,omitempty" yaml:"path,omitempty"`
+	Range        string   `json:"range,omitempty" yaml:"range,omitempty"`
 	Script       string   `json:"script,omitempty" yaml:"script,omitempty"`
 	Code         string   `json:"code,omitempty" yaml:"code,omitempty"`
 	Attribute    string   `json:"attribute,omitempty" yaml:"attribute,omitempty"`
@@ -212,7 +213,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"screenshot_element":    {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "path", Required: true}}},
 	"save_html":             {Args: []flowArgSpec{{Name: "path", Required: true}}},
 	"read_csv":              {Args: []flowArgSpec{{Name: "file_path", Required: true}}},
-	"read_excel":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "sheet"}}},
+	"read_excel":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "sheet"}, {Name: "range"}}},
 	"accept_alert":          {},
 	"dismiss_alert":         {},
 	"set_alert_text":        {Args: []flowArgSpec{{Name: "text", Required: true}}},
@@ -358,6 +359,15 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 		}
 		if step.Action == "redis_set" {
 			if err := validateRedisSetFlowStep(stepPath, step, spec, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
+			continue
+		}
+		if step.Action == "read_excel" {
+			if err := validateReadExcelFlowStep(stepPath, step, spec, knownVars); err != nil {
 				return err
 			}
 			if step.SaveAs != "" {
@@ -803,6 +813,107 @@ func validateRedisSetFlowStep(stepPath string, step FlowStep, spec flowActionSpe
 	return nil
 }
 
+func validateReadExcelFlowStep(stepPath string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+	validateRangeValue := func(value any) error {
+		if len(flowReferences(value)) > 0 {
+			return nil
+		}
+		text, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("step %s action %q parameter %q must be a string", stepPath, step.Action, "range")
+		}
+		if _, err := parseExcelRangeSpec(text); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, step.Action, "range", err)
+		}
+		return nil
+	}
+
+	validateHeadersValue := func(value any) error {
+		if err := validateFlowReferences(stepPath, step.Action, "headers", value, knownVars); err != nil {
+			return err
+		}
+		if _, ok := fullPlaceholderExpression(value); ok {
+			return nil
+		}
+		resolved := value
+		if known, ok := resolveKnownPlaceholderValue(value, knownVars); ok {
+			resolved = known
+		}
+		switch typed := resolved.(type) {
+		case []string:
+			if len(typed) == 0 {
+				return fmt.Errorf("step %s action %q parameter %q must contain at least one header", stepPath, step.Action, "headers")
+			}
+			for _, item := range typed {
+				if strings.TrimSpace(item) == "" {
+					return fmt.Errorf("step %s action %q parameter %q cannot contain blank headers", stepPath, step.Action, "headers")
+				}
+			}
+			return nil
+		case []any:
+			if len(typed) == 0 {
+				return fmt.Errorf("step %s action %q parameter %q must contain at least one header", stepPath, step.Action, "headers")
+			}
+			for _, item := range typed {
+				text, ok := item.(string)
+				if !ok || strings.TrimSpace(text) == "" {
+					return fmt.Errorf("step %s action %q parameter %q must be a list of non-empty strings", stepPath, step.Action, "headers")
+				}
+			}
+			return nil
+		default:
+			return fmt.Errorf("step %s action %q parameter %q must be a list of strings", stepPath, step.Action, "headers")
+		}
+	}
+
+	if len(step.Args) > 0 {
+		if len(step.presentNamedParams()) > 0 {
+			return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepPath, step.Action)
+		}
+		if len(step.Args) < 1 || len(step.Args) > 3 {
+			return fmt.Errorf("step %s action %q expects between 1 and 3 args, got %d", stepPath, step.Action, len(step.Args))
+		}
+		for i, value := range step.Args {
+			name := spec.Args[i].Name
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+			if name == "range" {
+				if err := validateRangeValue(value); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	present := step.presentNamedParams()
+	allowed := map[string]bool{"file_path": true, "sheet": true, "range": true, "headers": true}
+	for name, value := range present {
+		if !allowed[name] {
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+		if name == "headers" {
+			if err := validateHeadersValue(value); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+		if name == "range" {
+			if err := validateRangeValue(value); err != nil {
+				return err
+			}
+		}
+	}
+	if _, ok := present["file_path"]; !ok {
+		return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, "file_path")
+	}
+	return nil
+}
+
 func validateFlowStepArgs(stepIndex string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
 	if len(step.presentNamedParams()) > 0 {
 		return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepIndex, step.Action)
@@ -956,7 +1067,7 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
 		return "bool"
@@ -2327,6 +2438,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowHTTPRequestStep(L, ctx, step)
 	case "json_extract":
 		return runFlowJSONExtractStep(ctx, step)
+	case "read_excel":
+		return runFlowReadExcelStep(ctx, step)
 	case "assert_visible":
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
@@ -2472,6 +2585,36 @@ func runFlowSetVarStep(ctx *FlowContext, step FlowStep) (any, error) {
 	return resolveValue(value, ctx)
 }
 
+func runFlowReadExcelStep(ctx *FlowContext, step FlowStep) (any, error) {
+	filePath, err := flowStepStringParam(ctx, step, "file_path")
+	if err != nil {
+		return nil, err
+	}
+	if ctx != nil && ctx.Security != nil {
+		filePath, err = resolveRuntimeFilePath(filePath, flowFileInputPath, *ctx.Security)
+		if err != nil {
+			return nil, fmt.Errorf("action %q parameter %q %w", step.Action, "file_path", err)
+		}
+	}
+	sheet, err := flowStepOptionalStringParam(ctx, step, "sheet")
+	if err != nil {
+		return nil, err
+	}
+	rangeSpec, err := flowStepOptionalStringParam(ctx, step, "range")
+	if err != nil {
+		return nil, err
+	}
+	headers, err := flowStepOptionalStringListParam(ctx, step, "headers")
+	if err != nil {
+		return nil, err
+	}
+	return loadExcelRows(filePath, excelReadOptions{
+		Sheet:   sheet,
+		Range:   rangeSpec,
+		Headers: headers,
+	})
+}
+
 func flowStepStringParam(ctx *FlowContext, step FlowStep, name string) (string, error) {
 	value, ok := step.param(name)
 	if !ok {
@@ -2502,6 +2645,37 @@ func flowStepOptionalStringParam(ctx *FlowContext, step FlowStep, name string) (
 		return "", fmt.Errorf("action %q %q must be a string", step.Action, name)
 	}
 	return text, nil
+}
+
+func flowStepOptionalStringListParam(ctx *FlowContext, step FlowStep, name string) ([]string, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return nil, nil
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return nil, err
+	}
+	switch typed := resolved.(type) {
+	case []string:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+		return items, nil
+	case []any:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("action %q %q must be a list of strings", step.Action, name)
+			}
+			items = append(items, text)
+		}
+		return items, nil
+	default:
+		return nil, fmt.Errorf("action %q %q must be a list of strings", step.Action, name)
+	}
 }
 
 func flowStepOptionalIntParam(ctx *FlowContext, step FlowStep, name string) (int, error) {
@@ -2781,6 +2955,7 @@ func (step FlowStep) presentNamedParams() map[string]any {
 		params["seconds"] = step.Seconds
 	}
 	addString("path", step.Path)
+	addString("range", step.Range)
 	addString("script", step.Script)
 	addString("code", step.Code)
 	addString("attribute", step.Attribute)
@@ -2900,6 +3075,8 @@ func (step FlowStep) param(name string) (any, bool) {
 		return step.Seconds, true
 	case "path":
 		return stringParam(step.Path)
+	case "range":
+		return stringParam(step.Range)
 	case "script":
 		return stringParam(step.Script)
 	case "code":

@@ -17,6 +17,19 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+type excelReadOptions struct {
+	Sheet   string
+	Range   string
+	Headers []string
+}
+
+type excelRangeSpec struct {
+	StartCol int
+	StartRow int
+	EndCol   int
+	EndRow   int
+}
+
 type xlsxSheetInfo struct {
 	Name string
 	Path string
@@ -35,11 +48,23 @@ func read_csv(L *lua.LState) int {
 
 func read_excel(L *lua.LState) int {
 	filePath := L.CheckString(1)
-	sheet := ""
-	if L.GetTop() >= 2 {
-		sheet = L.OptString(2, "")
+	options := excelReadOptions{}
+	if L.GetTop() >= 2 && L.Get(2) != lua.LNil {
+		options.Sheet = L.CheckString(2)
 	}
-	rows, err := loadExcelRows(filePath, sheet)
+	if L.GetTop() >= 3 && L.Get(3) != lua.LNil {
+		options.Range = L.CheckString(3)
+	}
+	if L.GetTop() >= 4 && L.Get(4) != lua.LNil {
+		headers, err := stringListValue(luaValueToGo(L.Get(4)))
+		if err != nil {
+			L.RaiseError("read_excel headers %v", err)
+			return 0
+		}
+		options.Headers = headers
+	}
+
+	rows, err := loadExcelRows(filePath, options)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
@@ -68,10 +93,10 @@ func loadCSVRows(filePath string) ([]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read_csv parse %q: %w", filePath, err)
 	}
-	return tableRowsToObjects(records), nil
+	return tableRowsToObjects(records, nil), nil
 }
 
-func loadExcelRows(filePath string, sheet string) ([]any, error) {
+func loadExcelRows(filePath string, options excelReadOptions) ([]any, error) {
 	if strings.ToLower(filepath.Ext(filePath)) != ".xlsx" {
 		return nil, fmt.Errorf("read_excel currently supports only .xlsx files")
 	}
@@ -96,10 +121,10 @@ func loadExcelRows(filePath string, sheet string) ([]any, error) {
 	}
 
 	selected := sheets[0]
-	if strings.TrimSpace(sheet) != "" {
+	if strings.TrimSpace(options.Sheet) != "" {
 		found := false
 		for _, candidate := range sheets {
-			if candidate.Name == sheet {
+			if candidate.Name == options.Sheet {
 				selected = candidate
 				found = true
 				break
@@ -110,7 +135,7 @@ func loadExcelRows(filePath string, sheet string) ([]any, error) {
 			for _, candidate := range sheets {
 				names = append(names, candidate.Name)
 			}
-			return nil, fmt.Errorf("read_excel sheet %q not found in %q; available sheets: %s", sheet, filePath, strings.Join(names, ", "))
+			return nil, fmt.Errorf("read_excel sheet %q not found in %q; available sheets: %s", options.Sheet, filePath, strings.Join(names, ", "))
 		}
 	}
 
@@ -118,10 +143,90 @@ func loadExcelRows(filePath string, sheet string) ([]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read_excel read sheet %q from %q: %w", selected.Name, filePath, err)
 	}
-	return tableRowsToObjects(records), nil
+	if strings.TrimSpace(options.Range) != "" {
+		rangeRows, err := sliceExcelRange(records, options.Range)
+		if err != nil {
+			return nil, fmt.Errorf("read_excel read range %q from sheet %q in %q: %w", options.Range, selected.Name, filePath, err)
+		}
+		records = rangeRows
+	}
+	return tableRowsToObjects(records, options.Headers), nil
 }
 
-func tableRowsToObjects(records [][]string) []any {
+func sliceExcelRange(records [][]string, rangeSpec string) ([][]string, error) {
+	spec, err := parseExcelRangeSpec(rangeSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([][]string, 0, spec.EndRow-spec.StartRow+1)
+	for rowNumber := spec.StartRow; rowNumber <= spec.EndRow; rowNumber++ {
+		var record []string
+		if index := rowNumber - 1; index >= 0 && index < len(records) {
+			record = records[index]
+		}
+		row := make([]string, 0, spec.EndCol-spec.StartCol+1)
+		for colNumber := spec.StartCol; colNumber <= spec.EndCol; colNumber++ {
+			value := ""
+			if index := colNumber - 1; index >= 0 && index < len(record) {
+				value = record[index]
+			}
+			row = append(row, value)
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func parseExcelRangeSpec(rangeSpec string) (excelRangeSpec, error) {
+	text := strings.TrimSpace(rangeSpec)
+	if text == "" {
+		return excelRangeSpec{}, fmt.Errorf("must be a non-empty Excel cell range like A1:B4")
+	}
+
+	parts := strings.Split(text, ":")
+	if len(parts) > 2 {
+		return excelRangeSpec{}, fmt.Errorf("must be a single cell or rectangular range like A1:B4")
+	}
+
+	startCell := strings.TrimSpace(parts[0])
+	endCell := startCell
+	if len(parts) == 2 {
+		endCell = strings.TrimSpace(parts[1])
+	}
+	if startCell == "" || endCell == "" {
+		return excelRangeSpec{}, fmt.Errorf("must be a single cell or rectangular range like A1:B4")
+	}
+
+	startCol, startRow, err := xlsxCellCoordinates(startCell)
+	if err != nil {
+		return excelRangeSpec{}, fmt.Errorf("invalid start cell %q: %w", startCell, err)
+	}
+	endCol, endRow, err := xlsxCellCoordinates(endCell)
+	if err != nil {
+		return excelRangeSpec{}, fmt.Errorf("invalid end cell %q: %w", endCell, err)
+	}
+
+	if startCol > endCol {
+		startCol, endCol = endCol, startCol
+	}
+	if startRow > endRow {
+		startRow, endRow = endRow, startRow
+	}
+
+	return excelRangeSpec{
+		StartCol: startCol,
+		StartRow: startRow,
+		EndCol:   endCol,
+		EndRow:   endRow,
+	}, nil
+}
+
+func tableRowsToObjects(records [][]string, headers []string) []any {
+	if len(headers) > 0 {
+		return tableDataRowsToObjects(records, normalizeTableHeaders(headers))
+	}
+
 	headerIndex := -1
 	for i, record := range records {
 		if rowIsEmpty(record) {
@@ -134,9 +239,12 @@ func tableRowsToObjects(records [][]string) []any {
 		return []any{}
 	}
 
-	headers := normalizeTableHeaders(records[headerIndex])
-	rows := make([]any, 0, len(records)-headerIndex-1)
-	for _, record := range records[headerIndex+1:] {
+	return tableDataRowsToObjects(records[headerIndex+1:], normalizeTableHeaders(records[headerIndex]))
+}
+
+func tableDataRowsToObjects(records [][]string, headers []string) []any {
+	rows := make([]any, 0, len(records))
+	for _, record := range records {
 		if rowIsEmpty(record) {
 			continue
 		}
@@ -156,6 +264,35 @@ func tableRowsToObjects(records [][]string) []any {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func stringListValue(value any) ([]string, error) {
+	switch typed := value.(type) {
+	case nil:
+		return nil, nil
+	case []string:
+		headers := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text := strings.TrimSpace(item)
+			if text == "" {
+				return nil, fmt.Errorf("must be a list of non-empty strings")
+			}
+			headers = append(headers, text)
+		}
+		return headers, nil
+	case []any:
+		headers := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text, ok := item.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				return nil, fmt.Errorf("must be a list of non-empty strings")
+			}
+			headers = append(headers, strings.TrimSpace(text))
+		}
+		return headers, nil
+	default:
+		return nil, fmt.Errorf("must be a list of strings")
+	}
 }
 
 func normalizeTableHeaders(headerRow []string) []string {
@@ -323,6 +460,7 @@ func readXLSXSheetRows(archive *zip.Reader, partPath string, sharedStrings []str
 	decoder := xml.NewDecoder(bytes.NewReader(content))
 	rows := [][]string{}
 	currentRow := []string(nil)
+	currentRowNumber := 0
 	inRow := false
 	for {
 		token, err := decoder.Token()
@@ -337,6 +475,12 @@ func readXLSXSheetRows(archive *zip.Reader, partPath string, sharedStrings []str
 			switch typed.Name.Local {
 			case "row":
 				currentRow = []string{}
+				currentRowNumber = len(rows) + 1
+				if value := strings.TrimSpace(xmlAttrValue(typed, "r")); value != "" {
+					if parsed, parseErr := strconv.Atoi(value); parseErr == nil && parsed > 0 {
+						currentRowNumber = parsed
+					}
+				}
 				inRow = true
 			case "c":
 				if !inRow {
@@ -353,8 +497,12 @@ func readXLSXSheetRows(archive *zip.Reader, partPath string, sharedStrings []str
 			}
 		case xml.EndElement:
 			if typed.Name.Local == "row" && inRow {
+				for len(rows) < currentRowNumber-1 {
+					rows = append(rows, []string{})
+				}
 				rows = append(rows, trimTrailingEmptyCells(currentRow))
 				currentRow = nil
+				currentRowNumber = 0
 				inRow = false
 			}
 		}
@@ -462,6 +610,47 @@ func xlsxColumnIndex(cellRef string) (int, error) {
 		column = column*26 + int(r-'A'+1)
 	}
 	return column - 1, nil
+}
+
+func xlsxCellCoordinates(cellRef string) (int, int, error) {
+	cellRef = strings.TrimSpace(cellRef)
+	if cellRef == "" {
+		return 0, 0, fmt.Errorf("cell reference cannot be blank")
+	}
+
+	letters := strings.Builder{}
+	digits := strings.Builder{}
+	for _, r := range cellRef {
+		switch {
+		case r >= 'a' && r <= 'z':
+			if digits.Len() > 0 {
+				return 0, 0, fmt.Errorf("invalid cell reference %q", cellRef)
+			}
+			letters.WriteRune(r - 'a' + 'A')
+		case r >= 'A' && r <= 'Z':
+			if digits.Len() > 0 {
+				return 0, 0, fmt.Errorf("invalid cell reference %q", cellRef)
+			}
+			letters.WriteRune(r)
+		case r >= '0' && r <= '9':
+			digits.WriteRune(r)
+		default:
+			return 0, 0, fmt.Errorf("invalid cell reference %q", cellRef)
+		}
+	}
+	if letters.Len() == 0 || digits.Len() == 0 {
+		return 0, 0, fmt.Errorf("invalid cell reference %q", cellRef)
+	}
+
+	column, err := xlsxColumnIndex(letters.String() + "1")
+	if err != nil {
+		return 0, 0, err
+	}
+	row, err := strconv.Atoi(digits.String())
+	if err != nil || row < 1 {
+		return 0, 0, fmt.Errorf("invalid cell reference %q", cellRef)
+	}
+	return column + 1, row, nil
 }
 
 func resolveXLSXPartPath(basePath string, target string) string {
