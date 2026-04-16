@@ -1282,6 +1282,59 @@ steps:
 	}
 }
 
+func TestHandleValidateFlowToolRejectsRedisWithoutAllow(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: validate_redis_from_mcp
+steps:
+  - action: redis_get
+    key: sessions:admin_cookie
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != false {
+		t.Fatalf("expected invalid flow, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "allow_redis") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+
+	allowedRequest := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: validate_redis_from_mcp
+steps:
+  - action: redis_get
+    key: sessions:admin_cookie
+`,
+				"allow_redis": true,
+			},
+		},
+	}
+	result, err = handleValidateFlowTool(context.Background(), allowedRequest)
+	if err != nil {
+		t.Fatalf("validate flow with allow_redis: %v", err)
+	}
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != true {
+		t.Fatalf("expected valid flow, got %#v", payload)
+	}
+}
+
 func TestHandleValidateFlowToolRestrictsFlowPathRoot(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

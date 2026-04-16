@@ -74,13 +74,17 @@ type FlowStep struct {
 	Script       string   `json:"script,omitempty" yaml:"script,omitempty"`
 	Code         string   `json:"code,omitempty" yaml:"code,omitempty"`
 	Attribute    string   `json:"attribute,omitempty" yaml:"attribute,omitempty"`
+	Key          string   `json:"key,omitempty" yaml:"key,omitempty"`
 	FilePath     string   `json:"file_path,omitempty" yaml:"file_path,omitempty"`
 	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
 	SavePath     string   `json:"save_path,omitempty" yaml:"save_path,omitempty"`
 	Pattern      string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 	From         any      `json:"from,omitempty" yaml:"from,omitempty"`
+	Connection   string   `json:"connection,omitempty" yaml:"connection,omitempty"`
 	Index        int      `json:"index,omitempty" yaml:"index,omitempty"`
 	ContextIndex int      `json:"context_index,omitempty" yaml:"context_index,omitempty"`
+	Delta        int      `json:"delta,omitempty" yaml:"delta,omitempty"`
+	TTLSeconds   int      `json:"ttl_seconds,omitempty" yaml:"ttl_seconds,omitempty"`
 	Times        int      `json:"times,omitempty" yaml:"times,omitempty"`
 	IntervalMS   int      `json:"interval_ms,omitempty" yaml:"interval_ms,omitempty"`
 	Items        any      `json:"items,omitempty" yaml:"items,omitempty"`
@@ -156,6 +160,7 @@ type FlowSecurityPolicy struct {
 	AllowFileAccess   bool   `json:"allow_file_access"`
 	AllowBrowserState bool   `json:"allow_browser_state"`
 	AllowHTTP         bool   `json:"allow_http"`
+	AllowRedis        bool   `json:"allow_redis"`
 	FileInputRoot     string `json:"file_input_root,omitempty"`
 	FileOutputRoot    string `json:"file_output_root,omitempty"`
 }
@@ -220,6 +225,10 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
+	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
+	"redis_set":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "value", Required: true}, {Name: "ttl_seconds"}, {Name: "connection"}}},
+	"redis_del":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
+	"redis_incr":            {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "delta"}, {Name: "connection"}}},
 	"find_element":          {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"find_elements":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"is_visible":            {Args: []flowArgSpec{{Name: "selector", Required: true}}},
@@ -248,6 +257,7 @@ func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
 		AllowFileAccess:   true,
 		AllowBrowserState: true,
 		AllowHTTP:         true,
+		AllowRedis:        true,
 	}
 }
 
@@ -336,6 +346,15 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 		}
 		if step.Action == "http_request" {
 			if err := validateHTTPRequestFlowStep(stepPath, step, spec, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
+			continue
+		}
+		if step.Action == "redis_set" {
+			if err := validateRedisSetFlowStep(stepPath, step, spec, knownVars); err != nil {
 				return err
 			}
 			if step.SaveAs != "" {
@@ -725,6 +744,62 @@ func validateHTTPRequestFlowStep(stepPath string, step FlowStep, spec flowAction
 	return nil
 }
 
+func validateRedisSetFlowStep(stepPath string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+	if len(step.Args) > 0 {
+		if len(step.presentNamedParams()) > 0 {
+			return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepPath, step.Action)
+		}
+		if len(step.Args) < 2 || len(step.Args) > 4 {
+			return fmt.Errorf("step %s action %q expects between 2 and 4 args, got %d", stepPath, step.Action, len(step.Args))
+		}
+		for i, value := range step.Args {
+			name := spec.Args[i].Name
+			if name == "value" {
+				if err := validateFlowReferences(stepPath, step.Action, name, value, knownVars); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		}
+	} else {
+		present := step.presentNamedParams()
+		allowed := allowedFlowParamNames(spec)
+		for name, value := range present {
+			if !allowed[name] {
+				return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+			}
+			if name == "value" {
+				if err := validateFlowReferences(stepPath, step.Action, name, value, knownVars); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		}
+		for _, required := range []string{"key", "value"} {
+			if _, ok := present[required]; !ok {
+				return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, required)
+			}
+		}
+	}
+
+	if value, ok := step.param("ttl_seconds"); ok && len(flowReferences(value)) == 0 {
+		ttlSeconds, err := intParam(value)
+		if err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, step.Action, "ttl_seconds", err)
+		}
+		if ttlSeconds < 1 {
+			return fmt.Errorf("step %s action %q parameter %q must be at least 1", stepPath, step.Action, "ttl_seconds")
+		}
+	}
+	return nil
+}
+
 func validateFlowStepArgs(stepIndex string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
 	if len(step.presentNamedParams()) > 0 {
 		return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepIndex, step.Action)
@@ -876,11 +951,11 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
+	case "url", "selector", "text", "value", "path", "script", "code", "attribute", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
 		return "bool"
-	case "timeout", "index", "context_index", "times", "interval_ms":
+	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms":
 		return "int"
 	case "seconds":
 		return "number"
@@ -946,6 +1021,8 @@ func flowActionSecurityGroup(action string) string {
 		return "javascript"
 	case "http_request":
 		return "http"
+	case "redis_get", "redis_set", "redis_del", "redis_incr":
+		return "redis"
 	case "screenshot", "screenshot_element", "save_html", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
@@ -967,6 +1044,8 @@ func flowActionSecurityOption(group string) string {
 		return "allow_browser_state"
 	case "http":
 		return "allow_http"
+	case "redis":
+		return "allow_redis"
 	default:
 		return "allow_unsafe"
 	}
@@ -984,6 +1063,8 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 		return policy.AllowBrowserState
 	case "http":
 		return policy.AllowHTTP
+	case "redis":
+		return policy.AllowRedis
 	default:
 		return true
 	}
@@ -1517,6 +1598,7 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 			return nil, err
 		}
 	}
+	ensureFlowActionGlobals(L)
 
 	artifactRoot := flowArtifactRoot(options)
 	ctx := &FlowContext{
@@ -1545,6 +1627,18 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	}
 
 	return result, nil
+}
+
+func ensureFlowActionGlobals(L *lua.LState) {
+	if L == nil {
+		return
+	}
+	for _, fn := range GlobalPlayWrightFunc {
+		if L.GetGlobal(fn.Name) != lua.LNil {
+			continue
+		}
+		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
+	}
 }
 
 func runFlowStepSequence(L *lua.LState, ctx *FlowContext, steps []FlowStep, parentPath string, attempt int, iteration int) ([]FlowStepTrace, error) {
@@ -2683,6 +2777,7 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	addString("script", step.Script)
 	addString("code", step.Code)
 	addString("attribute", step.Attribute)
+	addString("key", step.Key)
 	addString("file_path", step.FilePath)
 	if len(step.Files) > 0 {
 		params["files"] = step.Files
@@ -2692,11 +2787,18 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	if step.From != nil {
 		params["from"] = step.From
 	}
+	addString("connection", step.Connection)
 	if step.Index != 0 {
 		params["index"] = step.Index
 	}
 	if step.ContextIndex != 0 {
 		params["context_index"] = step.ContextIndex
+	}
+	if step.Delta != 0 {
+		params["delta"] = step.Delta
+	}
+	if step.TTLSeconds != 0 {
+		params["ttl_seconds"] = step.TTLSeconds
 	}
 	if step.Times != 0 {
 		params["times"] = step.Times
@@ -2796,6 +2898,8 @@ func (step FlowStep) param(name string) (any, bool) {
 		return stringParam(step.Code)
 	case "attribute":
 		return stringParam(step.Attribute)
+	case "key":
+		return stringParam(step.Key)
 	case "file_path":
 		return stringParam(step.FilePath)
 	case "files":
@@ -2812,6 +2916,8 @@ func (step FlowStep) param(name string) (any, bool) {
 			return nil, false
 		}
 		return step.From, true
+	case "connection":
+		return stringParam(step.Connection)
 	case "index":
 		if step.Index == 0 {
 			return nil, false
@@ -2822,6 +2928,16 @@ func (step FlowStep) param(name string) (any, bool) {
 			return nil, false
 		}
 		return step.ContextIndex, true
+	case "delta":
+		if step.Delta == 0 {
+			return nil, false
+		}
+		return step.Delta, true
+	case "ttl_seconds":
+		if step.TTLSeconds == 0 {
+			return nil, false
+		}
+		return step.TTLSeconds, true
 	case "times":
 		if step.Times == 0 {
 			return nil, false

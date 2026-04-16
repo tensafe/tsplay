@@ -87,6 +87,10 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"get_response", get_response, "获取网络请求的响应", "Get the response of a network request. Example: get_response('https://example.com/api'). Parameters: url (string) - The URL of the request to get the response for."},
 	{"http_request", http_request, "发起 HTTP 请求", "Send an HTTP request. Example: http_request({url='https://example.com/api', method='POST', json={query='山东'}}). Parameters: config (table) - Request settings such as url, method, headers, query, json, form, multipart_files, and response_as."},
 	{"json_extract", json_extract, "提取 JSON 路径值", "Extract a value from JSON-like data. Example: json_extract(response, '$.body.text'). Parameters: value (any) - The JSON object, array, or JSON string; path (string) - A path like $.body.text or $.items[0]."},
+	{"redis_get", redis_get, "从 Redis 读取值", "Get a value from Redis. Example: redis_get('sessions:admin_cookie'). Parameters: key (string) - The Redis key; connection (string, optional) - Named Redis connection."},
+	{"redis_set", redis_set, "写入 Redis 值", "Set a value in Redis. Example: redis_set('sessions:admin_cookie', 'SESSION=abc', 3600). Parameters: key (string) - The Redis key; value (any) - The value to store; ttl_seconds (int, optional) - Expire time in seconds; connection (string, optional) - Named Redis connection."},
+	{"redis_del", redis_del, "删除 Redis 键", "Delete a Redis key. Example: redis_del('sessions:admin_cookie'). Parameters: key (string) - The Redis key; connection (string, optional) - Named Redis connection."},
+	{"redis_incr", redis_incr, "递增 Redis 计数", "Increment a Redis counter. Example: redis_incr('orders:counter', 1). Parameters: key (string) - The Redis key; delta (int, optional) - Increment amount; connection (string, optional) - Named Redis connection."},
 
 	// StateStorage 管理 / State Storage Management
 	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},

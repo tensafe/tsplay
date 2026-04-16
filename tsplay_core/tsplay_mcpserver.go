@@ -381,6 +381,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
 		),
+		mcp.WithBoolean("allow_redis",
+			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
+		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleDraftFlowToolWithOptions(ctx, request, options)
@@ -497,6 +500,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
 		),
+		mcp.WithBoolean("allow_redis",
+			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleValidateFlowToolWithOptions(ctx, request, options)
@@ -531,6 +537,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_redis",
+			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
 		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1090,6 +1099,7 @@ func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPl
 		AllowFileAccess:   request.GetBool("allow_file_access", false),
 		AllowBrowserState: request.GetBool("allow_browser_state", false),
 		AllowHTTP:         request.GetBool("allow_http", false),
+		AllowRedis:        request.GetBool("allow_redis", false),
 		FileInputRoot:     options.ArtifactRoot,
 		FileOutputRoot:    options.ArtifactRoot,
 	}
@@ -1152,6 +1162,10 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
 	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
+	descriptions["redis_get"] = "Read one key from Redis using a named connection resolved from environment variables."
+	descriptions["redis_set"] = "Write one key to Redis with an optional TTL using a named connection resolved from environment variables."
+	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
+	descriptions["redis_incr"] = "Increment one Redis counter by a delta using a named connection resolved from environment variables."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
@@ -1214,6 +1228,14 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "condition", "type": "condition", "required": true},
 				{"name": "timeout", "type": "int", "required": false, "default": 30000},
 				{"name": "interval_ms", "type": "int", "required": false, "default": 500},
+			}
+		}
+		if name == "redis_set" {
+			item["args"] = []map[string]any{
+				{"name": "key", "type": "string", "required": true},
+				{"name": "value", "type": "any", "required": true},
+				{"name": "ttl_seconds", "type": "int", "required": false},
+				{"name": "connection", "type": "string", "required": false},
 			}
 		}
 		if group := flowActionSecurityGroup(name); group != "" {

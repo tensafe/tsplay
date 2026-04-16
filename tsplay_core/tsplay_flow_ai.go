@@ -30,11 +30,15 @@ func BuildFlowJSONSchema() map[string]any {
 		"script":            map[string]any{"type": "string"},
 		"code":              map[string]any{"type": "string"},
 		"attribute":         map[string]any{"type": "string"},
+		"key":               map[string]any{"type": "string"},
+		"connection":        map[string]any{"type": "string", "description": "Optional named external connection such as a Redis alias."},
 		"file_path":         map[string]any{"type": "string"},
 		"files":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"save_path":         map[string]any{"type": "string"},
 		"pattern":           map[string]any{"type": "string"},
 		"from":              map[string]any{"description": "Input value for json_extract. Can be a variable placeholder or structured data."},
+		"delta":             map[string]any{"type": "integer"},
+		"ttl_seconds":       map[string]any{"type": "integer", "minimum": 1},
 		"index":             map[string]any{"type": "integer"},
 		"context_index":     map[string]any{"type": "integer"},
 	}
@@ -176,6 +180,34 @@ func flowSpecialActionSchemaConstraint(action string) map[string]any {
 							},
 						},
 					},
+				},
+			},
+		}
+	}
+	if action == "redis_set" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "key", "value"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "key", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"value"},
+							},
+						},
+					},
+					buildFlowActionArgsSchema(action, flowActionSpecs[action]),
 				},
 			},
 		}
