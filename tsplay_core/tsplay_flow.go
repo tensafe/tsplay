@@ -1838,17 +1838,14 @@ func (browser FlowBrowserConfig) persistentContextDir(root string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("resolve browser state root %q: %w", root, err)
 	}
-	segments := []string{rootReal, "profiles"}
-	if profile := strings.TrimSpace(browser.Profile); profile != "" {
-		segments = append(segments, sanitizeArtifactSegment(profile))
+	profile := strings.TrimSpace(browser.Profile)
+	if profile == "" {
+		profile = "default"
 	}
-	if session := strings.TrimSpace(browser.Session); session != "" {
-		segments = append(segments, sanitizeArtifactSegment(session))
+	dir, err := flowSavedSessionProfileDir(rootReal, profile, browser.Session)
+	if err != nil {
+		return "", err
 	}
-	if len(segments) == 2 {
-		segments = append(segments, "default")
-	}
-	dir := filepath.Join(segments...)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("create persistent browser profile %q: %w", dir, err)
 	}

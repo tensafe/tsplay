@@ -21,6 +21,7 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 		"tsplay.draft_flow",
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
+		"tsplay.get_session",
 		"tsplay.list_actions",
 		"tsplay.list_sessions",
 		"tsplay.observe_page",
@@ -148,6 +149,95 @@ func TestHandleListSessionsTool(t *testing.T) {
 	}
 	if _, ok := first["source"].(string); !ok {
 		t.Fatalf("expected source description, got %#v", first["source"])
+	}
+}
+
+func TestHandleGetSessionToolForStorageState(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     options.ArtifactRoot,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name": "admin",
+			},
+		},
+	}
+	result, err := handleGetSessionToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	session, ok := payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %#v", payload["session"])
+	}
+	expanded, ok := session["expanded_browser"].(map[string]any)
+	if !ok || expanded["storage_state"] == nil {
+		t.Fatalf("expected expanded browser storage_state, got %#v", session["expanded_browser"])
+	}
+	physical, ok := session["physical_paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected physical_paths, got %#v", session["physical_paths"])
+	}
+	if _, ok := physical["metadata_path"].(string); !ok {
+		t.Fatalf("expected metadata_path, got %#v", physical["metadata_path"])
+	}
+	if _, ok := physical["storage_state_path"].(string); !ok {
+		t.Fatalf("expected storage_state_path, got %#v", physical["storage_state_path"])
+	}
+}
+
+func TestHandleGetSessionToolForPersistentProfile(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:         "crm-admin",
+		ArtifactRoot: options.ArtifactRoot,
+		Profile:      "crm",
+		Session:      "admin",
+	}); err != nil {
+		t.Fatalf("seed crm-admin session: %v", err)
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"name": "crm-admin",
+			},
+		},
+	}
+	result, err := handleGetSessionToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	session, ok := payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %#v", payload["session"])
+	}
+	expanded, ok := session["expanded_browser"].(map[string]any)
+	if !ok || expanded["persistent"] != true {
+		t.Fatalf("expected persistent expanded browser, got %#v", session["expanded_browser"])
+	}
+	physical, ok := session["physical_paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected physical_paths, got %#v", session["physical_paths"])
+	}
+	if _, ok := physical["profile_dir"].(string); !ok {
+		t.Fatalf("expected profile_dir, got %#v", physical["profile_dir"])
 	}
 }
 

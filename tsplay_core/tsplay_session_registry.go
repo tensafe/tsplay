@@ -270,7 +270,7 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 		"browser": map[string]any{
 			"use_session": session.Name,
 		},
-		"resolved_browser": map[string]any{},
+		"resolved_browser": buildFlowSavedSessionResolvedBrowser(session, artifactRoot),
 	}
 	if session.CreatedAt != "" {
 		view["created_at"] = session.CreatedAt
@@ -287,6 +287,27 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 	switch session.Kind {
 	case flowSavedSessionKindStorageState:
 		view["storage_state_path"] = session.StorageStatePath
+	case flowSavedSessionKindProfile:
+		view["profile"] = session.Profile
+		if session.Session != "" {
+			view["session"] = session.Session
+		}
+	}
+	return view
+}
+
+func BuildFlowSavedSessionDetail(session FlowSavedSession, artifactRoot string) map[string]any {
+	detail := BuildFlowSavedSessionView(session, artifactRoot)
+	detail["expanded_browser"] = buildFlowSavedSessionResolvedBrowser(session, artifactRoot)
+	if root, err := flowSavedSessionRegistryRoot(artifactRoot); err == nil {
+		detail["physical_paths"] = buildFlowSavedSessionPhysicalPaths(session, root)
+	}
+	return detail
+}
+
+func buildFlowSavedSessionResolvedBrowser(session FlowSavedSession, artifactRoot string) map[string]any {
+	switch session.Kind {
+	case flowSavedSessionKindStorageState:
 		resolved := map[string]any{
 			"storage_state": session.StorageStatePath,
 		}
@@ -298,12 +319,8 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 				}
 			}
 		}
-		view["resolved_browser"] = resolved
+		return resolved
 	case flowSavedSessionKindProfile:
-		view["profile"] = session.Profile
-		if session.Session != "" {
-			view["session"] = session.Session
-		}
 		resolved := map[string]any{
 			"persistent": true,
 			"profile":    session.Profile,
@@ -311,9 +328,36 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 		if session.Session != "" {
 			resolved["session"] = session.Session
 		}
-		view["resolved_browser"] = resolved
+		return resolved
+	default:
+		return map[string]any{}
 	}
-	return view
+}
+
+func buildFlowSavedSessionPhysicalPaths(session FlowSavedSession, root string) map[string]any {
+	paths := map[string]any{
+		"artifact_root": root,
+		"metadata_path": flowSavedSessionMetadataPath(root, session.Name),
+	}
+	switch session.Kind {
+	case flowSavedSessionKindStorageState:
+		if session.StorageStatePath == "" {
+			return paths
+		}
+		resolved, err := resolveFlowBrowserStatePath(session.StorageStatePath, flowFileInputPath, &FlowSecurityPolicy{
+			AllowBrowserState: true,
+			FileInputRoot:     root,
+			FileOutputRoot:    root,
+		})
+		if err == nil {
+			paths["storage_state_path"] = resolved
+		}
+	case flowSavedSessionKindProfile:
+		if dir, err := flowSavedSessionProfileDir(root, session.Profile, session.Session); err == nil {
+			paths["profile_dir"] = dir
+		}
+	}
+	return paths
 }
 
 func normalizeFlowSavedSessionName(name string) (string, error) {
@@ -341,6 +385,23 @@ func flowSavedSessionStorageRelativePath(name string) string {
 
 func flowSavedSessionMetadataPath(root string, name string) string {
 	return filepath.Join(root, "sessions", "registry", name+".json")
+}
+
+func flowSavedSessionProfileDir(root string, profile string, session string) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", fmt.Errorf("profile root is required")
+	}
+	if strings.TrimSpace(profile) == "" {
+		return "", fmt.Errorf("profile name is required")
+	}
+	segments := []string{root, "profiles", sanitizeArtifactSegment(profile)}
+	if strings.TrimSpace(session) != "" {
+		segments = append(segments, sanitizeArtifactSegment(session))
+	} else {
+		segments = append(segments, "default")
+	}
+	return filepath.Join(segments...), nil
 }
 
 func writeFlowSavedSession(root string, session *FlowSavedSession) error {

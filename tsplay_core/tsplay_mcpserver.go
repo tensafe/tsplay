@@ -273,6 +273,17 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		return handleListSessionsToolWithOptions(ctx, request, options)
 	})
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.get_session",
+		mcp.WithDescription("Get one named browser session in detail, including expanded browser config and physical paths."),
+		mcp.WithString("name",
+			mcp.Description("Existing saved session alias."),
+			mcp.Required(),
+		),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleGetSessionToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.delete_session",
 		mcp.WithDescription("Delete a named reusable browser session registration. Storage-state sessions also remove the copied storage-state file; persistent profile data is kept."),
 		mcp.WithString("name",
@@ -539,6 +550,31 @@ func handleListSessionsToolWithOptions(
 	return newJSONToolResult(map[string]any{
 		"ok":       true,
 		"sessions": items,
+	})
+}
+
+func handleGetSessionTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleGetSessionToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleGetSessionToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	session, err := LoadFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newJSONToolResult(map[string]any{
+		"ok":      true,
+		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
 	})
 }
 
