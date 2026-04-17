@@ -581,7 +581,7 @@ steps:
       - action: db_insert
         connection: reporting
         with:
-          driver: postgres
+          driver: pgsql
           table: crawl_results
           columns:
             - keyword

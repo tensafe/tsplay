@@ -24,7 +24,7 @@ type dbDialect string
 
 const (
 	dbDialectMySQL     dbDialect = "mysql"
-	dbDialectPostgres  dbDialect = "postgres"
+	dbDialectPostgres  dbDialect = "pgsql"
 	dbDialectSQLServer dbDialect = "sqlserver"
 	dbDialectOracle    dbDialect = "oracle"
 )
@@ -516,7 +516,7 @@ func normalizeDBDriver(raw string) (dbDialect, string, error) {
 	case "oracle", "gora", "goora", "go-ora", "go_ora", "godror":
 		return dbDialectOracle, "oracle", nil
 	default:
-		return "", "", fmt.Errorf("unsupported driver %q; expected one of mysql, postgres, sqlserver, or oracle", raw)
+		return "", "", fmt.Errorf("unsupported driver %q; expected one of mysql, pgsql, sqlserver, or oracle", raw)
 	}
 }
 
@@ -529,7 +529,7 @@ func inferDBDriverFromURL(rawURL string) (string, error) {
 	case "mysql", "mariadb":
 		return "mysql", nil
 	case "postgres", "postgresql", "pgsql":
-		return "postgres", nil
+		return "pgsql", nil
 	case "sqlserver", "mssql":
 		return "sqlserver", nil
 	case "oracle", "gora", "goora", "go-ora", "go_ora", "godror":
@@ -650,7 +650,7 @@ func structuredMySQLDSN(connection string) (string, error) {
 func structuredPostgresDSN(connection string) (string, error) {
 	host := lookupDBConfigValue(connection, "HOST")
 	if host == "" {
-		return "", fmt.Errorf("database connection %q postgres requires HOST", connection)
+		return "", fmt.Errorf("database connection %q pgsql requires HOST", connection)
 	}
 	port := lookupDBConfigValue(connection, "PORT")
 	if port == "" {
@@ -678,7 +678,7 @@ func structuredPostgresDSN(connection string) (string, error) {
 	if params := lookupDBConfigValue(connection, "PARAMS"); params != "" {
 		values, err := url.ParseQuery(params)
 		if err != nil {
-			return "", fmt.Errorf("database connection %q postgres PARAMS %w", connection, err)
+			return "", fmt.Errorf("database connection %q pgsql PARAMS %w", connection, err)
 		}
 		for key, items := range values {
 			for _, item := range items {

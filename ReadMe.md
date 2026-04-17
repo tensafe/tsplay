@@ -906,7 +906,8 @@ browser:
 - `foreach.with.progress_key` 在 MCP 模式下同样需要显式传 `allow_redis=true`
 - `db_insert` 在 MCP 模式下需要显式传 `allow_database=true`
 - 新连接方式推荐用 `TSPLAY_DB_*` 或 `TSPLAY_DB_<NAME>_*`
-- `db_insert` 默认内置 `mysql`、`postgres`
+- `db_insert` 推荐使用 `mysql`、`pgsql`、`sqlserver`、`oracle` 这四个 driver 名称
+- `db_insert` 仍兼容 `postgres`、`postgresql`、`mssql`、`gora` 等历史别名
 - `db_insert` 也支持 `sqlserver` 和 Oracle，但分别需要用 `-tags tsplay_sqlserver`、`-tags tsplay_oracle` 构建带对应驱动的二进制
 - Oracle 的可选驱动使用 `github.com/sijms/go-ora/v2`，是 pure Go，不依赖本机 Oracle client
 - `db_insert` 在 `driver=mysql` 时，仍兼容 `TSPLAY_MYSQL_*` 或 `TSPLAY_MYSQL_<NAME>_*` 连接配置

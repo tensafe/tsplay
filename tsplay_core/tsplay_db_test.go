@@ -78,7 +78,7 @@ func TestValidateFlowSecurityRejectsDBInsertByDefault(t *testing.T) {
 				Action: "db_insert",
 				With: map[string]any{
 					"table":  "crawl_results",
-					"driver": "postgres",
+					"driver": "pgsql",
 					"row": map[string]any{
 						"keyword": "山东大学",
 					},
@@ -106,7 +106,7 @@ func TestRunFlowDBInsertPostgresAction(t *testing.T) {
 	}
 	withFakeOpenFlowDatabase(t, fakeDB)
 
-	t.Setenv("TSPLAY_DB_REPORTING_DRIVER", "postgres")
+	t.Setenv("TSPLAY_DB_REPORTING_DRIVER", "pgsql")
 	t.Setenv("TSPLAY_DB_REPORTING_DSN", "postgres://collector:secret@127.0.0.1:5432/analytics?sslmode=disable")
 
 	L := lua.NewState()
@@ -114,7 +114,7 @@ func TestRunFlowDBInsertPostgresAction(t *testing.T) {
 
 	flow := &Flow{
 		SchemaVersion: "1",
-		Name:          "db_insert_postgres",
+		Name:          "db_insert_pgsql",
 		Steps: []FlowStep{
 			{
 				Action:     "db_insert",
@@ -163,14 +163,14 @@ func TestRunFlowDBInsertPostgresAction(t *testing.T) {
 	if !ok {
 		t.Fatalf("insert_result = %#v", result.Vars["insert_result"])
 	}
-	if insertResult["driver"] != "postgres" {
+	if insertResult["driver"] != "pgsql" {
 		t.Fatalf("driver = %#v", insertResult["driver"])
 	}
 	if fmt.Sprint(insertResult["rows_affected"]) != "1" {
 		t.Fatalf("rows_affected = %#v", insertResult["rows_affected"])
 	}
 	if _, exists := insertResult["last_insert_id"]; exists {
-		t.Fatalf("last_insert_id should be omitted for postgres: %#v", insertResult["last_insert_id"])
+		t.Fatalf("last_insert_id should be omitted for pgsql: %#v", insertResult["last_insert_id"])
 	}
 }
 
@@ -315,5 +315,28 @@ func TestResolveStructuredDBConnectionConfigOracleConnectString(t *testing.T) {
 	}
 	if !strings.Contains(config.DSN, "connStr=%28DESCRIPTION%3D") {
 		t.Fatalf("dsn = %q", config.DSN)
+	}
+}
+
+func TestNormalizeDBDriverAliases(t *testing.T) {
+	cases := []struct {
+		input       string
+		wantDialect dbDialect
+		wantDriver  string
+	}{
+		{input: "pgsql", wantDialect: dbDialectPostgres, wantDriver: "postgres"},
+		{input: "postgres", wantDialect: dbDialectPostgres, wantDriver: "postgres"},
+		{input: "sqlserver", wantDialect: dbDialectSQLServer, wantDriver: "sqlserver"},
+		{input: "oracle", wantDialect: dbDialectOracle, wantDriver: "oracle"},
+	}
+
+	for _, tc := range cases {
+		dialect, driverName, err := normalizeDBDriver(tc.input)
+		if err != nil {
+			t.Fatalf("normalize %q: %v", tc.input, err)
+		}
+		if dialect != tc.wantDialect || driverName != tc.wantDriver {
+			t.Fatalf("normalize %q = (%q, %q), want (%q, %q)", tc.input, dialect, driverName, tc.wantDialect, tc.wantDriver)
+		}
 	}
 }

@@ -1418,7 +1418,8 @@ func buildFlowActionManifest() []map[string]any {
 				"Use with.columns when you want an explicit insert order or only a subset of row fields.",
 				"Configure the connection via TSPLAY_DB_* or TSPLAY_DB_<NAME>_* environment variables.",
 				"For MySQL targets, legacy TSPLAY_MYSQL_* and TSPLAY_MYSQL_<NAME>_* variables are still accepted for backward compatibility.",
-				"MySQL and PostgreSQL are built in by default; SQL Server requires -tags tsplay_sqlserver and Oracle requires -tags tsplay_oracle.",
+				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
+				"MySQL and PGSQL are built in by default; SQL Server requires -tags tsplay_sqlserver and Oracle requires -tags tsplay_oracle.",
 			}
 		}
 		if name == "read_excel" {
