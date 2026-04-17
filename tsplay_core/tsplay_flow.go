@@ -203,6 +203,8 @@ type flowArgSpec struct {
 var placeholderPattern = regexp.MustCompile(`^\{\{\s*([^{}]+?)\s*\}\}$`)
 var replacePattern = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 var flowIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var flowPlaywrightLuaCallPattern = regexp.MustCompile(`\b(?:navigate|click|reload|go_back|go_forward|type_text|get_text|set_value|select_option|hover|scroll_to|wait_for_network_idle|wait_for_selector|wait_for_text|screenshot|screenshot_element|save_html|accept_alert|dismiss_alert|set_alert_text|execute_script|evaluate|upload_file|upload_multiple_files|download_file|download_url|get_attribute|get_html|get_all_links|capture_table|find_element|find_elements|is_visible|is_enabled|is_checked|is_selected|is_aria_selected|new_tab|close_tab|switch_to_tab|intercept_request|block_request|get_response|get_storage_state|get_cookies_string)\s*\(`)
+var flowPlaywrightLuaGlobalPattern = regexp.MustCompile(`\b(?:page|browser|context)\b`)
 
 var flowActionSpecs = map[string]flowActionSpec{
 	"navigate":              {Args: []flowArgSpec{{Name: "url", Required: true}}},
@@ -1761,6 +1763,146 @@ func FlowActionNames() []string {
 	return names
 }
 
+func flowUsesPlaywright(flow *Flow) bool {
+	if flow == nil {
+		return false
+	}
+	if flowBrowserConfigNeedsPlaywright(flow.Browser) {
+		return true
+	}
+	return flowStepsUsePlaywright(flow.Steps)
+}
+
+func flowBrowserConfigNeedsPlaywright(config *FlowBrowserConfig) bool {
+	if config == nil {
+		return false
+	}
+	loadPath, _ := config.loadStorageStatePath()
+	return strings.TrimSpace(config.UseSession) != "" ||
+		loadPath != "" ||
+		strings.TrimSpace(config.SaveStorageState) != "" ||
+		config.wantsPersistentContext()
+}
+
+func flowStepsUsePlaywright(steps []FlowStep) bool {
+	for _, step := range steps {
+		if flowStepUsesPlaywright(step) {
+			return true
+		}
+	}
+	return false
+}
+
+func flowStepUsesPlaywright(step FlowStep) bool {
+	switch step.Action {
+	case "retry", "foreach", "db_transaction":
+		return flowStepsUsePlaywright(step.Steps)
+	case "if":
+		return (step.Condition != nil && flowStepUsesPlaywright(*step.Condition)) ||
+			flowStepsUsePlaywright(step.Then) ||
+			flowStepsUsePlaywright(step.Else)
+	case "on_error":
+		return flowStepsUsePlaywright(step.Steps) || flowStepsUsePlaywright(step.OnError)
+	case "wait_until":
+		return step.Condition != nil && flowStepUsesPlaywright(*step.Condition)
+	case "http_request":
+		return flowHTTPRequestUsesPlaywright(step)
+	case "lua":
+		return flowLuaStepUsesPlaywright(step)
+	case "sleep",
+		"set_var",
+		"append_var",
+		"json_extract",
+		"db_insert",
+		"db_insert_many",
+		"db_upsert",
+		"db_query",
+		"db_query_one",
+		"db_execute",
+		"read_csv",
+		"read_excel",
+		"write_json",
+		"write_csv",
+		"redis_get",
+		"redis_set",
+		"redis_del",
+		"redis_incr":
+		return false
+	default:
+		return true
+	}
+}
+
+func flowHTTPRequestUsesPlaywright(step FlowStep) bool {
+	for _, name := range []string{"use_browser_cookies", "use_browser_referer", "use_browser_user_agent"} {
+		if flowStepBoolParamMayRequirePlaywright(step, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func flowStepBoolParamMayRequirePlaywright(step FlowStep, name string) bool {
+	value, ok := step.param(name)
+	if !ok {
+		return false
+	}
+	if len(flowReferences(value)) > 0 {
+		return true
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		trimmed := strings.TrimSpace(strings.ToLower(typed))
+		return trimmed != "" && trimmed != "false" && trimmed != "0" && trimmed != "no"
+	case int:
+		return typed != 0
+	case int8:
+		return typed != 0
+	case int16:
+		return typed != 0
+	case int32:
+		return typed != 0
+	case int64:
+		return typed != 0
+	case uint:
+		return typed != 0
+	case uint8:
+		return typed != 0
+	case uint16:
+		return typed != 0
+	case uint32:
+		return typed != 0
+	case uint64:
+		return typed != 0
+	case float32:
+		return typed != 0
+	case float64:
+		return typed != 0
+	default:
+		return value != nil
+	}
+}
+
+func flowLuaStepUsesPlaywright(step FlowStep) bool {
+	rawCode := any(step.Code)
+	code := strings.TrimSpace(step.Code)
+	if code == "" {
+		if value, ok := step.param("code"); ok {
+			rawCode = value
+			code = strings.TrimSpace(fmt.Sprint(value))
+		}
+	}
+	if code == "" {
+		return false
+	}
+	if len(flowReferences(rawCode)) > 0 {
+		return true
+	}
+	return flowPlaywrightLuaCallPattern.MatchString(code) || flowPlaywrightLuaGlobalPattern.MatchString(code)
+}
+
 func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err := ValidateFlow(flow); err != nil {
 		return nil, err
@@ -1770,15 +1912,11 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 			return nil, err
 		}
 	}
+	needsPlaywright := flowUsesPlaywright(flow)
 
 	browserConfig, err := resolveFlowBrowserConfig(flow, options)
 	if err != nil {
 		return nil, err
-	}
-
-	pw, err := playwright.Run()
-	if err != nil {
-		return nil, fmt.Errorf("could not start Playwright: %w", err)
 	}
 
 	L := lua.NewState()
@@ -1788,6 +1926,7 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
+	var pw *playwright.Playwright
 	var browser playwright.Browser
 	var context playwright.BrowserContext
 	var page playwright.Page
@@ -1801,23 +1940,32 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 		if browser != nil {
 			_ = browser.Close()
 		}
-		_ = pw.Stop()
+		if pw != nil {
+			_ = pw.Stop()
+		}
 	})
 	defer closePlaywright()
-	if browserConfig.wantsPersistentContext() {
-		context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
+	stopWatcher := func() {}
+	if needsPlaywright {
+		pw, err = StartPlaywright()
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
-		if err != nil {
-			return nil, err
+		if browserConfig.wantsPersistentContext() {
+			context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
+			if err != nil {
+				return nil, err
+			}
 		}
+		stopWatcher = watchContextCancel(options.Context, closePlaywright)
+		setFlowBrowserGlobals(L, browser, context, page)
 	}
-	stopWatcher := watchContextCancel(options.Context, closePlaywright)
 	defer stopWatcher()
-	setFlowBrowserGlobals(L, browser, context, page)
 
 	return RunFlowInStateWithOptions(L, flow, options)
 }

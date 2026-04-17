@@ -69,11 +69,6 @@ func main() {
 	// 解析命令行参数
 	flag.Parse()
 
-	err := playwright.Install()
-	if err != nil {
-		log.Printf("could not install playwright browsers: %v", err)
-	}
-
 	g_headless = *isheadless
 	g_artifactRoot = *artifactRoot
 
@@ -149,9 +144,9 @@ func cli_mode() {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
-	pw, err := playwright.Run()
+	pw, err := tsplay_core.StartPlaywright()
 	if err != nil {
-		log.Fatalf("could not start Playwright: %v", err)
+		log.Fatalf("%v", err)
 	}
 	defer pw.Stop()
 
@@ -281,9 +276,9 @@ func cli_mode() {
 
 func run_script(script string) {
 	// 初始化 Playwright
-	pw, err := playwright.Run()
+	pw, err := tsplay_core.StartPlaywright()
 	if err != nil {
-		log.Fatalf("could not start Playwright: %v", err)
+		log.Fatalf("%v", err)
 	}
 	defer pw.Stop()
 

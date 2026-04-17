@@ -73,9 +73,9 @@ func ObservePage(options PageObservationOptions) (*PageObservation, error) {
 		}
 	}
 
-	pw, err := playwright.Run()
+	pw, err := StartPlaywright()
 	if err != nil {
-		return nil, fmt.Errorf("could not start Playwright: %w", err)
+		return nil, err
 	}
 
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
