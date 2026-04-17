@@ -412,6 +412,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
 		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert during the auto validation pass."),
+		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleDraftFlowToolWithOptions(ctx, request, options)
@@ -534,6 +537,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
 		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert for this request. Defaults to false."),
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleValidateFlowToolWithOptions(ctx, request, options)
@@ -571,6 +577,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert for this request. Defaults to false."),
 		),
 		mcp.WithNumber("run_timeout",
 			mcp.Description("Total MCP browser run timeout in milliseconds, including queue wait and artifact capture. Defaults to the server runtime policy."),
@@ -1221,6 +1230,7 @@ func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPl
 		AllowBrowserState: request.GetBool("allow_browser_state", false),
 		AllowHTTP:         request.GetBool("allow_http", false),
 		AllowRedis:        request.GetBool("allow_redis", false),
+		AllowDatabase:     request.GetBool("allow_database", false),
 		FileInputRoot:     options.ArtifactRoot,
 		FileOutputRoot:    options.ArtifactRoot,
 	}
@@ -1290,6 +1300,7 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["redis_set"] = "Write one key to Redis with an optional TTL using a named connection resolved from environment variables."
 	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
 	descriptions["redis_incr"] = "Increment one Redis counter by a delta using a named connection resolved from environment variables."
+	descriptions["db_insert"] = "Insert one row into a database table using database/sql and a named connection resolved from environment variables."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
@@ -1391,6 +1402,23 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "value", "type": "any", "required": true},
 				{"name": "ttl_seconds", "type": "int", "required": false},
 				{"name": "connection", "type": "string", "required": false},
+			}
+		}
+		if name == "db_insert" {
+			item["args"] = []map[string]any{
+				{"name": "with.table", "type": "string", "required": true},
+				{"name": "with.row", "type": "object", "required": true},
+				{"name": "with.columns", "type": "string_list", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.row to map target columns to resolved Flow values.",
+				"Use with.columns when you want an explicit insert order or only a subset of row fields.",
+				"Configure the connection via TSPLAY_DB_* or TSPLAY_DB_<NAME>_* environment variables.",
+				"For MySQL targets, legacy TSPLAY_MYSQL_* and TSPLAY_MYSQL_<NAME>_* variables are still accepted for backward compatibility.",
+				"MySQL and PostgreSQL are built in by default; SQL Server requires -tags tsplay_sqlserver and Oracle requires -tags tsplay_oracle.",
 			}
 		}
 		if name == "read_excel" {

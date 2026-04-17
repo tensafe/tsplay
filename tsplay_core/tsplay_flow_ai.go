@@ -561,6 +561,41 @@ steps:
 `,
 		},
 		{
+			"name":          "write_scraped_rows_to_mysql",
+			"description":   "Iterate through structured scrape results and insert each row into a MySQL table directly from the Flow.",
+			"focus_actions": []string{"foreach", "db_insert"},
+			"when_to_use":   "Scraped data already exists as Flow variables and needs to be reported to a MySQL table with explicit column mapping.",
+			"flow": `schema_version: "1"
+name: write_scraped_rows_to_mysql
+vars:
+  query: 山东大学
+  results:
+    - title: 山东大学
+      url: https://www.sdu.edu.cn/
+      rank: 1
+steps:
+  - action: foreach
+    items: "{{results}}"
+    item_var: item
+    steps:
+      - action: db_insert
+        connection: reporting
+        with:
+          driver: postgres
+          table: crawl_results
+          columns:
+            - keyword
+            - title
+            - url
+            - rank
+          row:
+            keyword: "{{query}}"
+            title: "{{item.title}}"
+            url: "{{item.url}}"
+            rank: "{{item.rank}}"
+`,
+		},
+		{
 			"name":          "search_and_collect_links",
 			"description":   "Open a search page, type a query, click submit, and save extracted links.",
 			"focus_actions": []string{"navigate", "wait_for_selector", "type_text", "click", "get_all_links"},

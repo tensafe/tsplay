@@ -4,10 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/c-bata/go-prompt"
-	"github.com/chzyer/readline"
-	"github.com/playwright-community/playwright-go"
-	"github.com/yuin/gopher-lua"
 	"io/ioutil"
 	"log"
 	"os"
@@ -16,6 +12,11 @@ import (
 	"strings"
 	"syscall"
 	"tsplay/tsplay_core"
+
+	"github.com/c-bata/go-prompt"
+	"github.com/chzyer/readline"
+	"github.com/playwright-community/playwright-go"
+	"github.com/yuin/gopher-lua"
 )
 
 func completer(d prompt.Document) []prompt.Suggest {
@@ -60,7 +61,7 @@ func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
-	addr := flag.String("addr", ":8080", "server listen address")
+	addr := flag.String("addr", ":8082", "server listen address")
 	flowRoot := flag.String("flow-root", tsplay_core.DefaultMCPFlowPathRoot, "allowed root directory for MCP flow_path")
 	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
 	isheadless := flag.Bool("headless", false, "is hide browser")

@@ -181,6 +181,7 @@ type FlowSecurityPolicy struct {
 	AllowBrowserState bool   `json:"allow_browser_state"`
 	AllowHTTP         bool   `json:"allow_http"`
 	AllowRedis        bool   `json:"allow_redis"`
+	AllowDatabase     bool   `json:"allow_database"`
 	FileInputRoot     string `json:"file_input_root,omitempty"`
 	FileOutputRoot    string `json:"file_output_root,omitempty"`
 }
@@ -254,6 +255,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"redis_set":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "value", Required: true}, {Name: "ttl_seconds"}, {Name: "connection"}}},
 	"redis_del":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
 	"redis_incr":            {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "delta"}, {Name: "connection"}}},
+	"db_insert":             {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "row", Required: true}, {Name: "columns"}, {Name: "connection"}, {Name: "driver"}}},
 	"find_element":          {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"find_elements":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"is_visible":            {Args: []flowArgSpec{{Name: "selector", Required: true}}},
@@ -283,6 +285,7 @@ func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
 		AllowBrowserState: true,
 		AllowHTTP:         true,
 		AllowRedis:        true,
+		AllowDatabase:     true,
 	}
 }
 
@@ -1291,7 +1294,7 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
 		return "bool"
@@ -1299,9 +1302,9 @@ func flowParamType(name string) string {
 		return "int"
 	case "seconds":
 		return "number"
-	case "headers", "query", "form", "multipart_files", "multipart_fields":
+	case "headers", "query", "form", "multipart_files", "multipart_fields", "row":
 		return "object"
-	case "files":
+	case "files", "columns":
 		return "string_list"
 	case "steps":
 		return "steps"
@@ -1366,6 +1369,8 @@ func flowActionSecurityGroup(action string) string {
 		return "http"
 	case "redis_get", "redis_set", "redis_del", "redis_incr":
 		return "redis"
+	case "db_insert":
+		return "database"
 	case "screenshot", "screenshot_element", "save_html", "read_csv", "read_excel", "write_json", "write_csv", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
@@ -1389,6 +1394,8 @@ func flowActionSecurityOption(group string) string {
 		return "allow_http"
 	case "redis":
 		return "allow_redis"
+	case "database":
+		return "allow_database"
 	default:
 		return "allow_unsafe"
 	}
@@ -1408,6 +1415,8 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 		return policy.AllowHTTP
 	case "redis":
 		return policy.AllowRedis
+	case "database":
+		return policy.AllowDatabase
 	default:
 		return true
 	}
@@ -2960,6 +2969,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowHTTPRequestStep(L, ctx, step)
 	case "json_extract":
 		return runFlowJSONExtractStep(ctx, step)
+	case "db_insert":
+		return runFlowDBInsertStep(ctx, step, "")
 	case "read_csv":
 		return runFlowReadCSVStep(ctx, step)
 	case "read_excel":

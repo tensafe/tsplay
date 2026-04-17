@@ -95,6 +95,7 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"redis_set", redis_set, "写入 Redis 值", "Set a value in Redis. Example: redis_set('sessions:admin_cookie', 'SESSION=abc', 3600). Parameters: key (string) - The Redis key; value (any) - The value to store; ttl_seconds (int, optional) - Expire time in seconds; connection (string, optional) - Named Redis connection."},
 	{"redis_del", redis_del, "删除 Redis 键", "Delete a Redis key. Example: redis_del('sessions:admin_cookie'). Parameters: key (string) - The Redis key; connection (string, optional) - Named Redis connection."},
 	{"redis_incr", redis_incr, "递增 Redis 计数", "Increment a Redis counter. Example: redis_incr('orders:counter', 1). Parameters: key (string) - The Redis key; delta (int, optional) - Increment amount; connection (string, optional) - Named Redis connection."},
+	{"db_insert", db_insert, "写入一行到数据库表", "Insert one row into a database table using database/sql. Example: db_insert({table='crawl_results', row={keyword='山东大学', title='示例'}, columns={'keyword', 'title'}, connection='reporting', driver='postgres'}). Parameters: table (string) - Target table; row (object) - Column/value object; columns (list<string>, optional) - Explicit column order; connection (string, optional) - Named database connection; driver (string, optional) - mysql, postgres, sqlserver, or oracle."},
 
 	// StateStorage 管理 / State Storage Management
 	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},
