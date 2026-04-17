@@ -210,9 +210,9 @@ func ExtractSimplifiedElementWithXPathResult(page playwright.Page) (string, erro
 }
 
 func DemoBaidu() {
-	pw, err := playwright.Run()
+	pw, err := StartPlaywright()
 	if err != nil {
-		log.Fatalf("无法启动 Playwright: %v", err)
+		log.Fatalf("%v", err)
 	}
 	defer pw.Stop()
 

@@ -502,9 +502,9 @@ steps:
 		},
 		{
 			"name":          "resume_import_with_writeback",
-			"description":   "Resume a batch import from a source row and write a result ledger to JSON or CSV.",
-			"focus_actions": []string{"read_excel", "on_error", "append_var", "write_json", "write_csv"},
-			"when_to_use":   "The import may be resumed in chunks and each source row needs a durable success or failure record.",
+			"description":   "Resume a batch import from a source row, checkpoint the next row in Redis when available, and write a result ledger to JSON or CSV.",
+			"focus_actions": []string{"read_excel", "foreach", "on_error", "append_var", "write_json", "write_csv"},
+			"when_to_use":   "The import may be resumed in chunks, each source row needs a durable success or failure record, and a Redis-backed checkpoint is helpful but optional.",
 			"flow": `schema_version: "1"
 name: resume_import_with_writeback
 vars:
@@ -522,6 +522,8 @@ steps:
   - action: foreach
     items: "{{rows}}"
     item_var: row
+    with:
+      progress_key: imports:users:resume_row
     steps:
       - action: on_error
         steps:
@@ -556,6 +558,33 @@ steps:
         - source_row
         - status
         - error
+`,
+		},
+		{
+			"name":          "write_scraped_rows_to_database",
+			"description":   "Write structured scrape results into a database table directly from the Flow.",
+			"focus_actions": []string{"db_insert_many"},
+			"when_to_use":   "Scraped data already exists as Flow variables and needs to be reported to a database table with explicit column mapping.",
+			"flow": `schema_version: "1"
+name: write_scraped_rows_to_database
+vars:
+  rows:
+    - keyword: 山东大学
+      title: 山东大学
+      url: https://www.sdu.edu.cn/
+      rank: 1
+steps:
+  - action: db_insert_many
+    connection: reporting
+    with:
+      driver: pgsql
+      table: crawl_results
+      columns:
+        - keyword
+        - title
+        - url
+        - rank
+      rows: "{{rows}}"
 `,
 		},
 		{

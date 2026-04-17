@@ -1,12 +1,14 @@
 package tsplay_core
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -18,6 +20,9 @@ type PageObservationOptions struct {
 	ArtifactRoot string
 	TimeoutMS    int
 	MaxElements  int
+	Context      context.Context
+	RunID        string
+	RunRoot      string
 }
 
 type PageObservation struct {
@@ -62,12 +67,16 @@ func ObservePage(options PageObservationOptions) (*PageObservation, error) {
 	if strings.TrimSpace(options.URL) == "" {
 		return nil, fmt.Errorf("url is required")
 	}
-
-	pw, err := playwright.Run()
-	if err != nil {
-		return nil, fmt.Errorf("could not start Playwright: %w", err)
+	if options.Context != nil {
+		if err := options.Context.Err(); err != nil {
+			return nil, err
+		}
 	}
-	defer pw.Stop()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		return nil, err
+	}
 
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(options.Headless),
@@ -75,13 +84,23 @@ func ObservePage(options PageObservationOptions) (*PageObservation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not launch browser: %w", err)
 	}
-	defer browser.Close()
 
 	page, err := browser.NewPage()
 	if err != nil {
 		return nil, fmt.Errorf("could not create page: %w", err)
 	}
-	defer page.Close()
+	closePlaywright := sync.OnceFunc(func() {
+		if page != nil {
+			_ = page.Close()
+		}
+		if browser != nil {
+			_ = browser.Close()
+		}
+		_ = pw.Stop()
+	})
+	defer closePlaywright()
+	stopWatcher := watchContextCancel(options.Context, closePlaywright)
+	defer stopWatcher()
 
 	timeout := options.TimeoutMS
 	if timeout <= 0 {
@@ -112,6 +131,9 @@ func ObserveLoadedPage(page playwright.Page, options PageObservationOptions) (*P
 	}
 
 	dir := filepath.Join(root, "observe-"+time.Now().Format("20060102-150405.000000000"))
+	if strings.TrimSpace(options.RunRoot) != "" {
+		dir = filepath.Join(options.RunRoot, "observe")
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create observation directory: %w", err)
 	}
@@ -125,7 +147,7 @@ func ObserveLoadedPage(page playwright.Page, options PageObservationOptions) (*P
 	observation := &PageObservation{
 		URL:          page.URL(),
 		Title:        title,
-		ArtifactRoot: root,
+		ArtifactRoot: firstNonEmpty(strings.TrimSpace(options.RunRoot), root),
 		Elements:     []PageObservationElement{},
 		Errors:       errors,
 	}

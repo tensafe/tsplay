@@ -343,6 +343,175 @@ func TestRunFlowAppendVarAndWriteResults(t *testing.T) {
 	}
 }
 
+func TestValidateFlowSecurityRejectsForeachProgressCheckpointWithoutAllow(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "foreach_checkpoint_policy",
+		Vars:          map[string]any{"rows": []any{map[string]any{"source_row": 2}}},
+		Steps: []FlowStep{
+			{
+				Action:  "foreach",
+				Items:   "{{rows}}",
+				ItemVar: "row",
+				With: map[string]any{
+					"progress_key": "imports:users:resume_row",
+				},
+				Steps: []FlowStep{
+					{Action: "set_var", SaveAs: "last_row", Value: "{{row.source_row}}"},
+				},
+			},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy())
+	if err == nil {
+		t.Fatalf("expected redis security policy error")
+	}
+	if !strings.Contains(err.Error(), "allow_redis") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFlowForeachProgressCheckpointSkipsWithoutRedisConfig(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "foreach_checkpoint_skip",
+		Vars: map[string]any{
+			"rows": []any{
+				map[string]any{"source_row": 2, "name": "Alice"},
+				map[string]any{"source_row": 3, "name": "Bob"},
+			},
+		},
+		Steps: []FlowStep{
+			{
+				Action:  "foreach",
+				Items:   "{{rows}}",
+				ItemVar: "row",
+				With: map[string]any{
+					"progress_key": "imports:users:resume_row",
+				},
+				Steps: []FlowStep{
+					{Action: "append_var", SaveAs: "processed_rows", Value: "{{row.source_row}}"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowRedis: true},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	output, ok := result.Trace[0].Output.(map[string]any)
+	if !ok {
+		t.Fatalf("foreach output = %#v", result.Trace[0].Output)
+	}
+	checkpoint, ok := output["checkpoint"].(map[string]any)
+	if !ok {
+		t.Fatalf("checkpoint summary = %#v", result.Trace[0].Output)
+	}
+	if checkpoint["status"] != "skipped" {
+		t.Fatalf("checkpoint status = %#v", checkpoint["status"])
+	}
+	if checkpoint["reason"] != "redis connection not configured" {
+		t.Fatalf("checkpoint reason = %#v", checkpoint["reason"])
+	}
+	if checkpoint["writes"] != 0 {
+		t.Fatalf("checkpoint writes = %#v", checkpoint["writes"])
+	}
+	if got := fmt.Sprint(result.Vars["processed_rows"]); !strings.Contains(got, "2") || !strings.Contains(got, "3") {
+		t.Fatalf("processed_rows = %#v", result.Vars["processed_rows"])
+	}
+}
+
+func TestRunFlowForeachProgressCheckpointWritesNextSourceRow(t *testing.T) {
+	server := newRedisTestServer(t)
+	defer server.Close()
+
+	t.Setenv("TSPLAY_REDIS_ADDR", server.Addr())
+
+	root := t.TempDir()
+	csvPath := filepath.Join(root, "users.csv")
+	if err := os.WriteFile(csvPath, []byte("name,phone\nAlice,13800000000\nBob,13900000000\nCarol,13700000000\n"), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "foreach_checkpoint_write",
+		Steps: []FlowStep{
+			{
+				Action:   "read_csv",
+				FilePath: "users.csv",
+				SaveAs:   "rows",
+				With: map[string]any{
+					"row_number_field": "source_row",
+				},
+			},
+			{
+				Action:  "foreach",
+				Items:   "{{rows}}",
+				ItemVar: "row",
+				With: map[string]any{
+					"progress_key": "imports:users:resume_row",
+				},
+				Steps: []FlowStep{
+					{Action: "append_var", SaveAs: "processed_rows", Value: "{{row.source_row}}"},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			AllowRedis:      true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	stored, err := redisGet("imports:users:resume_row", "")
+	if err != nil {
+		t.Fatalf("redis get checkpoint: %v", err)
+	}
+	if stored != "5" {
+		t.Fatalf("stored checkpoint = %#v", stored)
+	}
+
+	output, ok := result.Trace[1].Output.(map[string]any)
+	if !ok {
+		t.Fatalf("foreach output = %#v", result.Trace[1].Output)
+	}
+	checkpoint, ok := output["checkpoint"].(map[string]any)
+	if !ok {
+		t.Fatalf("checkpoint summary = %#v", result.Trace[1].Output)
+	}
+	if checkpoint["status"] != "ok" {
+		t.Fatalf("checkpoint status = %#v", checkpoint["status"])
+	}
+	if checkpoint["writes"] != 3 {
+		t.Fatalf("checkpoint writes = %#v", checkpoint["writes"])
+	}
+	if checkpoint["last_value"] != 5 {
+		t.Fatalf("checkpoint last_value = %#v", checkpoint["last_value"])
+	}
+}
+
 func TestRunFlowOnErrorHandlesFailure(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()

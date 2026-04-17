@@ -1,7 +1,9 @@
 package tsplay_core
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -9,7 +11,9 @@ import (
 	"regexp"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -99,6 +103,9 @@ type FlowResult struct {
 	Vars         map[string]any  `json:"vars,omitempty"`
 	Trace        []FlowStepTrace `json:"trace"`
 	ArtifactRoot string          `json:"artifact_root,omitempty"`
+	RunID        string          `json:"run_id,omitempty"`
+	RunRoot      string          `json:"run_root,omitempty"`
+	SessionID    string          `json:"session_id,omitempty"`
 }
 
 type FlowStepTrace struct {
@@ -144,16 +151,28 @@ func (artifacts FlowStepArtifacts) empty() bool {
 }
 
 type FlowContext struct {
-	Vars         map[string]any
-	Security     *FlowSecurityPolicy
-	ArtifactRoot string
-	RunID        string
+	Vars          map[string]any
+	Security      *FlowSecurityPolicy
+	ArtifactRoot  string
+	RunID         string
+	RunRoot       string
+	Context       context.Context
+	DBTransaction *flowDBTransactionScope
+	SessionID     string
+	ClientName    string
+	ClientVersion string
 }
 
 type FlowRunOptions struct {
-	Headless     bool
-	Security     *FlowSecurityPolicy
-	ArtifactRoot string
+	Headless      bool
+	Security      *FlowSecurityPolicy
+	ArtifactRoot  string
+	Context       context.Context
+	RunID         string
+	RunRoot       string
+	SessionID     string
+	ClientName    string
+	ClientVersion string
 }
 
 type FlowSecurityPolicy struct {
@@ -163,6 +182,7 @@ type FlowSecurityPolicy struct {
 	AllowBrowserState bool   `json:"allow_browser_state"`
 	AllowHTTP         bool   `json:"allow_http"`
 	AllowRedis        bool   `json:"allow_redis"`
+	AllowDatabase     bool   `json:"allow_database"`
 	FileInputRoot     string `json:"file_input_root,omitempty"`
 	FileOutputRoot    string `json:"file_output_root,omitempty"`
 }
@@ -183,6 +203,8 @@ type flowArgSpec struct {
 var placeholderPattern = regexp.MustCompile(`^\{\{\s*([^{}]+?)\s*\}\}$`)
 var replacePattern = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 var flowIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var flowPlaywrightLuaCallPattern = regexp.MustCompile(`\b(?:navigate|click|reload|go_back|go_forward|type_text|get_text|set_value|select_option|hover|scroll_to|wait_for_network_idle|wait_for_selector|wait_for_text|screenshot|screenshot_element|save_html|accept_alert|dismiss_alert|set_alert_text|execute_script|evaluate|upload_file|upload_multiple_files|download_file|download_url|get_attribute|get_html|get_all_links|capture_table|find_element|find_elements|is_visible|is_enabled|is_checked|is_selected|is_aria_selected|new_tab|close_tab|switch_to_tab|intercept_request|block_request|get_response|get_storage_state|get_cookies_string)\s*\(`)
+var flowPlaywrightLuaGlobalPattern = regexp.MustCompile(`\b(?:page|browser|context)\b`)
 
 var flowActionSpecs = map[string]flowActionSpec{
 	"navigate":              {Args: []flowArgSpec{{Name: "url", Required: true}}},
@@ -210,6 +232,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"foreach":               {},
 	"on_error":              {},
 	"wait_until":            {},
+	"db_transaction":        {},
 	"screenshot":            {Args: []flowArgSpec{{Name: "path", Required: true}}},
 	"screenshot_element":    {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "path", Required: true}}},
 	"save_html":             {Args: []flowArgSpec{{Name: "path", Required: true}}},
@@ -236,6 +259,12 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"redis_set":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "value", Required: true}, {Name: "ttl_seconds"}, {Name: "connection"}}},
 	"redis_del":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
 	"redis_incr":            {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "delta"}, {Name: "connection"}}},
+	"db_insert":             {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "row", Required: true}, {Name: "columns"}, {Name: "connection"}, {Name: "driver"}, {Name: "returning"}, {Name: "timeout"}}},
+	"db_insert_many":        {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "rows", Required: true}, {Name: "columns"}, {Name: "connection"}, {Name: "driver"}, {Name: "returning"}, {Name: "timeout"}}},
+	"db_upsert":             {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "row", Required: true}, {Name: "key_columns", Required: true}, {Name: "columns"}, {Name: "update_columns"}, {Name: "do_nothing"}, {Name: "connection"}, {Name: "driver"}, {Name: "returning"}, {Name: "timeout"}}},
+	"db_query":              {Args: []flowArgSpec{{Name: "sql", Required: true}, {Name: "args"}, {Name: "connection"}, {Name: "driver"}, {Name: "timeout"}}},
+	"db_query_one":          {Args: []flowArgSpec{{Name: "sql", Required: true}, {Name: "args"}, {Name: "connection"}, {Name: "driver"}, {Name: "timeout"}}},
+	"db_execute":            {Args: []flowArgSpec{{Name: "sql", Required: true}, {Name: "args"}, {Name: "connection"}, {Name: "driver"}, {Name: "timeout"}}},
 	"find_element":          {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"find_elements":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"is_visible":            {Args: []flowArgSpec{{Name: "selector", Required: true}}},
@@ -265,6 +294,7 @@ func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
 		AllowBrowserState: true,
 		AllowHTTP:         true,
 		AllowRedis:        true,
+		AllowDatabase:     true,
 	}
 }
 
@@ -442,7 +472,7 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 
 func isFlowControlAction(action string) bool {
 	switch action {
-	case "retry", "if", "foreach", "on_error", "wait_until":
+	case "retry", "if", "foreach", "on_error", "wait_until", "db_transaction":
 		return true
 	default:
 		return false
@@ -522,6 +552,8 @@ func validateFlowControlStep(stepPath string, step FlowStep, knownVars map[strin
 		return validateOnErrorFlowStep(stepPath, step, knownVars)
 	case "wait_until":
 		return validateWaitUntilFlowStep(stepPath, step, knownVars)
+	case "db_transaction":
+		return validateDBTransactionFlowStep(stepPath, step, knownVars)
 	default:
 		return fmt.Errorf("step %s action %q is not a control action", stepPath, step.Action)
 	}
@@ -607,12 +639,26 @@ func validateForeachFlowStep(stepPath string, step FlowStep, knownVars map[strin
 		return fmt.Errorf("step %s action %q does not support args; use items, item_var, index_var, and steps", stepPath, step.Action)
 	}
 	present := step.presentNamedParams()
-	allowed := map[string]bool{"items": true, "item_var": true, "index_var": true, "steps": true}
+	allowed := map[string]bool{
+		"items":               true,
+		"item_var":            true,
+		"index_var":           true,
+		"steps":               true,
+		"progress_key":        true,
+		"progress_connection": true,
+		"progress_value":      true,
+	}
 	for name, value := range present {
 		if !allowed[name] {
 			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
 		}
 		if name == "steps" {
+			continue
+		}
+		if name == "progress_value" {
+			if err := validateFlowReferences(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
@@ -631,6 +677,21 @@ func validateForeachFlowStep(stepPath string, step FlowStep, knownVars map[strin
 	}
 	if indexVar, ok := step.param("index_var"); ok && !flowIdentifierPattern.MatchString(fmt.Sprint(indexVar)) {
 		return fmt.Errorf("step %s action %q index_var %q is not a valid variable name", stepPath, step.Action, indexVar)
+	}
+	if _, hasProgressConnection := step.param("progress_connection"); hasProgressConnection {
+		if _, hasProgressKey := step.param("progress_key"); !hasProgressKey {
+			return fmt.Errorf("step %s action %q progress_connection requires progress_key", stepPath, step.Action)
+		}
+	}
+	if _, hasProgressValue := step.param("progress_value"); hasProgressValue {
+		if _, hasProgressKey := step.param("progress_key"); !hasProgressKey {
+			return fmt.Errorf("step %s action %q progress_value requires progress_key", stepPath, step.Action)
+		}
+	}
+	if progressKey, ok := step.param("progress_key"); ok {
+		if len(flowReferences(progressKey)) == 0 && strings.TrimSpace(fmt.Sprint(progressKey)) == "" {
+			return fmt.Errorf("step %s action %q progress_key cannot be blank", stepPath, step.Action)
+		}
 	}
 	if len(step.Steps) == 0 {
 		return fmt.Errorf("step %s action %q requires nested steps", stepPath, step.Action)
@@ -1244,25 +1305,25 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing":
 		return "bool"
-	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit":
+	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
 	case "seconds":
 		return "number"
-	case "headers", "query", "form", "multipart_files", "multipart_fields":
+	case "headers", "query", "form", "multipart_files", "multipart_fields", "row":
 		return "object"
-	case "files":
+	case "files", "columns", "returning", "key_columns", "update_columns":
 		return "string_list"
 	case "steps":
 		return "steps"
-	case "items":
+	case "items", "rows":
 		return "items"
 	case "condition":
 		return "condition"
-	case "from", "json":
+	case "from", "json", "progress_value":
 		return "any"
 	default:
 		return ""
@@ -1294,6 +1355,9 @@ func validateFlowStepSequenceSecurity(steps []FlowStep, policy FlowSecurityPolic
 			option := flowActionSecurityOption(group)
 			return fmt.Errorf("step %s action %q is disabled by security policy; set %s=true only for trusted flows", stepPath, step.Action, option)
 		}
+		if stepUsesRedisCheckpoint(step) && !policy.AllowRedis {
+			return fmt.Errorf("step %s action %q progress checkpoint is disabled by security policy; set allow_redis=true only for trusted flows", stepPath, step.Action)
+		}
 		if stepRequiresFileAccess(step) && !policy.AllowFileAccess {
 			return fmt.Errorf("step %s action %q is disabled by security policy; set allow_file_access=true only for trusted flows", stepPath, step.Action)
 		}
@@ -1316,6 +1380,8 @@ func flowActionSecurityGroup(action string) string {
 		return "http"
 	case "redis_get", "redis_set", "redis_del", "redis_incr":
 		return "redis"
+	case "db_insert", "db_insert_many", "db_upsert", "db_query", "db_query_one", "db_execute", "db_transaction":
+		return "database"
 	case "screenshot", "screenshot_element", "save_html", "read_csv", "read_excel", "write_json", "write_csv", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
@@ -1339,6 +1405,8 @@ func flowActionSecurityOption(group string) string {
 		return "allow_http"
 	case "redis":
 		return "allow_redis"
+	case "database":
+		return "allow_database"
 	default:
 		return "allow_unsafe"
 	}
@@ -1358,9 +1426,25 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 		return policy.AllowHTTP
 	case "redis":
 		return policy.AllowRedis
+	case "database":
+		return policy.AllowDatabase
 	default:
 		return true
 	}
+}
+
+func stepUsesRedisCheckpoint(step FlowStep) bool {
+	if step.Action != "foreach" {
+		return false
+	}
+	value, ok := step.param("progress_key")
+	if !ok {
+		return false
+	}
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text) != "" || len(flowReferences(value)) > 0
+	}
+	return value != nil
 }
 
 func stepRequiresFileAccess(step FlowStep) bool {
@@ -1679,6 +1763,146 @@ func FlowActionNames() []string {
 	return names
 }
 
+func flowUsesPlaywright(flow *Flow) bool {
+	if flow == nil {
+		return false
+	}
+	if flowBrowserConfigNeedsPlaywright(flow.Browser) {
+		return true
+	}
+	return flowStepsUsePlaywright(flow.Steps)
+}
+
+func flowBrowserConfigNeedsPlaywright(config *FlowBrowserConfig) bool {
+	if config == nil {
+		return false
+	}
+	loadPath, _ := config.loadStorageStatePath()
+	return strings.TrimSpace(config.UseSession) != "" ||
+		loadPath != "" ||
+		strings.TrimSpace(config.SaveStorageState) != "" ||
+		config.wantsPersistentContext()
+}
+
+func flowStepsUsePlaywright(steps []FlowStep) bool {
+	for _, step := range steps {
+		if flowStepUsesPlaywright(step) {
+			return true
+		}
+	}
+	return false
+}
+
+func flowStepUsesPlaywright(step FlowStep) bool {
+	switch step.Action {
+	case "retry", "foreach", "db_transaction":
+		return flowStepsUsePlaywright(step.Steps)
+	case "if":
+		return (step.Condition != nil && flowStepUsesPlaywright(*step.Condition)) ||
+			flowStepsUsePlaywright(step.Then) ||
+			flowStepsUsePlaywright(step.Else)
+	case "on_error":
+		return flowStepsUsePlaywright(step.Steps) || flowStepsUsePlaywright(step.OnError)
+	case "wait_until":
+		return step.Condition != nil && flowStepUsesPlaywright(*step.Condition)
+	case "http_request":
+		return flowHTTPRequestUsesPlaywright(step)
+	case "lua":
+		return flowLuaStepUsesPlaywright(step)
+	case "sleep",
+		"set_var",
+		"append_var",
+		"json_extract",
+		"db_insert",
+		"db_insert_many",
+		"db_upsert",
+		"db_query",
+		"db_query_one",
+		"db_execute",
+		"read_csv",
+		"read_excel",
+		"write_json",
+		"write_csv",
+		"redis_get",
+		"redis_set",
+		"redis_del",
+		"redis_incr":
+		return false
+	default:
+		return true
+	}
+}
+
+func flowHTTPRequestUsesPlaywright(step FlowStep) bool {
+	for _, name := range []string{"use_browser_cookies", "use_browser_referer", "use_browser_user_agent"} {
+		if flowStepBoolParamMayRequirePlaywright(step, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func flowStepBoolParamMayRequirePlaywright(step FlowStep, name string) bool {
+	value, ok := step.param(name)
+	if !ok {
+		return false
+	}
+	if len(flowReferences(value)) > 0 {
+		return true
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		trimmed := strings.TrimSpace(strings.ToLower(typed))
+		return trimmed != "" && trimmed != "false" && trimmed != "0" && trimmed != "no"
+	case int:
+		return typed != 0
+	case int8:
+		return typed != 0
+	case int16:
+		return typed != 0
+	case int32:
+		return typed != 0
+	case int64:
+		return typed != 0
+	case uint:
+		return typed != 0
+	case uint8:
+		return typed != 0
+	case uint16:
+		return typed != 0
+	case uint32:
+		return typed != 0
+	case uint64:
+		return typed != 0
+	case float32:
+		return typed != 0
+	case float64:
+		return typed != 0
+	default:
+		return value != nil
+	}
+}
+
+func flowLuaStepUsesPlaywright(step FlowStep) bool {
+	rawCode := any(step.Code)
+	code := strings.TrimSpace(step.Code)
+	if code == "" {
+		if value, ok := step.param("code"); ok {
+			rawCode = value
+			code = strings.TrimSpace(fmt.Sprint(value))
+		}
+	}
+	if code == "" {
+		return false
+	}
+	if len(flowReferences(rawCode)) > 0 {
+		return true
+	}
+	return flowPlaywrightLuaCallPattern.MatchString(code) || flowPlaywrightLuaGlobalPattern.MatchString(code)
+}
+
 func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err := ValidateFlow(flow); err != nil {
 		return nil, err
@@ -1688,17 +1912,12 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 			return nil, err
 		}
 	}
+	needsPlaywright := flowUsesPlaywright(flow)
 
 	browserConfig, err := resolveFlowBrowserConfig(flow, options)
 	if err != nil {
 		return nil, err
 	}
-
-	pw, err := playwright.Run()
-	if err != nil {
-		return nil, fmt.Errorf("could not start Playwright: %w", err)
-	}
-	defer pw.Stop()
 
 	L := lua.NewState()
 	defer L.Close()
@@ -1707,23 +1926,46 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
+	var pw *playwright.Playwright
 	var browser playwright.Browser
 	var context playwright.BrowserContext
 	var page playwright.Page
-	if browserConfig.wantsPersistentContext() {
-		context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
+	closePlaywright := sync.OnceFunc(func() {
+		if page != nil {
+			_ = page.Close()
+		}
+		if context != nil {
+			_ = context.Close()
+		}
+		if browser != nil {
+			_ = browser.Close()
+		}
+		if pw != nil {
+			_ = pw.Stop()
+		}
+	})
+	defer closePlaywright()
+	stopWatcher := func() {}
+	if needsPlaywright {
+		pw, err = StartPlaywright()
 		if err != nil {
 			return nil, err
 		}
-		defer context.Close()
-	} else {
-		browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
-		if err != nil {
-			return nil, err
+		if browserConfig.wantsPersistentContext() {
+			context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
+			if err != nil {
+				return nil, err
+			}
 		}
-		defer browser.Close()
+		stopWatcher = watchContextCancel(options.Context, closePlaywright)
+		setFlowBrowserGlobals(L, browser, context, page)
 	}
-	setFlowBrowserGlobals(L, browser, context, page)
+	defer stopWatcher()
 
 	return RunFlowInStateWithOptions(L, flow, options)
 }
@@ -1734,11 +1976,17 @@ func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserCo
 		config = *flow.Browser
 	}
 	if strings.TrimSpace(config.UseSession) != "" {
-		savedConfig, err := ResolveFlowSavedSessionBrowserConfig(config.UseSession, flowBrowserStateRoot(options))
+		actor := FlowSavedSessionAccessInfo{
+			SessionID:     options.SessionID,
+			ClientName:    options.ClientName,
+			ClientVersion: options.ClientVersion,
+			RunID:         options.RunID,
+		}
+		savedConfig, err := ResolveFlowSavedSessionBrowserConfig(config.UseSession, flowBrowserStateRoot(options), actor)
 		if err != nil {
 			return FlowBrowserConfig{}, fmt.Errorf("resolve browser.use_session %q: %w", config.UseSession, err)
 		}
-		if _, err := MarkFlowSavedSessionUsed(config.UseSession, flowBrowserStateRoot(options)); err != nil {
+		if _, err := MarkFlowSavedSessionUsed(config.UseSession, flowBrowserStateRoot(options), actor); err != nil {
 			return FlowBrowserConfig{}, fmt.Errorf("mark browser.use_session %q as used: %w", config.UseSession, err)
 		}
 		if savedConfig != nil {
@@ -1898,18 +2146,44 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	ensureFlowActionGlobals(L)
 
 	artifactRoot := flowArtifactRoot(options)
+	runID := strings.TrimSpace(options.RunID)
+	if runID == "" {
+		runID = newFlowRunID(flow)
+	}
+	runRoot := strings.TrimSpace(options.RunRoot)
+	if runRoot == "" && strings.TrimSpace(artifactRoot) != "" {
+		if root, err := prepareRuntimeFileRoot(artifactRoot); err == nil {
+			runRoot = filepath.Join(root, runID)
+		}
+	}
+	runContext := options.Context
+	if runContext == nil {
+		runContext = context.Background()
+	}
 	ctx := &FlowContext{
-		Vars:         map[string]any{},
-		Security:     options.Security,
-		ArtifactRoot: artifactRoot,
-		RunID:        newFlowRunID(flow),
+		Vars:          map[string]any{},
+		Security:      options.Security,
+		ArtifactRoot:  artifactRoot,
+		RunID:         runID,
+		RunRoot:       runRoot,
+		Context:       runContext,
+		SessionID:     options.SessionID,
+		ClientName:    options.ClientName,
+		ClientVersion: options.ClientVersion,
 	}
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))
 	}
 
-	result := &FlowResult{Name: flow.Name, Vars: ctx.Vars, ArtifactRoot: artifactRoot}
+	result := &FlowResult{
+		Name:         flow.Name,
+		Vars:         ctx.Vars,
+		ArtifactRoot: artifactRoot,
+		RunID:        runID,
+		RunRoot:      runRoot,
+		SessionID:    options.SessionID,
+	}
 	traces, err := runFlowStepSequence(L, ctx, flow.Steps, "", 0, 0)
 	result.Trace = append(result.Trace, traces...)
 	saveErr := saveFlowBrowserStateFromConfig(L, flow, options)
@@ -1941,6 +2215,9 @@ func ensureFlowActionGlobals(L *lua.LState) {
 func runFlowStepSequence(L *lua.LState, ctx *FlowContext, steps []FlowStep, parentPath string, attempt int, iteration int) ([]FlowStepTrace, error) {
 	traces := make([]FlowStepTrace, 0, len(steps))
 	for i, step := range steps {
+		if err := flowRunContextError(ctx); err != nil {
+			return traces, err
+		}
 		stepPath := flowStepPath(parentPath, i+1)
 		trace, err := runFlowStepWithTrace(L, ctx, step, i+1, stepPath, attempt, iteration)
 		traces = append(traces, trace)
@@ -1952,6 +2229,20 @@ func runFlowStepSequence(L *lua.LState, ctx *FlowContext, steps []FlowStep, pare
 }
 
 func runFlowStepWithTrace(L *lua.LState, ctx *FlowContext, step FlowStep, index int, stepPath string, attempt int, iteration int) (FlowStepTrace, error) {
+	if err := flowRunContextError(ctx); err != nil {
+		return FlowStepTrace{
+			Index:      index,
+			Path:       stepPath,
+			Attempt:    attempt,
+			Iteration:  iteration,
+			Name:       step.Name,
+			Action:     step.Action,
+			Status:     "error",
+			Error:      err.Error(),
+			StartedAt:  time.Now().Format(time.RFC3339Nano),
+			FinishedAt: time.Now().Format(time.RFC3339Nano),
+		}, err
+	}
 	traceArgs := traceStepParams(step, ctx)
 	trace := FlowStepTrace{
 		Index:       index,
@@ -1980,6 +2271,8 @@ func runFlowStepWithTrace(L *lua.LState, ctx *FlowContext, step FlowStep, index 
 		output, trace.Children, trace.Branch, err = runFlowOnErrorStep(L, ctx, step, stepPath)
 	case "wait_until":
 		output, trace.Attempts, err = runFlowWaitUntilStep(L, ctx, step, stepPath)
+	case "db_transaction":
+		output, trace.Children, err = runFlowDBTransactionStep(L, ctx, step, stepPath)
 	default:
 		output, err = runFlowStep(L, ctx, step)
 	}
@@ -2041,7 +2334,9 @@ func runFlowRetryStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath s
 		restoreFlowVars(L, ctx, snapshot)
 		lastErr = err
 		if intervalMS > 0 && attempt < times {
-			time.Sleep(time.Duration(intervalMS) * time.Millisecond)
+			if err := sleepWithFlowContext(ctx, time.Duration(intervalMS)*time.Millisecond); err != nil {
+				return nil, allAttempts, err
+			}
 		}
 	}
 	return map[string]any{
@@ -2102,6 +2397,10 @@ func runFlowForeachStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath
 	if indexVarValue, ok := step.param("index_var"); ok {
 		indexVar = fmt.Sprint(indexVarValue)
 	}
+	checkpoint, err := newFlowForeachCheckpoint(ctx, step)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	itemSnapshot, hadItem := snapshotSingleFlowVar(ctx, itemVar)
 	indexSnapshot, hadIndex := snapshotSingleFlowVar(ctx, indexVar)
@@ -2110,6 +2409,9 @@ func runFlowForeachStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath
 
 	children := []FlowStepTrace{}
 	for index, item := range items {
+		if err := flowRunContextError(ctx); err != nil {
+			return nil, children, err
+		}
 		setFlowVar(L, ctx, itemVar, item)
 		if indexVar != "" {
 			setFlowVar(L, ctx, indexVar, index+1)
@@ -2120,11 +2422,170 @@ func runFlowForeachStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath
 		if err != nil {
 			return nil, children, err
 		}
+		checkpoint.recordSuccess(L, ctx, item, iteration)
 	}
-	return map[string]any{
+	result := map[string]any{
 		"iterations": len(items),
 		"status":     "completed",
-	}, children, nil
+	}
+	if summary := checkpoint.summary(); summary != nil {
+		result["checkpoint"] = summary
+	}
+	return result, children, nil
+}
+
+type flowForeachCheckpoint struct {
+	enabled    bool
+	key        string
+	connection string
+	rawValue   any
+	value      any
+	writes     int
+	skipped    bool
+	skipReason string
+	lastError  string
+}
+
+func newFlowForeachCheckpoint(ctx *FlowContext, step FlowStep) (*flowForeachCheckpoint, error) {
+	progressKey, err := flowStepOptionalStringParam(ctx, step, "progress_key")
+	if err != nil {
+		return nil, err
+	}
+	progressKey = strings.TrimSpace(progressKey)
+	if progressKey == "" {
+		return &flowForeachCheckpoint{}, nil
+	}
+	connection, err := flowStepOptionalStringParam(ctx, step, "progress_connection")
+	if err != nil {
+		return nil, err
+	}
+	progressValue, _ := step.param("progress_value")
+	return &flowForeachCheckpoint{
+		enabled:    true,
+		key:        progressKey,
+		connection: connection,
+		rawValue:   progressValue,
+	}, nil
+}
+
+func (checkpoint *flowForeachCheckpoint) recordSuccess(_ *lua.LState, ctx *FlowContext, item any, iteration int) {
+	if checkpoint == nil || !checkpoint.enabled {
+		return
+	}
+	if !redisConnectionHasConfig(checkpoint.connection) {
+		checkpoint.skipped = true
+		checkpoint.skipReason = "redis connection not configured"
+		return
+	}
+	value, err := checkpoint.resolveValue(ctx, item, iteration)
+	if err != nil {
+		checkpoint.lastError = err.Error()
+		return
+	}
+	if _, err := redisSet(checkpoint.key, value, 0, checkpoint.connection); err != nil {
+		checkpoint.lastError = err.Error()
+		return
+	}
+	checkpoint.writes++
+	checkpoint.value = value
+	checkpoint.lastError = ""
+}
+
+func (checkpoint *flowForeachCheckpoint) resolveValue(ctx *FlowContext, item any, iteration int) (any, error) {
+	if checkpoint == nil || !checkpoint.enabled {
+		return nil, nil
+	}
+	if checkpoint.rawValue != nil {
+		return resolveValue(checkpoint.rawValue, ctx)
+	}
+	if nextRow, ok := flowForeachCheckpointNextRow(item); ok {
+		return nextRow, nil
+	}
+	return iteration + 1, nil
+}
+
+func (checkpoint *flowForeachCheckpoint) summary() map[string]any {
+	if checkpoint == nil || !checkpoint.enabled {
+		return nil
+	}
+	summary := map[string]any{
+		"key":        checkpoint.key,
+		"connection": firstNonEmpty(strings.TrimSpace(checkpoint.connection), redisDefaultConnection),
+		"writes":     checkpoint.writes,
+	}
+	if checkpoint.value != nil {
+		summary["last_value"] = checkpoint.value
+	}
+	if checkpoint.skipped {
+		summary["status"] = "skipped"
+		summary["reason"] = checkpoint.skipReason
+		return summary
+	}
+	if checkpoint.lastError != "" {
+		summary["status"] = "error"
+		summary["error"] = checkpoint.lastError
+		return summary
+	}
+	summary["status"] = "ok"
+	return summary
+}
+
+func flowForeachCheckpointNextRow(item any) (int, bool) {
+	record, ok := item.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	for _, field := range []string{"source_row", "row_number", "row"} {
+		value, ok := record[field]
+		if !ok {
+			continue
+		}
+		number, ok := flowValueAsInt(value)
+		if !ok || number < 1 {
+			continue
+		}
+		return number + 1, true
+	}
+	return 0, false
+}
+
+func flowValueAsInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int8:
+		return int(typed), true
+	case int16:
+		return int(typed), true
+	case int32:
+		return int(typed), true
+	case int64:
+		return int(typed), true
+	case uint:
+		return int(typed), true
+	case uint8:
+		return int(typed), true
+	case uint16:
+		return int(typed), true
+	case uint32:
+		return int(typed), true
+	case uint64:
+		return int(typed), true
+	case float32:
+		number := int(typed)
+		return number, float32(number) == typed
+	case float64:
+		number := int(typed)
+		return number, float64(number) == typed
+	case string:
+		number, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil {
+			return 0, false
+		}
+		return number, true
+	default:
+		return 0, false
+	}
 }
 
 func runFlowOnErrorStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPath string) (any, []FlowStepTrace, string, error) {
@@ -2164,6 +2625,9 @@ func runFlowWaitUntilStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPa
 	attempts := []FlowStepTrace{}
 	var lastErr error
 	for attempt := 1; ; attempt++ {
+		if err := flowRunContextError(ctx); err != nil {
+			return nil, attempts, err
+		}
 		conditionTrace, err := runFlowStepWithTrace(L, ctx, *step.Condition, 0, stepPath+".condition", attempt, 0)
 		attempts = append(attempts, conditionTrace)
 		if err == nil && flowValueTruthy(conditionTrace.Output) {
@@ -2181,7 +2645,45 @@ func runFlowWaitUntilStep(L *lua.LState, ctx *FlowContext, step FlowStep, stepPa
 			}
 			return nil, attempts, fmt.Errorf("wait_until timed out after %dms", timeout)
 		}
-		time.Sleep(time.Duration(intervalMS) * time.Millisecond)
+		if err := sleepWithFlowContext(ctx, time.Duration(intervalMS)*time.Millisecond); err != nil {
+			return nil, attempts, err
+		}
+	}
+}
+
+func flowRunContextError(ctx *FlowContext) error {
+	if ctx == nil || ctx.Context == nil {
+		return nil
+	}
+	err := ctx.Context.Err()
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("flow run timed out")
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("flow run canceled")
+	default:
+		return err
+	}
+}
+
+func sleepWithFlowContext(ctx *FlowContext, duration time.Duration) error {
+	if duration <= 0 {
+		return flowRunContextError(ctx)
+	}
+	if ctx == nil || ctx.Context == nil {
+		time.Sleep(duration)
+		return nil
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Context.Done():
+		return flowRunContextError(ctx)
 	}
 }
 
@@ -2511,14 +3013,21 @@ func compactTraceValue(value any, depth int) any {
 
 func captureFlowFailureArtifacts(L *lua.LState, ctx *FlowContext, trace FlowStepTrace) FlowStepArtifacts {
 	artifacts := FlowStepArtifacts{}
-	if ctx == nil || strings.TrimSpace(ctx.ArtifactRoot) == "" {
+	if ctx == nil {
 		return artifacts
 	}
 
-	root, err := prepareRuntimeFileRoot(ctx.ArtifactRoot)
-	if err != nil {
-		artifacts.CaptureError = fmt.Sprintf("prepare artifact root: %v", err)
-		return artifacts
+	root := strings.TrimSpace(ctx.RunRoot)
+	if root == "" {
+		if strings.TrimSpace(ctx.ArtifactRoot) == "" {
+			return artifacts
+		}
+		preparedRoot, err := prepareRuntimeFileRoot(ctx.ArtifactRoot)
+		if err != nil {
+			artifacts.CaptureError = fmt.Sprintf("prepare artifact root: %v", err)
+			return artifacts
+		}
+		root = filepath.Join(preparedRoot, ctx.RunID)
 	}
 	stepID := fmt.Sprintf("%02d", trace.Index)
 	if strings.Contains(trace.Path, ".") {
@@ -2527,7 +3036,7 @@ func captureFlowFailureArtifacts(L *lua.LState, ctx *FlowContext, trace FlowStep
 	if trace.Attempt > 0 {
 		stepID = fmt.Sprintf("%s-attempt-%02d", stepID, trace.Attempt)
 	}
-	dir := filepath.Join(root, ctx.RunID, fmt.Sprintf("%s-%s", stepID, sanitizeArtifactSegment(trace.Action)))
+	dir := filepath.Join(root, fmt.Sprintf("%s-%s", stepID, sanitizeArtifactSegment(trace.Action)))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		artifacts.CaptureError = fmt.Sprintf("create artifact directory: %v", err)
 		return artifacts
@@ -2619,6 +3128,18 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowHTTPRequestStep(L, ctx, step)
 	case "json_extract":
 		return runFlowJSONExtractStep(ctx, step)
+	case "db_insert":
+		return runFlowDBInsertStep(ctx, step, "")
+	case "db_insert_many":
+		return runFlowDBInsertManyStep(ctx, step, "")
+	case "db_upsert":
+		return runFlowDBUpsertStep(ctx, step, "")
+	case "db_query":
+		return runFlowDBQueryStep(ctx, step, "")
+	case "db_query_one":
+		return runFlowDBQueryOneStep(ctx, step, "")
+	case "db_execute":
+		return runFlowDBExecuteStep(ctx, step, "")
 	case "read_csv":
 		return runFlowReadCSVStep(ctx, step)
 	case "read_excel":
@@ -2627,7 +3148,7 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
 		return runFlowAssertTextStep(L, ctx, step)
-	case "retry", "if", "foreach", "on_error", "wait_until":
+	case "retry", "if", "foreach", "on_error", "wait_until", "db_transaction":
 		return nil, fmt.Errorf("control action %q can only be executed by the flow step runner", step.Action)
 	}
 

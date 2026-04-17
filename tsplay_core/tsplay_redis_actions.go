@@ -185,6 +185,15 @@ func redisIncr(key string, delta int, connection string) (int, error) {
 	return int(reply.integer), nil
 }
 
+func redisConnectionHasConfig(connection string) bool {
+	name := strings.TrimSpace(connection)
+	if name == "" {
+		name = redisDefaultConnection
+	}
+	return strings.TrimSpace(lookupRedisConfigValue(name, "URL")) != "" ||
+		strings.TrimSpace(lookupRedisConfigValue(name, "ADDR")) != ""
+}
+
 func resolveRedisConnectionConfig(connection string) (redisConnectionConfig, error) {
 	name := strings.TrimSpace(connection)
 	if name == "" {

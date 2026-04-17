@@ -83,14 +83,24 @@ const DefaultMCPFlowPathRoot = "script"
 const DefaultMCPArtifactRoot = DefaultFlowArtifactRoot
 
 type TSPlayMCPServerOptions struct {
-	FlowPathRoot string
-	ArtifactRoot string
+	FlowPathRoot                       string
+	ArtifactRoot                       string
+	MaxConcurrentBrowserRuns           int
+	MaxConcurrentBrowserRunsPerSession int
+	DefaultRunTimeoutMS                int
+	MaxRunTimeoutMS                    int
+	QueueTimeoutMS                     int
 }
 
 func DefaultTSPlayMCPServerOptions() TSPlayMCPServerOptions {
 	return TSPlayMCPServerOptions{
-		FlowPathRoot: DefaultMCPFlowPathRoot,
-		ArtifactRoot: DefaultMCPArtifactRoot,
+		FlowPathRoot:                       DefaultMCPFlowPathRoot,
+		ArtifactRoot:                       DefaultMCPArtifactRoot,
+		MaxConcurrentBrowserRuns:           defaultTSPlayBrowserRunGlobalLimit,
+		MaxConcurrentBrowserRunsPerSession: defaultTSPlayBrowserRunSessionLimit,
+		DefaultRunTimeoutMS:                defaultTSPlayBrowserRunTimeoutMS,
+		MaxRunTimeoutMS:                    defaultTSPlayBrowserRunTimeoutMaxMS,
+		QueueTimeoutMS:                     defaultTSPlayBrowserRunQueueTimeout,
 	}
 }
 
@@ -104,6 +114,21 @@ func normalizeTSPlayMCPServerOptions(options []TSPlayMCPServerOptions) TSPlayMCP
 	}
 	if options[0].ArtifactRoot != "" {
 		normalized.ArtifactRoot = options[0].ArtifactRoot
+	}
+	if options[0].MaxConcurrentBrowserRuns > 0 {
+		normalized.MaxConcurrentBrowserRuns = options[0].MaxConcurrentBrowserRuns
+	}
+	if options[0].MaxConcurrentBrowserRunsPerSession > 0 {
+		normalized.MaxConcurrentBrowserRunsPerSession = options[0].MaxConcurrentBrowserRunsPerSession
+	}
+	if options[0].DefaultRunTimeoutMS > 0 {
+		normalized.DefaultRunTimeoutMS = options[0].DefaultRunTimeoutMS
+	}
+	if options[0].MaxRunTimeoutMS > 0 {
+		normalized.MaxRunTimeoutMS = options[0].MaxRunTimeoutMS
+	}
+	if options[0].QueueTimeoutMS > 0 {
+		normalized.QueueTimeoutMS = options[0].QueueTimeoutMS
 	}
 	return normalized
 }
@@ -363,6 +388,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithNumber("timeout",
 			mcp.Description("Navigation timeout in milliseconds when url is provided. Defaults to 30000."),
 		),
+		mcp.WithNumber("run_timeout",
+			mcp.Description("Total MCP browser run timeout in milliseconds, including queue wait and artifact capture. Defaults to the server runtime policy."),
+		),
 		mcp.WithNumber("max_elements",
 			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
 		),
@@ -383,6 +411,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert during the auto validation pass."),
 		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -465,6 +496,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithNumber("timeout",
 			mcp.Description("Navigation timeout in milliseconds. Defaults to 30000."),
 		),
+		mcp.WithNumber("run_timeout",
+			mcp.Description("Total MCP browser run timeout in milliseconds, including queue wait and artifact capture. Defaults to the server runtime policy."),
+		),
 		mcp.WithNumber("max_elements",
 			mcp.Description("Maximum interactive elements to return. Defaults to 100."),
 		),
@@ -503,6 +537,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
 		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert for this request. Defaults to false."),
+		),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleValidateFlowToolWithOptions(ctx, request, options)
@@ -540,6 +577,12 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert for this request. Defaults to false."),
+		),
+		mcp.WithNumber("run_timeout",
+			mcp.Description("Total MCP browser run timeout in milliseconds, including queue wait and artifact capture. Defaults to the server runtime policy."),
 		),
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -662,7 +705,11 @@ func handleDeleteSessionToolWithOptions(
 	request mcp.CallToolRequest,
 	options TSPlayMCPServerOptions,
 ) (*mcp.CallToolResult, error) {
-	deleted, err := DeleteFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
+	deleted, err := DeleteFlowSavedSession(
+		request.GetString("name", ""),
+		options.ArtifactRoot,
+		flowSavedSessionAccessFromContext(ctx),
+	)
 	if err != nil {
 		return newJSONToolResult(map[string]any{
 			"ok":    false,
@@ -687,13 +734,17 @@ func handleSaveSessionToolWithOptions(
 	request mcp.CallToolRequest,
 	options TSPlayMCPServerOptions,
 ) (*mcp.CallToolResult, error) {
+	actor := flowSavedSessionAccessFromContext(ctx)
 	session, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
-		Name:             request.GetString("name", ""),
-		ArtifactRoot:     options.ArtifactRoot,
-		StorageStateJSON: request.GetString("storage_state", ""),
-		StorageStatePath: request.GetString("storage_state_path", ""),
-		Profile:          request.GetString("profile", ""),
-		Session:          request.GetString("session", ""),
+		Name:               request.GetString("name", ""),
+		ArtifactRoot:       options.ArtifactRoot,
+		StorageStateJSON:   request.GetString("storage_state", ""),
+		StorageStatePath:   request.GetString("storage_state_path", ""),
+		Profile:            request.GetString("profile", ""),
+		Session:            request.GetString("session", ""),
+		OwnerSessionID:     actor.SessionID,
+		OwnerClientName:    actor.ClientName,
+		OwnerClientVersion: actor.ClientVersion,
 	})
 	if err != nil {
 		return newJSONToolResult(map[string]any{
@@ -760,11 +811,21 @@ func handleDraftFlowToolWithOptions(
 	}
 
 	url := strings.TrimSpace(request.GetString("url", ""))
+	security := flowSecurityPolicyFromToolRequest(request, options)
+	var runHandle *tsplayBrowserRunHandle
 	if observation == nil {
 		if url == "" {
 			return newJSONToolResult(map[string]any{
 				"ok":    false,
 				"error": "url or observation is required",
+			})
+		}
+		runHandle, ctx, err = beginTSPlayBrowserRun(ctx, request, "tsplay.draft_flow", options, &security)
+		if err != nil {
+			return newJSONToolResult(map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+				"run":   runHandle.snapshot(),
 			})
 		}
 		observation, err = ObservePage(PageObservationOptions{
@@ -773,16 +834,22 @@ func handleDraftFlowToolWithOptions(
 			ArtifactRoot: options.ArtifactRoot,
 			TimeoutMS:    request.GetInt("timeout", 30000),
 			MaxElements:  request.GetInt("max_elements", 100),
+			Context:      ctx,
+			RunID:        runHandle.run.ID,
+			RunRoot:      runHandle.run.RunRoot,
 		})
 		if err != nil {
+			run := runHandle.finish(err, map[string]any{
+				"url": url,
+			})
 			return newJSONToolResult(map[string]any{
 				"ok":    false,
 				"error": err.Error(),
+				"run":   run,
 			})
 		}
 	}
 
-	security := flowSecurityPolicyFromToolRequest(request, options)
 	draft, err := BuildDraftFlow(FlowDraftOptions{
 		Intent:       intent,
 		URL:          url,
@@ -792,17 +859,36 @@ func handleDraftFlowToolWithOptions(
 		Security:     &security,
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		payload := map[string]any{
 			"ok":    false,
 			"error": err.Error(),
+		}
+		if runHandle != nil {
+			payload["run"] = runHandle.finish(err, map[string]any{
+				"url": url,
+			})
+		}
+		return newJSONToolResult(map[string]any{
+			"ok":    payload["ok"],
+			"error": payload["error"],
+			"run":   payload["run"],
 		})
 	}
 
-	return newJSONToolResult(map[string]any{
+	result := map[string]any{
 		"ok":          true,
 		"observation": observation,
 		"draft":       draft,
-	})
+	}
+	if runHandle != nil {
+		result["run"] = runHandle.finish(nil, map[string]any{
+			"url":              firstNonEmpty(url, observation.URL),
+			"flow_name":        draft.FlowName,
+			"planned_actions":  draft.PlannedActions,
+			"selector_repairs": len(draft.SelectorRepairs),
+		})
+	}
+	return newJSONToolResult(result)
 }
 
 func handleRepairFlowContextTool(
@@ -947,22 +1033,41 @@ func handleObservePageToolWithOptions(
 	request mcp.CallToolRequest,
 	options TSPlayMCPServerOptions,
 ) (*mcp.CallToolResult, error) {
+	runHandle, runCtx, err := beginTSPlayBrowserRun(ctx, request, "tsplay.observe_page", options, nil)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+			"run":   runHandle.snapshot(),
+		})
+	}
 	observation, err := ObservePage(PageObservationOptions{
 		URL:          request.GetString("url", ""),
 		Headless:     request.GetBool("headless", true),
 		ArtifactRoot: options.ArtifactRoot,
 		TimeoutMS:    request.GetInt("timeout", 30000),
 		MaxElements:  request.GetInt("max_elements", 100),
+		Context:      runCtx,
+		RunID:        runHandle.run.ID,
+		RunRoot:      runHandle.run.RunRoot,
 	})
 	if err != nil {
+		run := runHandle.finish(err, map[string]any{
+			"url": request.GetString("url", ""),
+		})
 		return newJSONToolResult(map[string]any{
 			"ok":    false,
 			"error": err.Error(),
+			"run":   run,
 		})
 	}
 	return newJSONToolResult(map[string]any{
 		"ok":          true,
 		"observation": observation,
+		"run": runHandle.finish(nil, map[string]any{
+			"url":           observation.URL,
+			"element_count": len(observation.Elements),
+		}),
 	})
 }
 
@@ -1041,20 +1146,45 @@ func handleRunFlowToolWithOptions(
 		}
 		flow.Browser.Headless = &headless
 	}
+	runHandle, runCtx, err := beginTSPlayBrowserRun(ctx, request, "tsplay.run_flow", options, &security)
+	if err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+			"run":   runHandle.snapshot(),
+		})
+	}
 	result, err := RunFlow(flow, FlowRunOptions{
-		Security:     &security,
-		ArtifactRoot: options.ArtifactRoot,
+		Security:      &security,
+		ArtifactRoot:  options.ArtifactRoot,
+		Context:       runCtx,
+		RunID:         runHandle.run.ID,
+		RunRoot:       runHandle.run.RunRoot,
+		SessionID:     runHandle.run.Caller.SessionID,
+		ClientName:    runHandle.run.Caller.ClientName,
+		ClientVersion: runHandle.run.Caller.ClientVersion,
 	})
 	if err != nil {
+		runDetails := map[string]any{
+			"flow_name": flow.Name,
+		}
+		if flow.Browser != nil && strings.TrimSpace(flow.Browser.UseSession) != "" {
+			runDetails["requested_saved_session"] = flow.Browser.UseSession
+		}
 		return newJSONToolResult(map[string]any{
 			"ok":     false,
 			"error":  err.Error(),
 			"result": flowResultForTool(result),
+			"run":    runHandle.finish(err, runDetails),
 		})
 	}
 	return newJSONToolResult(map[string]any{
 		"ok":     true,
 		"result": flowResultForTool(result),
+		"run": runHandle.finish(nil, map[string]any{
+			"flow_name": flow.Name,
+			"trace_len": len(result.Trace),
+		}),
 	})
 }
 
@@ -1100,6 +1230,7 @@ func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPl
 		AllowBrowserState: request.GetBool("allow_browser_state", false),
 		AllowHTTP:         request.GetBool("allow_http", false),
 		AllowRedis:        request.GetBool("allow_redis", false),
+		AllowDatabase:     request.GetBool("allow_database", false),
 		FileInputRoot:     options.ArtifactRoot,
 		FileOutputRoot:    options.ArtifactRoot,
 	}
@@ -1169,6 +1300,13 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["redis_set"] = "Write one key to Redis with an optional TTL using a named connection resolved from environment variables."
 	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
 	descriptions["redis_incr"] = "Increment one Redis counter by a delta using a named connection resolved from environment variables."
+	descriptions["db_insert"] = "Insert one row into a database table using database/sql and a named connection resolved from environment variables."
+	descriptions["db_insert_many"] = "Insert multiple rows into a database table using database/sql and a named connection resolved from environment variables."
+	descriptions["db_upsert"] = "Insert or update one row in a database table using dialect-aware SQL generated from structured Flow input."
+	descriptions["db_query"] = "Run a SELECT-style SQL query using database/sql and return a list of row objects."
+	descriptions["db_query_one"] = "Run a SELECT-style SQL query and return the first row object or null."
+	descriptions["db_execute"] = "Run a non-query SQL statement using database/sql and return execution metadata."
+	descriptions["db_transaction"] = "Run nested Flow steps inside a database transaction scope and commit or roll back automatically."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
@@ -1225,7 +1363,16 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "items", "type": "items", "required": true},
 				{"name": "item_var", "type": "string", "required": true},
 				{"name": "index_var", "type": "string", "required": false},
+				{"name": "with.progress_key", "type": "string", "required": false},
+				{"name": "with.progress_connection", "type": "string", "required": false},
+				{"name": "with.progress_value", "type": "any", "required": false},
 				{"name": "steps", "type": "steps", "required": true},
+			}
+			item["notes"] = []string{
+				"Use with.progress_key to write a best-effort resume checkpoint after each successful iteration.",
+				"Use with.progress_connection to choose a named Redis connection; omit it to use the default connection.",
+				"When with.progress_value is omitted, TSPlay writes the next source row from source_row/row_number/row, or falls back to the next iteration number.",
+				"Checkpointing requires allow_redis=true, but it is skipped when Redis is not configured in the environment.",
 			}
 		}
 		if name == "on_error" {
@@ -1261,6 +1408,97 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "value", "type": "any", "required": true},
 				{"name": "ttl_seconds", "type": "int", "required": false},
 				{"name": "connection", "type": "string", "required": false},
+			}
+		}
+		if name == "db_insert" {
+			item["args"] = []map[string]any{
+				{"name": "with.table", "type": "string", "required": true},
+				{"name": "with.row", "type": "object", "required": true},
+				{"name": "with.columns", "type": "string_list", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.returning", "type": "string_list", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.row to map target columns to resolved Flow values.",
+				"Use with.columns when you want an explicit insert order or only a subset of row fields.",
+				"Use with.returning on PGSQL or SQL Server when you need generated values back.",
+				"Configure the connection via TSPLAY_DB_* or TSPLAY_DB_<NAME>_* environment variables.",
+				"For MySQL targets, legacy TSPLAY_MYSQL_* and TSPLAY_MYSQL_<NAME>_* variables are still accepted for backward compatibility.",
+				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
+				"MySQL and PGSQL are built in by default; SQL Server requires -tags tsplay_sqlserver and Oracle requires -tags tsplay_oracle.",
+			}
+		}
+		if name == "db_insert_many" {
+			item["args"] = []map[string]any{
+				{"name": "with.table", "type": "string", "required": true},
+				{"name": "with.rows", "type": "items", "required": true},
+				{"name": "with.columns", "type": "string_list", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.returning", "type": "string_list", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.rows to pass a list of row objects.",
+				"When with.columns is omitted, TSPlay infers the union of row keys and requires every row to provide every column.",
+				"Use with.returning on PGSQL or SQL Server when you need generated values back from batch inserts.",
+				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
+			}
+		}
+		if name == "db_upsert" {
+			item["args"] = []map[string]any{
+				{"name": "with.table", "type": "string", "required": true},
+				{"name": "with.row", "type": "object", "required": true},
+				{"name": "with.key_columns", "type": "string_list", "required": true},
+				{"name": "with.columns", "type": "string_list", "required": false},
+				{"name": "with.update_columns", "type": "string_list", "required": false},
+				{"name": "with.do_nothing", "type": "bool", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.returning", "type": "string_list", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.key_columns to describe the unique key or natural key used to detect conflicts.",
+				"When with.update_columns is omitted, TSPlay updates every non-key column.",
+				"When only key columns exist, TSPlay falls back to insert-if-missing semantics.",
+				"Use with.returning on PGSQL or SQL Server when you need the final row values back.",
+			}
+		}
+		if name == "db_query" || name == "db_query_one" || name == "db_execute" {
+			item["args"] = []map[string]any{
+				{"name": "with.sql", "type": "string", "required": true},
+				{"name": "with.args", "type": "any", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			if name == "db_query" {
+				item["returns"] = "list<object>"
+			} else if name == "db_query_one" {
+				item["returns"] = "object|null"
+			} else {
+				item["returns"] = "object"
+			}
+			item["notes"] = []string{
+				"Use with.args as either a positional list or a named argument object.",
+				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
+			}
+		}
+		if name == "db_transaction" {
+			item["args"] = []map[string]any{
+				{"name": "steps", "type": "steps", "required": true},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Only database Flow actions participate in the transaction scope.",
+				"Transactions are started lazily per database connection and committed together when all nested steps succeed.",
 			}
 		}
 		if name == "read_excel" {
