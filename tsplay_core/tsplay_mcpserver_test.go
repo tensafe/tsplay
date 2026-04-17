@@ -467,7 +467,7 @@ func TestHandleFlowSchemaTool(t *testing.T) {
 		switch item["name"] {
 		case "navigate":
 			foundNavigate = true
-			if capabilities["needs_playwright"] != true || capabilities["needs_page"] != true {
+			if capabilities["needs_playwright"] != true || capabilities["needs_runtime"] != true || capabilities["needs_page"] != true {
 				t.Fatalf("navigate capabilities = %#v", capabilities)
 			}
 		case "http_request":

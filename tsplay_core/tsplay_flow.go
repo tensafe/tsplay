@@ -99,13 +99,14 @@ type FlowStep struct {
 }
 
 type FlowResult struct {
-	Name         string          `json:"name"`
-	Vars         map[string]any  `json:"vars,omitempty"`
-	Trace        []FlowStepTrace `json:"trace"`
-	ArtifactRoot string          `json:"artifact_root,omitempty"`
-	RunID        string          `json:"run_id,omitempty"`
-	RunRoot      string          `json:"run_root,omitempty"`
-	SessionID    string          `json:"session_id,omitempty"`
+	Name         string           `json:"name"`
+	Vars         map[string]any   `json:"vars,omitempty"`
+	Trace        []FlowStepTrace  `json:"trace"`
+	ArtifactRoot string           `json:"artifact_root,omitempty"`
+	RunID        string           `json:"run_id,omitempty"`
+	RunRoot      string           `json:"run_root,omitempty"`
+	SessionID    string           `json:"session_id,omitempty"`
+	Playwright   *PlaywrightUsage `json:"playwright,omitempty"`
 }
 
 type FlowStepTrace struct {
@@ -1761,60 +1762,6 @@ func FlowActionNames() []string {
 	return names
 }
 
-func flowUsesPlaywright(flow *Flow) bool {
-	if flow == nil {
-		return false
-	}
-	if flowBrowserConfigNeedsPlaywright(flow.Browser) {
-		return true
-	}
-	return flowStepsUsePlaywright(flow.Steps)
-}
-
-func flowBrowserConfigNeedsPlaywright(config *FlowBrowserConfig) bool {
-	if config == nil {
-		return false
-	}
-	loadPath, _ := config.loadStorageStatePath()
-	return strings.TrimSpace(config.UseSession) != "" ||
-		loadPath != "" ||
-		strings.TrimSpace(config.SaveStorageState) != "" ||
-		config.wantsPersistentContext()
-}
-
-func flowStepsUsePlaywright(steps []FlowStep) bool {
-	for _, step := range steps {
-		if flowStepUsesPlaywright(step) {
-			return true
-		}
-	}
-	return false
-}
-
-func flowStepUsesPlaywright(step FlowStep) bool {
-	switch step.Action {
-	case "retry", "foreach", "db_transaction":
-		return flowStepsUsePlaywright(step.Steps)
-	case "if":
-		return (step.Condition != nil && flowStepUsesPlaywright(*step.Condition)) ||
-			flowStepsUsePlaywright(step.Then) ||
-			flowStepsUsePlaywright(step.Else)
-	case "on_error":
-		return flowStepsUsePlaywright(step.Steps) || flowStepsUsePlaywright(step.OnError)
-	case "wait_until":
-		return step.Condition != nil && flowStepUsesPlaywright(*step.Condition)
-	}
-
-	capabilities, ok := flowActionCapabilitiesFor(step.Action)
-	if !ok {
-		return true
-	}
-	if capabilities.dynamicPlaywrightEvaluator != nil {
-		return capabilities.dynamicPlaywrightEvaluator(step)
-	}
-	return capabilities.RequiresPlaywright()
-}
-
 func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err := ValidateFlow(flow); err != nil {
 		return nil, err
@@ -1824,7 +1771,8 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 			return nil, err
 		}
 	}
-	needsPlaywright := flowUsesPlaywright(flow)
+	playwrightUsage := AnalyzeFlowPlaywrightUsage(flow)
+	needsPlaywright := playwrightUsage.NeedsPlaywright
 
 	browserConfig, err := resolveFlowBrowserConfig(flow, options)
 	if err != nil {
@@ -1861,6 +1809,10 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if needsPlaywright {
 		pw, err = StartPlaywright()
 		if err != nil {
+			summary := playwrightUsage.Summary(3)
+			if summary != "" {
+				return nil, fmt.Errorf("flow requires Playwright because %s: %w", summary, err)
+			}
 			return nil, err
 		}
 		if browserConfig.wantsPersistentContext() {
@@ -2095,6 +2047,11 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		RunID:        runID,
 		RunRoot:      runRoot,
 		SessionID:    options.SessionID,
+	}
+	playwrightUsage := AnalyzeFlowPlaywrightUsage(flow)
+	if playwrightUsage.NeedsPlaywright {
+		usageCopy := playwrightUsage
+		result.Playwright = &usageCopy
 	}
 	traces, err := runFlowStepSequence(L, ctx, flow.Steps, "", 0, 0)
 	result.Trace = append(result.Trace, traces...)

@@ -144,59 +144,112 @@ func cli_mode() {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
-	pw, err := tsplay_core.StartPlaywright()
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	defer pw.Stop()
-
+	var pw *playwright.Playwright
 	var browser playwright.Browser
 	var page playwright.Page
 
-	// 初始化浏览器和页面
-	initPlaywright := func() error {
-		var err error
-		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+	clearPlaywrightGlobals := func() {
+		L.SetGlobal("browser", lua.LNil)
+		L.SetGlobal("context", lua.LNil)
+		L.SetGlobal("page", lua.LNil)
+	}
+	setPlaywrightGlobals := func() {
+		ud_b := L.NewUserData()
+		ud_b.Value = browser
+		L.SetGlobal("browser", ud_b)
+
+		ud_c := L.NewUserData()
+		ud_c.Value = page.Context()
+		L.SetGlobal("context", ud_c)
+
+		ud_p := L.NewUserData()
+		ud_p.Value = page
+		L.SetGlobal("page", ud_p)
+	}
+	clearPlaywrightGlobals()
+
+	stopPlaywright := func() {
+		clearPlaywrightGlobals()
+		if page != nil {
+			if err := page.Close(); err != nil {
+				log.Printf("failed to close page: %v", err)
+			}
+			page = nil
+		}
+		if browser != nil {
+			if err := browser.Close(); err != nil {
+				log.Printf("failed to close browser: %v", err)
+			}
+			browser = nil
+		}
+		if pw != nil {
+			if err := pw.Stop(); err != nil {
+				log.Printf("failed to stop Playwright runtime: %v", err)
+			}
+			pw = nil
+		}
+	}
+	defer stopPlaywright()
+
+	ensurePlaywrightRuntime := func(reason string) error {
+		if pw != nil {
+			return nil
+		}
+		if strings.TrimSpace(reason) == "" {
+			fmt.Println("Starting Playwright runtime...")
+		} else {
+			fmt.Printf("Starting Playwright runtime because %s...\n", reason)
+		}
+		runtimeHandle, err := tsplay_core.StartPlaywright()
+		if err != nil {
+			return err
+		}
+		pw = runtimeHandle
+		return nil
+	}
+
+	ensurePlaywrightPage := func(reason string) error {
+		if page != nil && browser != nil {
+			setPlaywrightGlobals()
+			return nil
+		}
+		if err := ensurePlaywrightRuntime(reason); err != nil {
+			return err
+		}
+		if strings.TrimSpace(reason) == "" {
+			fmt.Println("Launching Playwright browser and page...")
+		} else {
+			fmt.Printf("Launching Playwright browser and page because %s...\n", reason)
+		}
+		launchedBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 			Headless: playwright.Bool(g_headless),
 		})
 		if err != nil {
 			return fmt.Errorf("could not launch browser: %v", err)
 		}
-		page, err = browser.NewPage()
+		launchedPage, err := launchedBrowser.NewPage()
 		if err != nil {
+			_ = launchedBrowser.Close()
 			return fmt.Errorf("could not create page: %v", err)
 		}
-		fmt.Println("Playwright initialized. Browser and page are ready.")
+		browser = launchedBrowser
+		page = launchedPage
+		setPlaywrightGlobals()
+		fmt.Println("Playwright initialized. Browser, context, and page are ready.")
 		return nil
-	}
-
-	// 将浏览器和页面对象传递给 Lua
-	startPlaywright := func() {
-		if browser == nil || page == nil {
-			fmt.Println("Playwright is not initialized. Initializing now...")
-			if err := initPlaywright(); err != nil {
-				fmt.Printf("Failed to initialize Playwright: %v\n", err)
-				return
-			}
-		}
-		// 将 Playwright 对象传递给 Lua
-		ud_b := L.NewUserData()
-		ud_b.Value = browser
-		L.SetGlobal("browser", ud_b)
-
-		ud_p := L.NewUserData()
-		ud_p.Value = page
-		L.SetGlobal("page", ud_p)
-		fmt.Println("Playwright started. Browser and page objects are now available in Lua.")
 	}
 	fmt.Println("Please input the 'start' command to run and launch tsplay")
 
 	var rl *readline.Instance
 	if os_type == "windows" {
+		var err error
 		rl, err = readline.NewEx(&readline.Config{
 			Prompt:       "> ",
 			AutoComplete: createReadlineCompleter(),
 		})
+		if err != nil {
+			log.Printf("failed to initialize readline: %v", err)
+		}
 	}
 
 	if rl != nil {
@@ -230,94 +283,138 @@ func cli_mode() {
 		// 处理 reset 命令
 		if input == "reset" {
 			fmt.Println("Resetting Playwright...")
-			if browser != nil {
-				if err := browser.Close(); err != nil {
-					log.Printf("failed to close browser: %v", err)
-				}
-				browser = nil
-				page = nil
-			}
-			if err := initPlaywright(); err != nil {
-				log.Printf("Failed to reset Playwright: %v\n", err)
+			if pw == nil && browser == nil && page == nil {
+				fmt.Println("Playwright is already idle.")
 				continue
 			}
-			startPlaywright()
+			stopPlaywright()
+			fmt.Println("Playwright has been reset. It will start again on the next 'start' command or browser action.")
 			continue
 		}
 
 		// 处理 start 命令
 		if input == "start" {
-			startPlaywright()
+			if err := ensurePlaywrightPage("the CLI start command was requested"); err != nil {
+				fmt.Printf("Failed to initialize Playwright: %v\n", err)
+			} else {
+				fmt.Println("Playwright started. Browser and page objects are now available in Lua.")
+			}
 			continue
+		}
+
+		runLuaScript := func(script string) {
+			usage := tsplay_core.AnalyzeLuaScriptPlaywrightUsage(script)
+			var err error
+			switch {
+			case usage.NeedsBrowser():
+				err = ensurePlaywrightPage(usage.Summary(3))
+			case usage.NeedsRuntime:
+				err = ensurePlaywrightRuntime(usage.Summary(3))
+			}
+			if err != nil {
+				fmt.Printf("Failed to initialize Playwright: %v\n", err)
+				return
+			}
+			if err := L.DoString(script); err != nil {
+				fmt.Printf("Lua error: %v\n", err)
+			}
 		}
 
 		// 处理 Lua 脚本
 		if strings.HasPrefix(input, "lua ") {
 			script := strings.TrimPrefix(input, "lua ")
-			if err := L.DoString(script); err != nil {
-				fmt.Printf("Lua error: %v\n", err)
-			}
+			runLuaScript(script)
 			continue
 		}
 		// 默认行为：将输入内容作为 Lua 脚本执行
 		if input != "" {
-			if err := L.DoString(input); err != nil {
-				fmt.Printf("Lua error: %v\n", err)
-			}
+			runLuaScript(input)
 		}
 	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// 等待信号以便优雅地退出
-	<-sigChan
 }
 
 func run_script(script string) {
-	// 初始化 Playwright
-	pw, err := tsplay_core.StartPlaywright()
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	defer pw.Stop()
-
-	// 启动浏览器并打开新页面
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(false),
-	})
-	if err != nil {
-		log.Fatalf("could not launch browser: %v", err)
-	}
-	defer browser.Close()
-
-	page, err := browser.NewPage()
-	if err != nil {
-		log.Fatalf("could not create page: %v", err)
-	}
-	defer page.Close()
-
 	// 创建 Lua 状态机
 	L := lua.NewState()
 	defer L.Close()
-
-	// 将 Playwright Page 对象传递给 Lua
-	ud_b := L.NewUserData()
-	ud_b.Value = browser
-	L.SetGlobal("browser", ud_b)
-
-	// 将 Playwright Page 对象传递给 Lua
-	ud_p := L.NewUserData()
-	ud_p.Value = page
-	L.SetGlobal("page", ud_p)
 
 	// 注册 Go 函数到 Lua
 	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
 
+	usage := tsplay_core.AnalyzeLuaScriptPlaywrightUsage(script)
+	var pw *playwright.Playwright
+	var browser playwright.Browser
+	var page playwright.Page
+	setPlaywrightGlobals := func() {
+		ud_b := L.NewUserData()
+		ud_b.Value = browser
+		L.SetGlobal("browser", ud_b)
+
+		ud_c := L.NewUserData()
+		ud_c.Value = page.Context()
+		L.SetGlobal("context", ud_c)
+
+		ud_p := L.NewUserData()
+		ud_p.Value = page
+		L.SetGlobal("page", ud_p)
+	}
+	stopPlaywright := func() {
+		L.SetGlobal("browser", lua.LNil)
+		L.SetGlobal("context", lua.LNil)
+		L.SetGlobal("page", lua.LNil)
+		if page != nil {
+			_ = page.Close()
+			page = nil
+		}
+		if browser != nil {
+			_ = browser.Close()
+			browser = nil
+		}
+		if pw != nil {
+			_ = pw.Stop()
+			pw = nil
+		}
+	}
+	defer stopPlaywright()
+
+	if usage.NeedsRuntime {
+		var err error
+		pw, err = tsplay_core.StartPlaywright()
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+	}
+	if usage.NeedsBrowser() {
+		if pw == nil {
+			var err error
+			pw, err = tsplay_core.StartPlaywright()
+			if err != nil {
+				log.Fatalf("%v", err)
+			}
+		}
+		var err error
+		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+			Headless: playwright.Bool(false),
+		})
+		if err != nil {
+			log.Fatalf("could not launch browser: %v", err)
+		}
+
+		page, err = browser.NewPage()
+		if err != nil {
+			log.Fatalf("could not create page: %v", err)
+		}
+		setPlaywrightGlobals()
+	}
+
 	if err := L.DoString(script); err != nil {
 		log.Fatalf("error running Lua script: %v", err)
+	}
+
+	if !usage.NeedsBrowser() {
+		return
 	}
 
 	// 捕捉系统信号，以便优雅地关闭程序
