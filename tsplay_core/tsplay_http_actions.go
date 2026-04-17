@@ -697,7 +697,7 @@ func objectMapValue(value any, name string) (map[string]any, error) {
 		}
 		return result, nil
 	default:
-		return nil, fmt.Errorf("http_request %s must be an object", name)
+		return nil, fmt.Errorf("%s must be an object", name)
 	}
 }
 

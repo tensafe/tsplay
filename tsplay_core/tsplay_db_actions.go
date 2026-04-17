@@ -35,6 +35,8 @@ type dbInsertConfig struct {
 	Columns    []string
 	Connection string
 	Driver     string
+	Returning  []string
+	TimeoutMS  int
 }
 
 type dbConnectionConfig struct {
@@ -44,8 +46,28 @@ type dbConnectionConfig struct {
 	DSN        string
 }
 
-type flowDatabase interface {
+type flowRows interface {
+	Columns() ([]string, error)
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+	Close() error
+}
+
+type flowDBExecutor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (flowRows, error)
+}
+
+type flowDBTransaction interface {
+	flowDBExecutor
+	Commit() error
+	Rollback() error
+}
+
+type flowDatabase interface {
+	flowDBExecutor
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (flowDBTransaction, error)
 	SetMaxOpenConns(n int)
 	SetMaxIdleConns(n int)
 	SetConnMaxLifetime(d time.Duration)
@@ -57,11 +79,56 @@ type flowDatabaseCacheEntry struct {
 }
 
 var openFlowDatabase = func(driverName string, dsn string) (flowDatabase, error) {
-	return sql.Open(driverName, dsn)
+	db, err := sql.Open(driverName, dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlFlowDatabase{DB: db}, nil
 }
 
 var flowDatabaseCache sync.Map
 var dbSimpleIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]*$`)
+var dbReservedIdentifierSet = map[string]struct{}{
+	"all":     {},
+	"from":    {},
+	"group":   {},
+	"insert":  {},
+	"key":     {},
+	"order":   {},
+	"rank":    {},
+	"select":  {},
+	"table":   {},
+	"to":      {},
+	"update":  {},
+	"user":    {},
+	"value":   {},
+	"values":  {},
+	"where":   {},
+}
+
+type sqlFlowDatabase struct {
+	*sql.DB
+}
+
+func (db *sqlFlowDatabase) QueryContext(ctx context.Context, query string, args ...any) (flowRows, error) {
+	return db.DB.QueryContext(ctx, query, args...)
+}
+
+func (db *sqlFlowDatabase) BeginTx(ctx context.Context, opts *sql.TxOptions) (flowDBTransaction, error) {
+	tx, err := db.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlFlowTransaction{Tx: tx}, nil
+}
+
+type sqlFlowTransaction struct {
+	*sql.Tx
+}
+
+func (tx *sqlFlowTransaction) QueryContext(ctx context.Context, query string, args ...any) (flowRows, error) {
+	return tx.Tx.QueryContext(ctx, query, args...)
+}
 
 func db_insert(L *lua.LState) int {
 	return runLuaDBInsert(L, "db_insert", "")
@@ -108,7 +175,7 @@ func runFlowDBInsertStep(ctx *FlowContext, step FlowStep, forcedDriver string) (
 	if ctx != nil && ctx.Context != nil {
 		runCtx = ctx.Context
 	}
-	return executeDBInsert(runCtx, config)
+	return executeDBInsertWithFlow(ctx, runCtx, config)
 }
 
 func dbInsertValuesFromLua(L *lua.LState, action string, forcedDriver string) (map[string]any, error) {
@@ -152,7 +219,7 @@ func dbInsertValuesFromLua(L *lua.LState, action string, forcedDriver string) (m
 
 func resolvedDBInsertValues(ctx *FlowContext, step FlowStep, forcedDriver string) (map[string]any, error) {
 	values := map[string]any{}
-	for _, name := range []string{"table", "row", "columns", "connection", "driver"} {
+	for _, name := range []string{"table", "row", "columns", "connection", "driver", "returning", "timeout", "timeout_ms", "timeout_seconds"} {
 		value, ok, err := flowStepResolvedParam(ctx, step, name)
 		if err != nil {
 			return nil, err
@@ -222,6 +289,14 @@ func normalizeDBInsertConfig(values map[string]any, action string, forcedDriver 
 			driver = text
 		}
 	}
+	returning, err := normalizeDBReturningColumns(values, action)
+	if err != nil {
+		return dbInsertConfig{}, err
+	}
+	timeoutMS, err := normalizeDBTimeoutMS(values, action)
+	if err != nil {
+		return dbInsertConfig{}, err
+	}
 
 	return dbInsertConfig{
 		Table:      strings.TrimSpace(fmt.Sprint(tableValue)),
@@ -229,6 +304,8 @@ func normalizeDBInsertConfig(values map[string]any, action string, forcedDriver 
 		Columns:    columns,
 		Connection: connection,
 		Driver:     driver,
+		Returning:  returning,
+		TimeoutMS:  timeoutMS,
 	}, nil
 }
 
@@ -257,48 +334,16 @@ func normalizeDBInsertColumns(action string, columns []string, row map[string]an
 	if len(normalized) == 0 {
 		return nil, fmt.Errorf("%s requires at least one column", action)
 	}
+	for _, column := range normalized {
+		if _, ok := row[column]; !ok {
+			return nil, fmt.Errorf("%s row is missing column %q", action, column)
+		}
+	}
 	return normalized, nil
 }
 
 func executeDBInsert(ctx context.Context, config dbInsertConfig) (map[string]any, error) {
-	connection, err := resolveDBConnectionConfig(config.Connection, config.Driver)
-	if err != nil {
-		return nil, err
-	}
-
-	query, args, err := buildDBInsertQuery(config, connection.Dialect)
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := getFlowDatabase(connection)
-	if err != nil {
-		return nil, err
-	}
-
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	result, err := db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("db_insert on connection %q failed: %w", connection.Name, err)
-	}
-
-	payload := map[string]any{
-		"ok":         true,
-		"connection": connection.Name,
-		"driver":     string(connection.Dialect),
-		"table":      config.Table,
-		"columns":    append([]string(nil), config.Columns...),
-	}
-	if rowsAffected, err := result.RowsAffected(); err == nil {
-		payload["rows_affected"] = rowsAffected
-	}
-	if lastInsertID, err := result.LastInsertId(); err == nil {
-		payload["last_insert_id"] = lastInsertID
-	}
-	return payload, nil
+	return executeDBInsertWithFlow(nil, ctx, config)
 }
 
 func getFlowDatabase(config dbConnectionConfig) (flowDatabase, error) {
@@ -313,9 +358,13 @@ func getFlowDatabase(config dbConnectionConfig) (flowDatabase, error) {
 	}
 	db, err := openFlowDatabase(config.DriverName, config.DSN)
 	if err == nil && db != nil {
-		db.SetMaxOpenConns(4)
-		db.SetMaxIdleConns(2)
-		db.SetConnMaxLifetime(3 * time.Minute)
+		settings, settingsErr := resolveDBRuntimeSettings(config.Name)
+		if settingsErr != nil {
+			return nil, settingsErr
+		}
+		db.SetMaxOpenConns(settings.MaxOpenConns)
+		db.SetMaxIdleConns(settings.MaxIdleConns)
+		db.SetConnMaxLifetime(settings.ConnMaxLifetime)
 	}
 
 	entry := flowDatabaseCacheEntry{db: db, err: err}
@@ -410,7 +459,7 @@ func quoteDBIdentifier(name string, dialect dbDialect) (string, error) {
 		if part == "" {
 			return "", fmt.Errorf("must not contain empty identifier segments")
 		}
-		if dbSimpleIdentifierPattern.MatchString(part) {
+		if dbSimpleIdentifierPattern.MatchString(part) && !dbShouldQuoteSimpleIdentifier(part) {
 			quoted = append(quoted, part)
 			continue
 		}

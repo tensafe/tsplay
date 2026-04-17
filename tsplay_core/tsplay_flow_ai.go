@@ -561,38 +561,30 @@ steps:
 `,
 		},
 		{
-			"name":          "write_scraped_rows_to_mysql",
-			"description":   "Iterate through structured scrape results and insert each row into a MySQL table directly from the Flow.",
-			"focus_actions": []string{"foreach", "db_insert"},
-			"when_to_use":   "Scraped data already exists as Flow variables and needs to be reported to a MySQL table with explicit column mapping.",
+			"name":          "write_scraped_rows_to_database",
+			"description":   "Write structured scrape results into a database table directly from the Flow.",
+			"focus_actions": []string{"db_insert_many"},
+			"when_to_use":   "Scraped data already exists as Flow variables and needs to be reported to a database table with explicit column mapping.",
 			"flow": `schema_version: "1"
-name: write_scraped_rows_to_mysql
+name: write_scraped_rows_to_database
 vars:
-  query: 山东大学
-  results:
-    - title: 山东大学
+  rows:
+    - keyword: 山东大学
+      title: 山东大学
       url: https://www.sdu.edu.cn/
       rank: 1
 steps:
-  - action: foreach
-    items: "{{results}}"
-    item_var: item
-    steps:
-      - action: db_insert
-        connection: reporting
-        with:
-          driver: pgsql
-          table: crawl_results
-          columns:
-            - keyword
-            - title
-            - url
-            - rank
-          row:
-            keyword: "{{query}}"
-            title: "{{item.title}}"
-            url: "{{item.url}}"
-            rank: "{{item.rank}}"
+  - action: db_insert_many
+    connection: reporting
+    with:
+      driver: pgsql
+      table: crawl_results
+      columns:
+        - keyword
+        - title
+        - url
+        - rank
+      rows: "{{rows}}"
 `,
 		},
 		{

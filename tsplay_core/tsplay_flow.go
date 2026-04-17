@@ -157,6 +157,7 @@ type FlowContext struct {
 	RunID         string
 	RunRoot       string
 	Context       context.Context
+	DBTransaction *flowDBTransactionScope
 	SessionID     string
 	ClientName    string
 	ClientVersion string
@@ -229,6 +230,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"foreach":               {},
 	"on_error":              {},
 	"wait_until":            {},
+	"db_transaction":        {},
 	"screenshot":            {Args: []flowArgSpec{{Name: "path", Required: true}}},
 	"screenshot_element":    {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "path", Required: true}}},
 	"save_html":             {Args: []flowArgSpec{{Name: "path", Required: true}}},
@@ -255,7 +257,12 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"redis_set":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "value", Required: true}, {Name: "ttl_seconds"}, {Name: "connection"}}},
 	"redis_del":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
 	"redis_incr":            {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "delta"}, {Name: "connection"}}},
-	"db_insert":             {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "row", Required: true}, {Name: "columns"}, {Name: "connection"}, {Name: "driver"}}},
+	"db_insert":             {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "row", Required: true}, {Name: "columns"}, {Name: "connection"}, {Name: "driver"}, {Name: "returning"}, {Name: "timeout"}}},
+	"db_insert_many":        {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "rows", Required: true}, {Name: "columns"}, {Name: "connection"}, {Name: "driver"}, {Name: "returning"}, {Name: "timeout"}}},
+	"db_upsert":             {Args: []flowArgSpec{{Name: "table", Required: true}, {Name: "row", Required: true}, {Name: "key_columns", Required: true}, {Name: "columns"}, {Name: "update_columns"}, {Name: "do_nothing"}, {Name: "connection"}, {Name: "driver"}, {Name: "returning"}, {Name: "timeout"}}},
+	"db_query":              {Args: []flowArgSpec{{Name: "sql", Required: true}, {Name: "args"}, {Name: "connection"}, {Name: "driver"}, {Name: "timeout"}}},
+	"db_query_one":          {Args: []flowArgSpec{{Name: "sql", Required: true}, {Name: "args"}, {Name: "connection"}, {Name: "driver"}, {Name: "timeout"}}},
+	"db_execute":            {Args: []flowArgSpec{{Name: "sql", Required: true}, {Name: "args"}, {Name: "connection"}, {Name: "driver"}, {Name: "timeout"}}},
 	"find_element":          {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"find_elements":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"is_visible":            {Args: []flowArgSpec{{Name: "selector", Required: true}}},
@@ -463,7 +470,7 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 
 func isFlowControlAction(action string) bool {
 	switch action {
-	case "retry", "if", "foreach", "on_error", "wait_until":
+	case "retry", "if", "foreach", "on_error", "wait_until", "db_transaction":
 		return true
 	default:
 		return false
@@ -543,6 +550,8 @@ func validateFlowControlStep(stepPath string, step FlowStep, knownVars map[strin
 		return validateOnErrorFlowStep(stepPath, step, knownVars)
 	case "wait_until":
 		return validateWaitUntilFlowStep(stepPath, step, knownVars)
+	case "db_transaction":
+		return validateDBTransactionFlowStep(stepPath, step, knownVars)
 	default:
 		return fmt.Errorf("step %s action %q is not a control action", stepPath, step.Action)
 	}
@@ -1294,21 +1303,21 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing":
 		return "bool"
-	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit":
+	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
 	case "seconds":
 		return "number"
 	case "headers", "query", "form", "multipart_files", "multipart_fields", "row":
 		return "object"
-	case "files", "columns":
+	case "files", "columns", "returning", "key_columns", "update_columns":
 		return "string_list"
 	case "steps":
 		return "steps"
-	case "items":
+	case "items", "rows":
 		return "items"
 	case "condition":
 		return "condition"
@@ -1369,7 +1378,7 @@ func flowActionSecurityGroup(action string) string {
 		return "http"
 	case "redis_get", "redis_set", "redis_del", "redis_incr":
 		return "redis"
-	case "db_insert":
+	case "db_insert", "db_insert_many", "db_upsert", "db_query", "db_query_one", "db_execute", "db_transaction":
 		return "database"
 	case "screenshot", "screenshot_element", "save_html", "read_csv", "read_excel", "write_json", "write_csv", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
@@ -2114,6 +2123,8 @@ func runFlowStepWithTrace(L *lua.LState, ctx *FlowContext, step FlowStep, index 
 		output, trace.Children, trace.Branch, err = runFlowOnErrorStep(L, ctx, step, stepPath)
 	case "wait_until":
 		output, trace.Attempts, err = runFlowWaitUntilStep(L, ctx, step, stepPath)
+	case "db_transaction":
+		output, trace.Children, err = runFlowDBTransactionStep(L, ctx, step, stepPath)
 	default:
 		output, err = runFlowStep(L, ctx, step)
 	}
@@ -2971,6 +2982,16 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowJSONExtractStep(ctx, step)
 	case "db_insert":
 		return runFlowDBInsertStep(ctx, step, "")
+	case "db_insert_many":
+		return runFlowDBInsertManyStep(ctx, step, "")
+	case "db_upsert":
+		return runFlowDBUpsertStep(ctx, step, "")
+	case "db_query":
+		return runFlowDBQueryStep(ctx, step, "")
+	case "db_query_one":
+		return runFlowDBQueryOneStep(ctx, step, "")
+	case "db_execute":
+		return runFlowDBExecuteStep(ctx, step, "")
 	case "read_csv":
 		return runFlowReadCSVStep(ctx, step)
 	case "read_excel":
@@ -2979,7 +3000,7 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
 		return runFlowAssertTextStep(L, ctx, step)
-	case "retry", "if", "foreach", "on_error", "wait_until":
+	case "retry", "if", "foreach", "on_error", "wait_until", "db_transaction":
 		return nil, fmt.Errorf("control action %q can only be executed by the flow step runner", step.Action)
 	}
 

@@ -1301,6 +1301,12 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
 	descriptions["redis_incr"] = "Increment one Redis counter by a delta using a named connection resolved from environment variables."
 	descriptions["db_insert"] = "Insert one row into a database table using database/sql and a named connection resolved from environment variables."
+	descriptions["db_insert_many"] = "Insert multiple rows into a database table using database/sql and a named connection resolved from environment variables."
+	descriptions["db_upsert"] = "Insert or update one row in a database table using dialect-aware SQL generated from structured Flow input."
+	descriptions["db_query"] = "Run a SELECT-style SQL query using database/sql and return a list of row objects."
+	descriptions["db_query_one"] = "Run a SELECT-style SQL query and return the first row object or null."
+	descriptions["db_execute"] = "Run a non-query SQL statement using database/sql and return execution metadata."
+	descriptions["db_transaction"] = "Run nested Flow steps inside a database transaction scope and commit or roll back automatically."
 
 	actions := make([]map[string]any, 0, len(flowActionSpecs))
 	for _, name := range FlowActionNames() {
@@ -1411,15 +1417,88 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "with.columns", "type": "string_list", "required": false},
 				{"name": "connection", "type": "string", "required": false},
 				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.returning", "type": "string_list", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
 			}
 			item["returns"] = "object"
 			item["notes"] = []string{
 				"Use with.row to map target columns to resolved Flow values.",
 				"Use with.columns when you want an explicit insert order or only a subset of row fields.",
+				"Use with.returning on PGSQL or SQL Server when you need generated values back.",
 				"Configure the connection via TSPLAY_DB_* or TSPLAY_DB_<NAME>_* environment variables.",
 				"For MySQL targets, legacy TSPLAY_MYSQL_* and TSPLAY_MYSQL_<NAME>_* variables are still accepted for backward compatibility.",
 				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
 				"MySQL and PGSQL are built in by default; SQL Server requires -tags tsplay_sqlserver and Oracle requires -tags tsplay_oracle.",
+			}
+		}
+		if name == "db_insert_many" {
+			item["args"] = []map[string]any{
+				{"name": "with.table", "type": "string", "required": true},
+				{"name": "with.rows", "type": "items", "required": true},
+				{"name": "with.columns", "type": "string_list", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.returning", "type": "string_list", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.rows to pass a list of row objects.",
+				"When with.columns is omitted, TSPlay infers the union of row keys and requires every row to provide every column.",
+				"Use with.returning on PGSQL or SQL Server when you need generated values back from batch inserts.",
+				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
+			}
+		}
+		if name == "db_upsert" {
+			item["args"] = []map[string]any{
+				{"name": "with.table", "type": "string", "required": true},
+				{"name": "with.row", "type": "object", "required": true},
+				{"name": "with.key_columns", "type": "string_list", "required": true},
+				{"name": "with.columns", "type": "string_list", "required": false},
+				{"name": "with.update_columns", "type": "string_list", "required": false},
+				{"name": "with.do_nothing", "type": "bool", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.returning", "type": "string_list", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.key_columns to describe the unique key or natural key used to detect conflicts.",
+				"When with.update_columns is omitted, TSPlay updates every non-key column.",
+				"When only key columns exist, TSPlay falls back to insert-if-missing semantics.",
+				"Use with.returning on PGSQL or SQL Server when you need the final row values back.",
+			}
+		}
+		if name == "db_query" || name == "db_query_one" || name == "db_execute" {
+			item["args"] = []map[string]any{
+				{"name": "with.sql", "type": "string", "required": true},
+				{"name": "with.args", "type": "any", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "with.driver", "type": "string", "required": false},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			if name == "db_query" {
+				item["returns"] = "list<object>"
+			} else if name == "db_query_one" {
+				item["returns"] = "object|null"
+			} else {
+				item["returns"] = "object"
+			}
+			item["notes"] = []string{
+				"Use with.args as either a positional list or a named argument object.",
+				"Recommended driver names are mysql, pgsql, sqlserver, and oracle; aliases such as postgres/postgresql remain accepted.",
+			}
+		}
+		if name == "db_transaction" {
+			item["args"] = []map[string]any{
+				{"name": "steps", "type": "steps", "required": true},
+				{"name": "with.timeout", "type": "int", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Only database Flow actions participate in the transaction scope.",
+				"Transactions are started lazily per database connection and committed together when all nested steps succeed.",
 			}
 		}
 		if name == "read_excel" {
