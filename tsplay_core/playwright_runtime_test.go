@@ -92,6 +92,27 @@ func TestFlowUsesPlaywright(t *testing.T) {
 	}
 }
 
+func TestFlowActionCapabilitiesCoverAllActions(t *testing.T) {
+	for action := range flowActionSpecs {
+		capabilities, ok := flowActionCapabilitiesFor(action)
+		if !ok {
+			t.Fatalf("missing capabilities for action %q", action)
+		}
+		if capabilities.NeedsPage && !capabilities.RequiresPlaywright() {
+			t.Fatalf("action %q needs a page but is not marked as requiring Playwright", action)
+		}
+		if capabilities.NeedsBrowserState && !capabilities.RequiresPlaywright() {
+			t.Fatalf("action %q needs browser state but is not marked as requiring Playwright", action)
+		}
+	}
+
+	for action := range flowActionCapabilitiesRegistry {
+		if _, ok := flowActionSpecs[action]; !ok {
+			t.Fatalf("capabilities registered for unknown action %q", action)
+		}
+	}
+}
+
 func TestRunFlowSkipsPlaywrightForNonBrowserFlow(t *testing.T) {
 	restore := stubPlaywrightRuntime(t,
 		func() error {

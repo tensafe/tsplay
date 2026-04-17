@@ -453,6 +453,37 @@ func TestHandleFlowSchemaTool(t *testing.T) {
 	if !ok || len(manifest) == 0 {
 		t.Fatalf("expected action manifest, got %#v", defs["action_manifest"])
 	}
+	foundNavigate := false
+	foundHTTPRequest := false
+	for _, raw := range manifest {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("expected manifest item object, got %#v", raw)
+		}
+		capabilities, ok := item["capabilities"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected capabilities on manifest item, got %#v", item["capabilities"])
+		}
+		switch item["name"] {
+		case "navigate":
+			foundNavigate = true
+			if capabilities["needs_playwright"] != true || capabilities["needs_page"] != true {
+				t.Fatalf("navigate capabilities = %#v", capabilities)
+			}
+		case "http_request":
+			foundHTTPRequest = true
+			args, ok := capabilities["conditional_playwright_args"].([]any)
+			if !ok || len(args) == 0 {
+				t.Fatalf("http_request conditional capabilities = %#v", capabilities)
+			}
+		}
+	}
+	if !foundNavigate {
+		t.Fatalf("expected navigate manifest item")
+	}
+	if !foundHTTPRequest {
+		t.Fatalf("expected http_request manifest item")
+	}
 	if rules, ok := payload["generation_rules"].([]any); !ok || len(rules) == 0 {
 		t.Fatalf("expected generation rules, got %#v", payload["generation_rules"])
 	}

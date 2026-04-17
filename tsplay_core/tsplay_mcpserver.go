@@ -1324,6 +1324,9 @@ func buildFlowActionManifest() []map[string]any {
 			"description": descriptions[name],
 			"args":        args,
 		}
+		if capabilities, ok := flowActionCapabilitiesFor(name); ok {
+			item["capabilities"] = capabilities.manifestValue()
+		}
 		if name == "extract_text" {
 			item["returns"] = "string|string[]"
 			item["encouraged_save_as"] = true
