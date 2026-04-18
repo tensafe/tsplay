@@ -36,14 +36,18 @@ type flowSavedSessionSnippetFlow struct {
 }
 
 func BuildFlowSavedSessionFlowSnippet(session FlowSavedSession, artifactRoot string) map[string]any {
+	return BuildFlowSavedSessionFlowSnippetForActor(session, artifactRoot, FlowSavedSessionAccessInfo{})
+}
+
+func BuildFlowSavedSessionFlowSnippetForActor(session FlowSavedSession, artifactRoot string, actor FlowSavedSessionAccessInfo) map[string]any {
 	recommendedBrowserDoc := buildFlowSavedSessionRecommendedBrowserDoc(session)
-	expandedBrowserDoc := buildFlowSavedSessionExpandedBrowserDoc(session, artifactRoot)
+	expandedBrowserDoc := buildFlowSavedSessionExpandedBrowserDoc(session, artifactRoot, actor)
 	recommendedFlowDoc := buildFlowSavedSessionRecommendedFlowDoc(session)
-	expandedFlowDoc := buildFlowSavedSessionExpandedFlowDoc(session, artifactRoot)
+	expandedFlowDoc := buildFlowSavedSessionExpandedFlowDoc(session, artifactRoot, actor)
 
 	return map[string]any{
 		"browser":               recommendedBrowserDoc["browser"],
-		"expanded_browser":      buildFlowSavedSessionResolvedBrowser(session, artifactRoot),
+		"expanded_browser":      buildFlowSavedSessionSnippetBrowser(session, artifactRoot, actor),
 		"flow":                  recommendedFlowDoc,
 		"expanded_flow":         expandedFlowDoc,
 		"browser_yaml":          mustMarshalFlowSavedSessionSnippetYAML(recommendedBrowserDoc),
@@ -59,7 +63,11 @@ func BuildFlowSavedSessionFlowSnippet(session FlowSavedSession, artifactRoot str
 }
 
 func ExportFlowSavedSessionFlowSnippet(session FlowSavedSession, artifactRoot string, format string) (map[string]any, error) {
-	bundle := BuildFlowSavedSessionFlowSnippet(session, artifactRoot)
+	return ExportFlowSavedSessionFlowSnippetForActor(session, artifactRoot, format, FlowSavedSessionAccessInfo{})
+}
+
+func ExportFlowSavedSessionFlowSnippetForActor(session FlowSavedSession, artifactRoot string, format string, actor FlowSavedSessionAccessInfo) (map[string]any, error) {
+	bundle := BuildFlowSavedSessionFlowSnippetForActor(session, artifactRoot, actor)
 	normalizedFormat, err := normalizeFlowSavedSessionSnippetFormat(format)
 	if err != nil {
 		return nil, err
@@ -107,9 +115,9 @@ func buildFlowSavedSessionRecommendedBrowserDoc(session FlowSavedSession) map[st
 	}
 }
 
-func buildFlowSavedSessionExpandedBrowserDoc(session FlowSavedSession, artifactRoot string) map[string]flowSavedSessionSnippetBrowser {
+func buildFlowSavedSessionExpandedBrowserDoc(session FlowSavedSession, artifactRoot string, actor FlowSavedSessionAccessInfo) map[string]flowSavedSessionSnippetBrowser {
 	return map[string]flowSavedSessionSnippetBrowser{
-		"browser": buildFlowSavedSessionSnippetBrowser(session, artifactRoot),
+		"browser": buildFlowSavedSessionSnippetBrowser(session, artifactRoot, actor),
 	}
 }
 
@@ -124,17 +132,17 @@ func buildFlowSavedSessionRecommendedFlowDoc(session FlowSavedSession) flowSaved
 	}
 }
 
-func buildFlowSavedSessionExpandedFlowDoc(session FlowSavedSession, artifactRoot string) flowSavedSessionSnippetFlow {
+func buildFlowSavedSessionExpandedFlowDoc(session FlowSavedSession, artifactRoot string, actor FlowSavedSessionAccessInfo) flowSavedSessionSnippetFlow {
 	return flowSavedSessionSnippetFlow{
 		SchemaVersion: "1",
 		Name:          fmt.Sprintf("reuse_%s_session_expanded", session.Name),
-		Browser:       buildFlowSavedSessionSnippetBrowser(session, artifactRoot),
+		Browser:       buildFlowSavedSessionSnippetBrowser(session, artifactRoot, actor),
 		Steps:         []map[string]any{},
 	}
 }
 
-func buildFlowSavedSessionSnippetBrowser(session FlowSavedSession, artifactRoot string) flowSavedSessionSnippetBrowser {
-	config, err := ResolveFlowSavedSessionBrowserConfig(session.Name, artifactRoot)
+func buildFlowSavedSessionSnippetBrowser(session FlowSavedSession, artifactRoot string, actor FlowSavedSessionAccessInfo) flowSavedSessionSnippetBrowser {
+	config, err := ResolveFlowSavedSessionBrowserConfig(session.Name, artifactRoot, actor)
 	if err != nil || config == nil {
 		return flowSavedSessionSnippetBrowser{}
 	}

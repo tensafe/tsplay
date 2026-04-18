@@ -36,24 +36,27 @@ type PageObservation struct {
 }
 
 type PageObservationElement struct {
-	Index              int                 `json:"index"`
-	Tag                string              `json:"tag,omitempty"`
-	Type               string              `json:"type,omitempty"`
-	Role               string              `json:"role,omitempty"`
-	ID                 string              `json:"id,omitempty"`
-	Name               string              `json:"name,omitempty"`
-	Text               string              `json:"text,omitempty"`
-	Label              string              `json:"label,omitempty"`
-	Placeholder        string              `json:"placeholder,omitempty"`
-	AriaLabel          string              `json:"aria_label,omitempty"`
-	Href               string              `json:"href,omitempty"`
-	Value              string              `json:"value,omitempty"`
-	Visible            bool                `json:"visible"`
-	Enabled            bool                `json:"enabled"`
-	NearText           string              `json:"near_text,omitempty"`
-	SelectorCandidates []string            `json:"selector_candidates,omitempty"`
-	BoundingBox        *PageObservationBox `json:"bounding_box,omitempty"`
-	Attributes         map[string]string   `json:"attributes,omitempty"`
+	Index              int                       `json:"index"`
+	Tag                string                    `json:"tag,omitempty"`
+	Type               string                    `json:"type,omitempty"`
+	Role               string                    `json:"role,omitempty"`
+	ID                 string                    `json:"id,omitempty"`
+	Name               string                    `json:"name,omitempty"`
+	Text               string                    `json:"text,omitempty"`
+	Label              string                    `json:"label,omitempty"`
+	Placeholder        string                    `json:"placeholder,omitempty"`
+	AriaLabel          string                    `json:"aria_label,omitempty"`
+	Href               string                    `json:"href,omitempty"`
+	Value              string                    `json:"value,omitempty"`
+	Visible            bool                      `json:"visible"`
+	Enabled            bool                      `json:"enabled"`
+	NearText           string                    `json:"near_text,omitempty"`
+	PrimarySelector    string                    `json:"primary_selector,omitempty"`
+	SelectorRationale  string                    `json:"selector_rationale,omitempty"`
+	SelectorCandidates []string                  `json:"selector_candidates,omitempty"`
+	SelectorDetails    []PageObservationSelector `json:"selector_details,omitempty"`
+	BoundingBox        *PageObservationBox       `json:"bounding_box,omitempty"`
+	Attributes         map[string]string         `json:"attributes,omitempty"`
 }
 
 type PageObservationBox struct {
@@ -284,16 +287,29 @@ func observeInteractiveElements(page playwright.Page) ([]PageObservationElement,
 			}
 			return attrs;
 		};
-		const selectorCandidates = (element, tag, text, label, placeholder, ariaLabel, role) => {
+		const selectorCandidates = (element, tag, inputType, text, label, placeholder, ariaLabel, href, role) => {
 			const selectors = [];
 			for (const attr of ['data-testid', 'data-test', 'data-cy']) {
 				const value = element.getAttribute(attr);
-				if (value) addUnique(selectors, '[' + attr + '=' + quote(value) + ']');
+				if (value) {
+					addUnique(selectors, '[' + attr + '=' + quote(value) + ']');
+					addUnique(selectors, tag + '[' + attr + '=' + quote(value) + ']');
+				}
 			}
-			if (element.id) addUnique(selectors, '#' + cssEscape(element.id));
-			if (element.name) addUnique(selectors, tag + '[name=' + quote(element.name) + ']');
+			if (element.id) {
+				addUnique(selectors, '#' + cssEscape(element.id));
+				addUnique(selectors, tag + '#' + cssEscape(element.id));
+			}
+			if (element.name) {
+				addUnique(selectors, tag + '[name=' + quote(element.name) + ']');
+				if (inputType) addUnique(selectors, tag + '[name=' + quote(element.name) + '][type=' + quote(inputType) + ']');
+			}
 			if (placeholder) addUnique(selectors, tag + '[placeholder=' + quote(placeholder) + ']');
-			if (ariaLabel) addUnique(selectors, '[aria-label=' + quote(ariaLabel) + ']');
+			if (ariaLabel) {
+				addUnique(selectors, '[aria-label=' + quote(ariaLabel) + ']');
+				addUnique(selectors, tag + '[aria-label=' + quote(ariaLabel) + ']');
+			}
+			if (href && tag === 'a') addUnique(selectors, 'a[href=' + quote(href) + ']');
 			if (label && role) addUnique(selectors, 'role=' + role + '[name=' + quote(label) + ']');
 			if (text && ['button', 'a'].includes(tag)) addUnique(selectors, 'text=' + quote(text));
 			if (text && role) addUnique(selectors, 'role=' + role + '[name=' + quote(text) + ']');
@@ -329,7 +345,7 @@ func observeInteractiveElements(page playwright.Page) ([]PageObservationElement,
 					visible: true,
 					enabled,
 					near_text: nearbyText(element),
-					selector_candidates: selectorCandidates(element, tag, text, label, placeholder, ariaLabel, role),
+					selector_candidates: selectorCandidates(element, tag, inputType, text, label, placeholder, ariaLabel, element.getAttribute('href') || '', role),
 					bounding_box: {
 						x: rect.x,
 						y: rect.y,
@@ -355,6 +371,9 @@ func observeInteractiveElements(page playwright.Page) ([]PageObservationElement,
 	var elements []PageObservationElement
 	if err := json.Unmarshal(encoded, &elements); err != nil {
 		return nil, fmt.Errorf("decode observed elements: %w", err)
+	}
+	for i := range elements {
+		normalizeObservedSelectorDiagnostics(&elements[i])
 	}
 	sort.SliceStable(elements, func(i, j int) bool {
 		if elements[i].BoundingBox == nil || elements[j].BoundingBox == nil {

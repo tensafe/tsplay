@@ -180,6 +180,9 @@ func formatFlowRepairContextSummaryForPrompt(context *FlowRepairContext) string 
 		}
 	}
 	if context.Artifacts != nil {
+		if len(context.Artifacts.ArtifactSummary) > 0 {
+			lines = append(lines, fmt.Sprintf("- artifact_summary=%s", strings.Join(context.Artifacts.ArtifactSummary, "; ")))
+		}
 		if context.Artifacts.Paths.ScreenshotPath != "" {
 			lines = append(lines, fmt.Sprintf("- screenshot_path=%s", context.Artifacts.Paths.ScreenshotPath))
 		}
@@ -191,6 +194,12 @@ func formatFlowRepairContextSummaryForPrompt(context *FlowRepairContext) string 
 		}
 		if context.Artifacts.DOMSnapshotExcerpt != "" {
 			lines = append(lines, fmt.Sprintf("- dom_snapshot_excerpt=%s", context.Artifacts.DOMSnapshotExcerpt))
+		}
+		if len(context.Artifacts.RelevantDOM) > 0 {
+			lines = append(lines, fmt.Sprintf("- relevant_dom=%s", strings.Join(context.Artifacts.RelevantDOM, " || ")))
+		}
+		if len(context.Artifacts.RelevantSelectors) > 0 {
+			lines = append(lines, fmt.Sprintf("- relevant_selectors=%s", strings.Join(context.Artifacts.RelevantSelectors, ", ")))
 		}
 	}
 	return strings.Join(lines, "\n")

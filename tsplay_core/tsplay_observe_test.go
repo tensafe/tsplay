@@ -58,6 +58,15 @@ func TestObservePageCapturesInteractiveElements(t *testing.T) {
 	if input.Label != "Order keyword" {
 		t.Fatalf("input label = %q", input.Label)
 	}
+	if input.PrimarySelector != `[data-testid="order-query"]` {
+		t.Fatalf("input primary selector = %q", input.PrimarySelector)
+	}
+	if input.SelectorCandidates[0] != input.PrimarySelector {
+		t.Fatalf("expected primary selector first, got %#v", input.SelectorCandidates)
+	}
+	if input.SelectorRationale == "" {
+		t.Fatalf("expected selector rationale, got %#v", input)
+	}
 	if !containsString(input.SelectorCandidates, `[data-testid="order-query"]`) {
 		t.Fatalf("missing data-testid selector: %#v", input.SelectorCandidates)
 	}
@@ -70,6 +79,9 @@ func TestObservePageCapturesInteractiveElements(t *testing.T) {
 	})
 	if button == nil {
 		t.Fatalf("search button not found: %#v", observation.Elements)
+	}
+	if button.PrimarySelector != `button#search-button` && button.PrimarySelector != `#search-button` {
+		t.Fatalf("unexpected button primary selector: %#v", button)
 	}
 	if !containsString(button.SelectorCandidates, `text="Search"`) {
 		t.Fatalf("missing text selector: %#v", button.SelectorCandidates)

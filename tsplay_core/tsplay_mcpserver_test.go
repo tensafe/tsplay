@@ -153,6 +153,78 @@ func TestHandleListSessionsTool(t *testing.T) {
 	}
 }
 
+func TestSessionToolsHideOwnedSessionsFromOtherMCPCallers(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:               "admin",
+		ArtifactRoot:       options.ArtifactRoot,
+		StorageStateJSON:   `{"cookies":[],"origins":[]}`,
+		OwnerSessionID:     "session-owner",
+		OwnerClientName:    "codex",
+		OwnerClientVersion: "1.0.0",
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+
+	makeCtx := func(id string) context.Context {
+		session := &runtimeTestSession{
+			id:          id,
+			initialized: true,
+			notify:      make(chan mcp.JSONRPCNotification, 1),
+			clientInfo:  mcp.Implementation{Name: "codex", Version: "1.0.0"},
+		}
+		return server.NewMCPServer("test", "1.0.0").WithContext(context.Background(), session)
+	}
+
+	otherCtx := makeCtx("session-other")
+	listResult, err := handleListSessionsToolWithOptions(otherCtx, mcp.CallToolRequest{}, options)
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	var listPayload map[string]any
+	decodeToolText(t, listResult, &listPayload)
+	sessions, ok := listPayload["sessions"].([]any)
+	if !ok || len(sessions) != 0 {
+		t.Fatalf("expected no visible sessions for other caller, got %#v", listPayload["sessions"])
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{"name": "admin"},
+		},
+	}
+	getResult, err := handleGetSessionToolWithOptions(otherCtx, request, options)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	var getPayload map[string]any
+	decodeToolText(t, getResult, &getPayload)
+	if getPayload["ok"] != false || !strings.Contains(getPayload["error"].(string), "owned by MCP session") {
+		t.Fatalf("expected ownership error, got %#v", getPayload)
+	}
+
+	exportResult, err := handleExportSessionFlowSnippetToolWithOptions(otherCtx, request, options)
+	if err != nil {
+		t.Fatalf("export session: %v", err)
+	}
+	var exportPayload map[string]any
+	decodeToolText(t, exportResult, &exportPayload)
+	if exportPayload["ok"] != false || !strings.Contains(exportPayload["error"].(string), "owned by MCP session") {
+		t.Fatalf("expected ownership error, got %#v", exportPayload)
+	}
+
+	ownerCtx := makeCtx("session-owner")
+	ownerGetResult, err := handleGetSessionToolWithOptions(ownerCtx, request, options)
+	if err != nil {
+		t.Fatalf("owner get session: %v", err)
+	}
+	var ownerPayload map[string]any
+	decodeToolText(t, ownerGetResult, &ownerPayload)
+	if ownerPayload["ok"] != true {
+		t.Fatalf("expected owner access, got %#v", ownerPayload)
+	}
+}
+
 func TestHandleGetSessionToolForStorageState(t *testing.T) {
 	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
 	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
@@ -882,13 +954,26 @@ steps:
 	if failedStep["index"] != float64(2) {
 		t.Fatalf("unexpected failed step index: %#v", failedStep["index"])
 	}
+	if failedStep["path"] != "2" {
+		t.Fatalf("unexpected failed step path: %#v", failedStep["path"])
+	}
 	artifacts, ok := contextPayload["artifacts"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected artifacts, got %#v", contextPayload["artifacts"])
 	}
+	if summary, ok := artifacts["artifact_summary"].([]any); !ok || len(summary) == 0 {
+		t.Fatalf("expected artifact summary, got %#v", artifacts["artifact_summary"])
+	}
 	excerpt, ok := artifacts["dom_snapshot_excerpt"].(string)
 	if !ok || !strings.Contains(excerpt, "Export orders") {
 		t.Fatalf("expected dom excerpt, got %#v", artifacts["dom_snapshot_excerpt"])
+	}
+	relevantSelectors, ok := artifacts["relevant_selectors"].([]any)
+	if !ok || len(relevantSelectors) == 0 {
+		t.Fatalf("expected relevant selectors, got %#v", artifacts["relevant_selectors"])
+	}
+	if relevantSelectors[0] != "#export" && relevantSelectors[0] != `text="Export orders"` {
+		t.Fatalf("unexpected relevant selectors: %#v", relevantSelectors)
 	}
 	encoded, err := json.Marshal(contextPayload)
 	if err != nil {
@@ -919,6 +1004,14 @@ steps:
 	}
 	if firstHint["failure_category"] != "selector_or_timing" {
 		t.Fatalf("expected selector_or_timing hint category, got %#v", firstHint)
+	}
+	traceSummary, ok := contextPayload["trace_summary"].([]any)
+	if !ok || len(traceSummary) < 2 {
+		t.Fatalf("expected trace summary, got %#v", contextPayload["trace_summary"])
+	}
+	secondTrace, ok := traceSummary[1].(map[string]any)
+	if !ok || secondTrace["label"] != "2 click export (click)" {
+		t.Fatalf("unexpected trace label: %#v", traceSummary[1])
 	}
 	if _, ok := contextPayload["validation_checklist"].([]any); !ok {
 		t.Fatalf("expected validation checklist, got %#v", contextPayload["validation_checklist"])

@@ -337,13 +337,24 @@ func validateFlowSavedSessionAccess(session *FlowSavedSession, actor FlowSavedSe
 	}
 	ownerSession := strings.TrimSpace(session.OwnerSessionID)
 	actorSession := strings.TrimSpace(actor.SessionID)
-	if ownerSession == "" || actorSession == "" || ownerSession == actorSession {
+	if ownerSession == "" || ownerSession == actorSession {
 		return nil
+	}
+	if actorSession == "" {
+		return fmt.Errorf("session %q is owned by MCP session %q and cannot be %s without an active MCP session", session.Name, ownerSession, operation)
 	}
 	return fmt.Errorf("session %q is owned by MCP session %q and cannot be %s from session %q", session.Name, ownerSession, operation, actorSession)
 }
 
 func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) map[string]any {
+	return buildFlowSavedSessionView(session, artifactRoot, true)
+}
+
+func BuildFlowSavedSessionViewForActor(session FlowSavedSession, artifactRoot string, actor FlowSavedSessionAccessInfo) map[string]any {
+	return buildFlowSavedSessionView(session, artifactRoot, flowSavedSessionAllowsSensitiveView(session, actor))
+}
+
+func buildFlowSavedSessionView(session FlowSavedSession, artifactRoot string, includeSensitive bool) map[string]any {
 	view := map[string]any{
 		"name":       session.Name,
 		"kind":       session.Kind,
@@ -351,7 +362,9 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 		"browser": map[string]any{
 			"use_session": session.Name,
 		},
-		"resolved_browser": buildFlowSavedSessionResolvedBrowser(session, artifactRoot),
+	}
+	if includeSensitive {
+		view["resolved_browser"] = buildFlowSavedSessionResolvedBrowser(session, artifactRoot)
 	}
 	if session.CreatedAt != "" {
 		view["created_at"] = session.CreatedAt
@@ -365,7 +378,7 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 	if session.Source != "" {
 		view["source"] = session.Source
 	}
-	if session.OwnerSessionID != "" || session.OwnerClientName != "" || session.OwnerClientVersion != "" {
+	if includeSensitive && (session.OwnerSessionID != "" || session.OwnerClientName != "" || session.OwnerClientVersion != "") {
 		owner := map[string]any{}
 		if session.OwnerSessionID != "" {
 			owner["session_id"] = session.OwnerSessionID
@@ -378,7 +391,7 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 		}
 		view["owner"] = owner
 	}
-	if session.LastUsedBySessionID != "" || session.LastUsedByRunID != "" {
+	if includeSensitive && (session.LastUsedBySessionID != "" || session.LastUsedByRunID != "") {
 		lastUsedBy := map[string]any{}
 		if session.LastUsedBySessionID != "" {
 			lastUsedBy["session_id"] = session.LastUsedBySessionID
@@ -388,25 +401,45 @@ func BuildFlowSavedSessionView(session FlowSavedSession, artifactRoot string) ma
 		}
 		view["last_used_by"] = lastUsedBy
 	}
-	switch session.Kind {
-	case flowSavedSessionKindStorageState:
-		view["storage_state_path"] = session.StorageStatePath
-	case flowSavedSessionKindProfile:
-		view["profile"] = session.Profile
-		if session.Session != "" {
-			view["session"] = session.Session
+	if includeSensitive {
+		switch session.Kind {
+		case flowSavedSessionKindStorageState:
+			view["storage_state_path"] = session.StorageStatePath
+		case flowSavedSessionKindProfile:
+			view["profile"] = session.Profile
+			if session.Session != "" {
+				view["session"] = session.Session
+			}
 		}
 	}
 	return view
 }
 
 func BuildFlowSavedSessionDetail(session FlowSavedSession, artifactRoot string) map[string]any {
-	detail := BuildFlowSavedSessionView(session, artifactRoot)
-	detail["expanded_browser"] = buildFlowSavedSessionResolvedBrowser(session, artifactRoot)
-	if root, err := flowSavedSessionRegistryRoot(artifactRoot); err == nil {
-		detail["physical_paths"] = buildFlowSavedSessionPhysicalPaths(session, root)
+	return buildFlowSavedSessionDetail(session, artifactRoot, true)
+}
+
+func BuildFlowSavedSessionDetailForActor(session FlowSavedSession, artifactRoot string, actor FlowSavedSessionAccessInfo) map[string]any {
+	return buildFlowSavedSessionDetail(session, artifactRoot, flowSavedSessionAllowsSensitiveView(session, actor))
+}
+
+func buildFlowSavedSessionDetail(session FlowSavedSession, artifactRoot string, includeSensitive bool) map[string]any {
+	detail := buildFlowSavedSessionView(session, artifactRoot, includeSensitive)
+	if includeSensitive {
+		detail["expanded_browser"] = buildFlowSavedSessionResolvedBrowser(session, artifactRoot)
+		if root, err := flowSavedSessionRegistryRoot(artifactRoot); err == nil {
+			detail["physical_paths"] = buildFlowSavedSessionPhysicalPaths(session, root)
+		}
 	}
 	return detail
+}
+
+func flowSavedSessionAllowsSensitiveView(session FlowSavedSession, actor FlowSavedSessionAccessInfo) bool {
+	ownerSession := strings.TrimSpace(session.OwnerSessionID)
+	if ownerSession == "" {
+		return true
+	}
+	return ownerSession == strings.TrimSpace(actor.SessionID)
 }
 
 func buildFlowSavedSessionResolvedBrowser(session FlowSavedSession, artifactRoot string) map[string]any {

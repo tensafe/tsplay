@@ -618,9 +618,13 @@ func handleListSessionsToolWithOptions(
 			"error": err.Error(),
 		})
 	}
+	actor := flowSavedSessionAccessFromContext(ctx)
 	items := make([]map[string]any, 0, len(sessions))
 	for _, session := range sessions {
-		items = append(items, BuildFlowSavedSessionView(session, options.ArtifactRoot))
+		if err := validateFlowSavedSessionAccess(&session, actor, "viewed"); err != nil {
+			continue
+		}
+		items = append(items, BuildFlowSavedSessionViewForActor(session, options.ArtifactRoot, actor))
 	}
 	return newJSONToolResult(map[string]any{
 		"ok":       true,
@@ -647,9 +651,16 @@ func handleGetSessionToolWithOptions(
 			"error": err.Error(),
 		})
 	}
+	actor := flowSavedSessionAccessFromContext(ctx)
+	if err := validateFlowSavedSessionAccess(session, actor, "viewed"); err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
 	return newJSONToolResult(map[string]any{
 		"ok":      true,
-		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+		"session": BuildFlowSavedSessionDetailForActor(*session, options.ArtifactRoot, actor),
 	})
 }
 
@@ -672,7 +683,14 @@ func handleExportSessionFlowSnippetToolWithOptions(
 			"error": err.Error(),
 		})
 	}
-	exported, err := ExportFlowSavedSessionFlowSnippet(*session, options.ArtifactRoot, request.GetString("format", ""))
+	actor := flowSavedSessionAccessFromContext(ctx)
+	if err := validateFlowSavedSessionAccess(session, actor, "exported"); err != nil {
+		return newJSONToolResult(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	exported, err := ExportFlowSavedSessionFlowSnippetForActor(*session, options.ArtifactRoot, request.GetString("format", ""), actor)
 	if err != nil {
 		return newJSONToolResult(map[string]any{
 			"ok":    false,
@@ -681,7 +699,7 @@ func handleExportSessionFlowSnippetToolWithOptions(
 	}
 	result := map[string]any{
 		"ok":      true,
-		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+		"session": BuildFlowSavedSessionDetailForActor(*session, options.ArtifactRoot, actor),
 		"export":  exported,
 	}
 	if snippets, ok := exported["snippets"]; ok {
@@ -754,7 +772,7 @@ func handleSaveSessionToolWithOptions(
 	}
 	return newJSONToolResult(map[string]any{
 		"ok":      true,
-		"session": BuildFlowSavedSessionView(*session, options.ArtifactRoot),
+		"session": BuildFlowSavedSessionViewForActor(*session, options.ArtifactRoot, actor),
 	})
 }
 

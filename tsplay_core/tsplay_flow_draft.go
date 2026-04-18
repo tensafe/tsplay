@@ -927,50 +927,6 @@ func bestObservedSelector(element PageObservationElement) string {
 	return ""
 }
 
-func preferredObservedSelector(element PageObservationElement) string {
-	best := ""
-	bestScore := -1
-	for _, selector := range element.SelectorCandidates {
-		selector = strings.TrimSpace(selector)
-		if selector == "" {
-			continue
-		}
-		score := scoreObservedSelectorCandidate(selector)
-		if score > bestScore {
-			best = selector
-			bestScore = score
-		}
-	}
-	return best
-}
-
-func scoreObservedSelectorCandidate(selector string) int {
-	switch {
-	case strings.HasPrefix(selector, "[data-testid="):
-		return 100
-	case strings.HasPrefix(selector, "[data-test="):
-		return 98
-	case strings.HasPrefix(selector, "[data-cy="):
-		return 96
-	case strings.HasPrefix(selector, "#"):
-		return 90
-	case strings.Contains(selector, "[name="):
-		return 82
-	case strings.Contains(selector, "[placeholder="):
-		return 78
-	case strings.HasPrefix(selector, "[aria-label="):
-		return 76
-	case strings.HasPrefix(selector, "role="):
-		return 72
-	case strings.HasPrefix(selector, "text="):
-		return 68
-	case strings.HasPrefix(selector, "xpath="):
-		return 10
-	default:
-		return 40
-	}
-}
-
 func selectorFromDraftXPath(xpath string) string {
 	xpath = strings.TrimSpace(xpath)
 	if xpath == "" {
