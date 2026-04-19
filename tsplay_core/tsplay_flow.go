@@ -189,6 +189,7 @@ type FlowSecurityPolicy struct {
 
 const CurrentFlowSchemaVersion = "1"
 const DefaultFlowArtifactRoot = "artifacts"
+const flowContextStateGlobal = "__tsplay_flow_context"
 
 type flowActionSpec struct {
 	Args       []flowArgSpec
@@ -2019,6 +2020,8 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		ClientName:    options.ClientName,
 		ClientVersion: options.ClientVersion,
 	}
+	restoreFlowContext := setFlowContextState(L, ctx)
+	defer restoreFlowContext()
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))
@@ -2953,6 +2956,39 @@ func flowPageFromState(L *lua.LState) (playwright.Page, bool) {
 	}
 	page, ok := userData.Value.(playwright.Page)
 	return page, ok && page != nil
+}
+
+func flowContextFromState(L *lua.LState) *FlowContext {
+	if L == nil {
+		return nil
+	}
+	value := L.GetGlobal(flowContextStateGlobal)
+	userData, ok := value.(*lua.LUserData)
+	if !ok || userData == nil || userData.Value == nil {
+		return nil
+	}
+	ctx, ok := userData.Value.(*FlowContext)
+	if !ok || ctx == nil {
+		return nil
+	}
+	return ctx
+}
+
+func setFlowContextState(L *lua.LState, ctx *FlowContext) func() {
+	if L == nil {
+		return func() {}
+	}
+	previous := L.GetGlobal(flowContextStateGlobal)
+	if ctx == nil {
+		L.SetGlobal(flowContextStateGlobal, lua.LNil)
+	} else {
+		userData := L.NewUserData()
+		userData.Value = ctx
+		L.SetGlobal(flowContextStateGlobal, userData)
+	}
+	return func() {
+		L.SetGlobal(flowContextStateGlobal, previous)
+	}
 }
 
 var artifactSegmentPattern = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

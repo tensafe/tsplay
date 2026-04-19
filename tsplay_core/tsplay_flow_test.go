@@ -1352,6 +1352,161 @@ func TestRunFlowHTTPRequestMultipartAndSavePath(t *testing.T) {
 	}
 }
 
+func TestRunFlowLuaHTTPRequestHonorsAllowHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("request should not have been sent: %s", r.URL.String())
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_http_policy",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code: fmt.Sprintf(`return http_request({
+  url = %q,
+  response_as = "json"
+})`, server.URL),
+			},
+		},
+	}
+
+	_, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowLua: true},
+	})
+	if err == nil {
+		t.Fatalf("expected allow_http runtime error")
+	}
+	if !strings.Contains(err.Error(), "allow_http") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFlowLuaHTTPRequestRequiresFileAccessForMultipartAndSavePath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.txt"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_http_file_policy",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code: `return http_request({
+  url = "https://example.com/ocr",
+  save_path = "responses/ocr.json",
+  multipart_files = {image = "captcha.txt"}
+})`,
+			},
+		},
+	}
+
+	_, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowLua:  true,
+			AllowHTTP: true,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected allow_file_access runtime error")
+	}
+	if !strings.Contains(err.Error(), "allow_file_access") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "responses", "ocr.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no saved response, stat err=%v", statErr)
+	}
+}
+
+func TestRunFlowLuaHTTPRequestUsesFlowFileRoots(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.txt"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		if got := r.FormValue("scene"); got != "login" {
+			t.Fatalf("unexpected scene: %q", got)
+		}
+		file, _, err := r.FormFile("image")
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart content: %v", err)
+		}
+		if string(content) != "captcha-image" {
+			t.Fatalf("unexpected multipart content: %q", string(content))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"ABCD"}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_http_file_roots",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				SaveAs: "ocr_result",
+				Code: fmt.Sprintf(`return http_request({
+  url = %q,
+  save_path = "responses/ocr.json",
+  multipart_files = {image = "captcha.txt"},
+  multipart_fields = {scene = "login"},
+  response_as = "json"
+})`, server.URL),
+			},
+			{
+				Action: "lua",
+				SaveAs: "captcha_text",
+				Code:   `return json_extract(ocr_result, "$.body.text")`,
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowLua:        true,
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["captcha_text"]; got != "ABCD" {
+		t.Fatalf("captcha_text = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "ocr.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"text":"ABCD"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
 func TestRunFlowBrowserStorageStateRoundTrip(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
