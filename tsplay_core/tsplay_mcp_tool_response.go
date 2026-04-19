@@ -128,7 +128,7 @@ func enrichTSPlayToolPayload(tool string, payload map[string]any) map[string]any
 			payload["run"] = normalizeTSPlayBrowserRun(*run)
 		}
 	}
-	if _, ok := payload["run"]; !ok && tool == "tsplay.draft_flow" {
+	if _, ok := payload["run"]; !ok && (tool == "tsplay.draft_flow" || tool == "tsplay.finalize_flow") {
 		payload["run"] = map[string]any{
 			"id":     "",
 			"tool":   tool,
@@ -234,6 +234,15 @@ func buildTSPlayToolSummary(tool string, payload map[string]any) string {
 			return "Could not draft a TSPlay Flow from the provided intent and context."
 		}
 		return "Drafted a TSPlay Flow from the provided intent."
+	case "tsplay.finalize_flow":
+		status := firstNonEmpty(stringValue(payload["status"]), "drafted")
+		if draft, ok := payload["draft"].(*FlowDraft); ok && draft != nil {
+			return fmt.Sprintf("Finalized flow %q with status %s.", firstNonEmpty(draft.FlowName, "draft"), status)
+		}
+		if payload["ok"] == false {
+			return "Could not finalize a TSPlay Flow from the provided intent and context."
+		}
+		return fmt.Sprintf("Finalized the TSPlay Flow with status %s.", status)
 	case "tsplay.validate_flow":
 		if valid, ok := payload["valid"].(bool); ok && valid {
 			return fmt.Sprintf("Validated flow %q successfully.", firstNonEmpty(stringValue(payload["name"]), "flow"))
@@ -288,6 +297,8 @@ func extractTSPlayToolWarnings(tool string, payload map[string]any) []string {
 			warnings = append(warnings, observation.Errors...)
 		}
 	case "tsplay.draft_flow":
+		fallthrough
+	case "tsplay.finalize_flow":
 		if draft, ok := payload["draft"].(*FlowDraft); ok && draft != nil {
 			warnings = append(warnings, draft.Warnings...)
 			if draft.Validation != nil && !draft.Validation.Valid && strings.TrimSpace(draft.Validation.Error) != "" {
@@ -316,6 +327,14 @@ func extractTSPlayToolArtifacts(tool string, payload map[string]any) any {
 			}
 		}
 	case "tsplay.draft_flow":
+		if observation, ok := payload["observation"].(*PageObservation); ok && observation != nil {
+			return map[string]any{
+				"artifact_root":     observation.ArtifactRoot,
+				"screenshot_path":   observation.ScreenshotPath,
+				"dom_snapshot_path": observation.DOMSnapshotPath,
+			}
+		}
+	case "tsplay.finalize_flow":
 		if observation, ok := payload["observation"].(*PageObservation); ok && observation != nil {
 			return map[string]any{
 				"artifact_root":     observation.ArtifactRoot,
@@ -373,6 +392,35 @@ func buildTSPlayToolNextAction(tool string, payload map[string]any) any {
 			return map[string]any{
 				"tool":   "tsplay.validate_flow",
 				"reason": "Adjust the drafted flow using the validation output, then validate again before execution.",
+			}
+		}
+	case "tsplay.finalize_flow":
+		if !ok {
+			return map[string]any{
+				"tool":   "tsplay.observe_page",
+				"reason": "Re-observe the page or provide an observation payload before finalizing again.",
+			}
+		}
+		switch stringValue(payload["status"]) {
+		case "ready":
+			return map[string]any{
+				"tool":   "tsplay.run_flow",
+				"reason": "Run the returned flow_yaml and inspect the execution trace.",
+			}
+		case "needs_permission":
+			return map[string]any{
+				"tool":   "tsplay.finalize_flow",
+				"reason": "Retry with the matching security_preset or allow_* override once the user approves it.",
+			}
+		case "needs_input":
+			return map[string]any{
+				"tool":   "tsplay.finalize_flow",
+				"reason": "Fill the remaining TODO variables or unresolved inputs, then finalize again.",
+			}
+		default:
+			return map[string]any{
+				"tool":   "tsplay.validate_flow",
+				"reason": "Inspect the returned issue or validation output, adjust the flow, then validate again.",
 			}
 		}
 	case "tsplay.validate_flow":

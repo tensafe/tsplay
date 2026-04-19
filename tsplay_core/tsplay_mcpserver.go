@@ -424,6 +424,63 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		return handleDraftFlowToolWithOptions(ctx, request, options)
 	})
 
+	mcpServer.AddTool(mcp.NewTool("tsplay.finalize_flow",
+		mcp.WithDescription("Draft and validate a TSPlay Flow in one step, then return a model-friendly readiness status such as ready, needs_input, needs_permission, or needs_repair."),
+		mcp.WithString("intent",
+			mcp.Description("User intent in natural language, for example 搜索订单并导出 or upload a file and submit."),
+			mcp.Required(),
+		),
+		mcp.WithString("url",
+			mcp.Description("Optional page URL. Required when observation is not provided."),
+		),
+		mcp.WithString("observation",
+			mcp.Description("Optional PageObservation JSON, or a wrapper that contains an observation field."),
+		),
+		mcp.WithString("flow_name",
+			mcp.Description("Optional explicit flow name. Defaults to an auto-generated draft name."),
+		),
+		mcp.WithBoolean("headless",
+			mcp.Description("Run browser in headless mode when url is provided. Defaults to true."),
+		),
+		mcp.WithNumber("timeout",
+			mcp.Description("Navigation timeout in milliseconds when url is provided. Defaults to 30000."),
+		),
+		mcp.WithNumber("run_timeout",
+			mcp.Description("Total MCP browser run timeout in milliseconds, including queue wait and artifact capture. Defaults to the server runtime policy."),
+		),
+		mcp.WithNumber("max_elements",
+			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
+		),
+		mcp.WithBoolean("allow_lua",
+			mcp.Description("Allow lua during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_javascript",
+			mcp.Description("Allow execute_script and evaluate during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_file_access",
+			mcp.Description("Allow upload/download/screenshot/save_html actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_browser_state",
+			mcp.Description("Allow browser storage/cookie actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_http",
+			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_redis",
+			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert during the auto validation pass."),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleFinalizeFlowToolWithOptions(ctx, request, options)
+	})
+
 	mcpServer.AddTool(mcp.NewTool("tsplay.repair_flow_context",
 		mcp.WithDescription("Build an AI-friendly repair context from a Flow and failed run trace. Returns summaries, unified repair_hints, and artifact paths without embedding full HTML."),
 		mcp.WithString("flow",
@@ -824,47 +881,94 @@ func handleDraftFlowToolWithOptions(
 	request mcp.CallToolRequest,
 	options TSPlayMCPServerOptions,
 ) (*mcp.CallToolResult, error) {
+	payload := draftFlowPayloadWithOptions(ctx, request, options, "tsplay.draft_flow")
+	return newTSPlayToolResult("tsplay.draft_flow", payload)
+}
+
+func handleFinalizeFlowTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleFinalizeFlowToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleFinalizeFlowToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	payload := draftFlowPayloadWithOptions(ctx, request, options, "tsplay.finalize_flow")
+	draft, _ := payload["draft"].(*FlowDraft)
+	if draft == nil {
+		return newTSPlayToolResult("tsplay.finalize_flow", payload)
+	}
+
+	status, blockingReason := finalizeFlowStatus(draft)
+	payload["status"] = status
+	payload["flow_yaml"] = draft.FlowYAML
+	payload["validation"] = draft.Validation
+	if draft.Validation != nil && draft.Validation.Issue != nil {
+		payload["issue"] = draft.Validation.Issue
+	}
+	if blockingReason != "" {
+		payload["blocking_reason"] = blockingReason
+	}
+	if len(draft.SuggestedVars) > 0 {
+		payload["suggested_vars"] = draft.SuggestedVars
+	}
+	if len(draft.Unresolved) > 0 {
+		payload["unresolved"] = draft.Unresolved
+	}
+	return newTSPlayToolResult("tsplay.finalize_flow", payload)
+}
+
+func draftFlowPayloadWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+	toolName string,
+) map[string]any {
 	intent := strings.TrimSpace(request.GetString("intent", ""))
 	if intent == "" {
-		return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+		return map[string]any{
 			"ok":    false,
 			"error": "intent is required",
-		})
+		}
 	}
 
 	observation, err := ParseObservationForDraft(request.GetString("observation", ""))
 	if err != nil {
-		return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+		return map[string]any{
 			"ok":    false,
 			"error": err.Error(),
-		})
+		}
 	}
 
 	url := strings.TrimSpace(request.GetString("url", ""))
 	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
 	if err != nil {
-		return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+		return map[string]any{
 			"ok":    false,
 			"error": err.Error(),
-		})
+		}
 	}
 	security := securityResolution.Policy
 	var runHandle *tsplayBrowserRunHandle
 	if observation == nil {
 		if url == "" {
-			return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+			return map[string]any{
 				"ok":    false,
 				"error": "url or observation is required",
-			})
+			}
 		}
-		runHandle, ctx, err = beginTSPlayBrowserRun(ctx, request, "tsplay.draft_flow", options, &security)
+		runHandle, ctx, err = beginTSPlayBrowserRun(ctx, request, toolName, options, &security)
 		if err != nil {
-			return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+			return map[string]any{
 				"ok":       false,
 				"error":    err.Error(),
 				"run":      runHandle.snapshot(),
 				"security": securityResolution,
-			})
+			}
 		}
 		observation, err = ObservePage(PageObservationOptions{
 			URL:          url,
@@ -880,12 +984,12 @@ func handleDraftFlowToolWithOptions(
 			run := runHandle.finish(err, map[string]any{
 				"url": url,
 			})
-			return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+			return map[string]any{
 				"ok":       false,
 				"error":    err.Error(),
 				"run":      run,
 				"security": securityResolution,
-			})
+			}
 		}
 	}
 
@@ -908,7 +1012,7 @@ func handleDraftFlowToolWithOptions(
 				"url": url,
 			})
 		}
-		return newTSPlayToolResult("tsplay.draft_flow", payload)
+		return payload
 	}
 
 	result := map[string]any{
@@ -925,7 +1029,50 @@ func handleDraftFlowToolWithOptions(
 			"selector_repairs": len(draft.SelectorRepairs),
 		})
 	}
-	return newTSPlayToolResult("tsplay.draft_flow", result)
+	return result
+}
+
+func finalizeFlowStatus(draft *FlowDraft) (string, string) {
+	if draft == nil {
+		return "failed", "Draft did not produce a usable flow."
+	}
+	if draft.Validation != nil && !draft.Validation.Valid {
+		if draft.Validation.Issue != nil && draft.Validation.Issue.Code == "security_policy" {
+			return "needs_permission", firstNonEmpty(draft.Validation.Issue.Suggestion, draft.Validation.Error)
+		}
+		return "needs_repair", draft.Validation.Error
+	}
+	if draftHasTODOInput(draft) || len(draft.Unresolved) > 0 {
+		return "needs_input", "Fill the remaining TODO variables or unresolved intent gaps before execution."
+	}
+	return "ready", ""
+}
+
+func draftHasTODOInput(draft *FlowDraft) bool {
+	if draft == nil {
+		return false
+	}
+	return flowValueContainsTODO(draft.SuggestedVars)
+}
+
+func flowValueContainsTODO(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) == "TODO"
+	case []any:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func handleRepairFlowContextTool(
@@ -1122,10 +1269,14 @@ func handleValidateFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+		payload := map[string]any{
 			"valid": false,
 			"error": err.Error(),
-		})
+		}
+		if issue := ExtractFlowIssue(err, nil); issue != nil {
+			payload["issue"] = issue
+		}
+		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
 	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
 	if err != nil {
@@ -1136,20 +1287,28 @@ func handleValidateFlowToolWithOptions(
 	}
 	security := securityResolution.Policy
 	if err := ValidateFlow(flow); err != nil {
-		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+		payload := map[string]any{
 			"valid":    false,
 			"name":     flow.Name,
 			"error":    err.Error(),
 			"security": securityResolution,
-		})
+		}
+		if issue := ExtractFlowIssue(err, flow); issue != nil {
+			payload["issue"] = issue
+		}
+		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
 	if err := ValidateFlowSecurity(flow, security); err != nil {
-		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+		payload := map[string]any{
 			"valid":    false,
 			"name":     flow.Name,
 			"error":    err.Error(),
 			"security": securityResolution,
-		})
+		}
+		if issue := ExtractFlowIssue(err, flow); issue != nil {
+			payload["issue"] = issue
+		}
+		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
 	return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
 		"valid":    true,
@@ -1173,10 +1332,14 @@ func handleRunFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+		payload := map[string]any{
 			"ok":    false,
 			"error": err.Error(),
-		})
+		}
+		if issue := ExtractFlowIssue(err, nil); issue != nil {
+			payload["issue"] = issue
+		}
+		return newTSPlayToolResult("tsplay.run_flow", payload)
 	}
 
 	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
@@ -1332,6 +1495,9 @@ func resolveMCPFlowPath(flowPath string, flowRoot string) (string, error) {
 
 func buildFlowActionManifest() []map[string]any {
 	descriptions := map[string]string{}
+	commonAliases := map[string][]string{
+		"type_text": {"fill", "type"},
+	}
 	for _, fn := range GlobalPlayWrightFunc {
 		descriptions[fn.Name] = fn.Description_en
 	}
@@ -1378,6 +1544,9 @@ func buildFlowActionManifest() []map[string]any {
 			"description": descriptions[name],
 			"args":        args,
 		}
+		if aliases := commonAliases[name]; len(aliases) > 0 {
+			item["common_aliases"] = aliases
+		}
 		if capabilities, ok := flowActionCapabilitiesFor(name); ok {
 			item["capabilities"] = capabilities.manifestValue()
 		}
@@ -1407,6 +1576,9 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "interval_ms", "type": "int", "required": false, "default": 0},
 				{"name": "steps", "type": "steps", "required": true},
 			}
+		}
+		if name == "navigate" {
+			item["notes"] = appendStringNotes(item["notes"], "Do not put timeout on the navigate step itself; use browser.timeout or the MCP tool timeout instead.")
 		}
 		if name == "if" {
 			item["args"] = []map[string]any{
@@ -1610,6 +1782,21 @@ func buildFlowActionManifest() []map[string]any {
 		actions = append(actions, item)
 	}
 	return actions
+}
+
+func appendStringNotes(existing any, values ...string) []string {
+	notes := []string{}
+	if current, ok := existing.([]string); ok {
+		notes = append(notes, current...)
+	} else if current, ok := existing.([]any); ok {
+		for _, item := range current {
+			if text, ok := item.(string); ok {
+				notes = append(notes, text)
+			}
+		}
+	}
+	notes = append(notes, values...)
+	return notes
 }
 
 func newJSONToolResult(value any) (*mcp.CallToolResult, error) {

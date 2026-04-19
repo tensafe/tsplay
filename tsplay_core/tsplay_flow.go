@@ -18,7 +18,6 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 	lua "github.com/yuin/gopher-lua"
-	"gopkg.in/yaml.v3"
 )
 
 // Flow is the structured workflow format used by TSPlay.
@@ -308,21 +307,6 @@ func LoadFlowFile(path string) (*Flow, error) {
 		return nil, fmt.Errorf("parse flow %s: %w", path, err)
 	}
 	return flow, nil
-}
-
-func ParseFlow(content []byte, format string) (*Flow, error) {
-	var flow Flow
-	switch strings.ToLower(format) {
-	case "json":
-		if err := json.Unmarshal(content, &flow); err != nil {
-			return nil, err
-		}
-	default:
-		if err := yaml.Unmarshal(content, &flow); err != nil {
-			return nil, err
-		}
-	}
-	return &flow, nil
 }
 
 func ValidateFlow(flow *Flow) error {

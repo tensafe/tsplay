@@ -126,10 +126,10 @@ python3 -m http.server 8000
 
 工作原则：
 1. 先使用 tsplay.flow_schema 和 tsplay.flow_examples 获取约束，不要靠猜。
-2. 用户给了明确 URL 且目标清晰时，优先使用 tsplay.draft_flow。
-3. 页面复杂、selector 不确定、或 draft 返回 unresolved/warnings 时，再使用 tsplay.observe_page。
-4. 永远检查 validation、repair_hints、warnings、unresolved，不要把草稿直接当成最终答案。
-5. 成功前按 validate -> run -> repair 的顺序推进。
+2. 默认优先使用 tsplay.finalize_flow；只有在需要更细粒度控制时再回退到 tsplay.draft_flow。
+3. 页面复杂、selector 不确定、或 draft / finalize 返回 unresolved/warnings 时，再使用 tsplay.observe_page。
+4. 永远检查 status、validation、issue、repair_hints、warnings、unresolved，不要把草稿直接当成最终答案。
+5. 成功前按 finalize / validate -> run -> repair 的顺序推进。
 6. 只在确实需要时申请 security_preset 或 allow_* 授权，默认采用最小授权。
 7. 如果场景依赖登录态，优先建议 tsplay.save_session，并在 Flow 顶层使用 browser.use_session。
 8. 对用户输出时，优先说明“现在能做什么”“还缺什么输入/授权”“下一步要执行什么”，不要要求用户理解 selector 细节。
@@ -160,13 +160,13 @@ python3 -m http.server 8000
 
 当用户只给出“意图 + URL + 输入 + 授权边界”时，模型推荐按这个顺序工作：
 
-1. 调 `tsplay.flow_schema`
-2. 调 `tsplay.flow_examples`
-3. 如果 URL 明确，优先调 `tsplay.draft_flow`
-4. 如果页面复杂或草稿不稳，再调 `tsplay.observe_page`
-5. 看 `draft.validation`、`repair_hints`、`warnings`、`unresolved`
-6. 需要单独确认时再调 `tsplay.validate_flow`
-7. 确认后调 `tsplay.run_flow`
+1. 调 `tsplay.finalize_flow`
+2. 看 `status`、`validation`、`issue`、`repair_hints`、`warnings`、`unresolved`
+3. 如果 `status=ready`，直接调 `tsplay.run_flow`
+4. 如果 `status=needs_permission`，先解释授权，再补 `security_preset` / `allow_*`
+5. 如果 `status=needs_input`，先补输入，再重新 `tsplay.finalize_flow`
+6. 如果 `status=needs_repair`，再进入 `tsplay.validate_flow`
+7. 页面复杂或需要单独观察时再调 `tsplay.observe_page`
 8. 失败时调 `tsplay.repair_flow_context`
 9. 再调 `tsplay.repair_flow`
 10. 产出更新后的 Flow，再次 `validate_flow` / `run_flow`
@@ -174,7 +174,8 @@ python3 -m http.server 8000
 这条顺序的价值是：
 
 - 用户不必自己找 selector
-- `draft_flow` 已经会自动做一轮校验和 selector 修正
+- `finalize_flow` 能直接把“能不能跑、缺什么”收敛成一个状态
+- `draft_flow` 仍然会自动做一轮校验和 selector 修正
 - 修复上下文不会把整页 HTML 原样丢给模型
 - 最终留下的是 Flow 资产，不是一次性的对话产物
 
@@ -182,7 +183,26 @@ python3 -m http.server 8000
 
 下面这组参数很适合平台接入、联调或教学演示时参考。
 
-### 1. 草拟 Flow
+### 1. 一步式 finalize
+
+```json
+{
+  "intent": "提取页面里的表格数据",
+  "url": "http://127.0.0.1:8000/demo/tables.html",
+  "security_preset": "readonly"
+}
+```
+
+期待模型关注：
+
+- `status`
+- `flow_yaml`
+- `validation`
+- `issue`
+- `summary`
+- `next_action`
+
+### 2. 草拟 Flow（需要细粒度控制时）
 
 ```json
 {
@@ -199,7 +219,7 @@ python3 -m http.server 8000
 - `summary`
 - `next_action`
 
-### 2. 单独校验
+### 3. 单独校验
 
 ```json
 {
@@ -216,7 +236,7 @@ python3 -m http.server 8000
 - `security`
 - `next_action`
 
-### 3. 执行 Flow
+### 4. 执行 Flow
 
 ```json
 {
@@ -234,7 +254,7 @@ python3 -m http.server 8000
 - `run`
 - `artifacts`
 
-### 4. 失败后构建修复上下文
+### 5. 失败后构建修复上下文
 
 ```json
 {
@@ -251,7 +271,7 @@ python3 -m http.server 8000
 - `context.repair_hints`
 - `context.artifacts`
 
-### 5. 让模型生成修复提示
+### 6. 让模型生成修复提示
 
 ```json
 {
@@ -269,12 +289,25 @@ python3 -m http.server 8000
 
 ## TSPlay 的几个关键输出，模型必须会看
 
+### `finalize_flow`
+
+重点看：
+
+- `status`
+- `flow_yaml`
+- `validation`
+- `issue`
+- `suggested_vars`
+- `summary`
+- `next_action`
+
 ### `draft_flow`
 
 重点看：
 
 - `draft.flow_yaml`
 - `draft.validation`
+- `draft.validation.issue`
 - `draft.repair_hints`
 - `draft.warnings`
 - `draft.unresolved`
@@ -287,6 +320,7 @@ python3 -m http.server 8000
 
 - `valid`
 - `error`
+- `issue`
 - `security`
 - `next_action`
 

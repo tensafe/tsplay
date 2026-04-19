@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,6 +47,59 @@ steps:
 	}
 	if len(flow.Steps) != 3 {
 		t.Fatalf("unexpected step count: %d", len(flow.Steps))
+	}
+}
+
+func TestParseFlowRejectsUnknownStepFieldWithSuggestion(t *testing.T) {
+	_, err := ParseFlow([]byte(`
+schema_version: "1"
+name: bad_alias
+steps:
+  - action: evaluate
+    selector: "div.g"
+    script: return []
+    result_var: rows
+`), "yaml")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Code != "unknown_field" {
+		t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+	}
+	if parseErr.Issue.StepPath != "1" {
+		t.Fatalf("unexpected step path: %#v", parseErr.Issue.StepPath)
+	}
+	if parseErr.Issue.Field != "result_var" || parseErr.Issue.DidYouMean != "save_as" {
+		t.Fatalf("unexpected suggestion: %#v", parseErr.Issue)
+	}
+}
+
+func TestParseFlowRejectsDottedStepFieldWithSuggestion(t *testing.T) {
+	_, err := ParseFlow([]byte(`
+schema_version: "1"
+name: bad_nested
+steps:
+  - action: write_csv
+    file_path: reports/out.csv
+    value: "{{rows}}"
+    with.headers:
+      - title
+`), "yaml")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Field != "with.headers" || parseErr.Issue.DidYouMean != "with.headers" {
+		t.Fatalf("unexpected dotted-field issue: %#v", parseErr.Issue)
 	}
 }
 

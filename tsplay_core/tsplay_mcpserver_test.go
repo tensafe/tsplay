@@ -20,6 +20,7 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 		"tsplay.delete_session",
 		"tsplay.draft_flow",
 		"tsplay.export_session_flow_snippet",
+		"tsplay.finalize_flow",
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
 		"tsplay.get_session",
@@ -706,6 +707,62 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	}
 	if preset, ok := security["preset"].(string); !ok || preset != "" {
 		t.Fatalf("expected empty preset by default, got %#v", security["preset"])
+	}
+}
+
+func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      `搜索订单 "A10086"`,
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleFinalizeFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("finalize flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true || payload["status"] != "ready" {
+		t.Fatalf("expected ready finalize payload, got %#v", payload)
+	}
+	if _, ok := payload["flow_yaml"].(string); !ok {
+		t.Fatalf("expected flow_yaml, got %#v", payload["flow_yaml"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
 	}
 }
 
@@ -1412,6 +1469,73 @@ steps:
 	nextAction, ok := payload["next_action"].(map[string]any)
 	if !ok || nextAction["tool"] != "tsplay.validate_flow" {
 		t.Fatalf("expected validate retry next_action, got %#v", payload["next_action"])
+	}
+}
+
+func TestHandleValidateFlowToolReturnsIssueForUnsupportedActionAlias(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: bad_alias
+steps:
+  - action: fill
+    selector: "#kw"
+    text: "hello"
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected issue payload, got %#v", payload["issue"])
+	}
+	if issue["code"] != "unsupported_action" || issue["did_you_mean"] != "type_text" {
+		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+}
+
+func TestHandleValidateFlowToolReturnsIssueForUnexpectedParameter(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: bad_param
+steps:
+  - action: navigate
+    url: "https://example.com"
+    timeout: 3000
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected issue payload, got %#v", payload["issue"])
+	}
+	if issue["code"] != "unexpected_parameter" || issue["field"] != "timeout" {
+		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+	if suggestion, _ := issue["suggestion"].(string); !strings.Contains(suggestion, "browser.timeout") {
+		t.Fatalf("expected browser.timeout hint, got %#v", issue)
 	}
 }
 

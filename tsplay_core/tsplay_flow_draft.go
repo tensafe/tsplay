@@ -52,10 +52,11 @@ type FlowDraftMatch struct {
 }
 
 type FlowDraftValidation struct {
-	Valid bool   `json:"valid"`
-	Name  string `json:"name,omitempty"`
-	Steps int    `json:"steps,omitempty"`
-	Error string `json:"error,omitempty"`
+	Valid bool       `json:"valid"`
+	Name  string     `json:"name,omitempty"`
+	Steps int        `json:"steps,omitempty"`
+	Error string     `json:"error,omitempty"`
+	Issue *FlowIssue `json:"issue,omitempty"`
 }
 
 type FlowDraftSelectorRepair struct {
@@ -1063,11 +1064,13 @@ func validateDraftFlow(flow *Flow, security *FlowSecurityPolicy) *FlowDraftValid
 	validation.Steps = len(flow.Steps)
 	if err := ValidateFlow(flow); err != nil {
 		validation.Error = err.Error()
+		validation.Issue = ExtractFlowIssue(err, flow)
 		return validation
 	}
 	if security != nil {
 		if err := ValidateFlowSecurity(flow, *security); err != nil {
 			validation.Error = err.Error()
+			validation.Issue = ExtractFlowIssue(err, flow)
 			return validation
 		}
 	}

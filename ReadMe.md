@@ -198,11 +198,21 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 | 分组 | 工具 |
 | --- | --- |
 | Flow 认知 | `tsplay.list_actions`、`tsplay.flow_schema`、`tsplay.flow_examples` |
-| 页面观察与草拟 | `tsplay.observe_page`、`tsplay.draft_flow` |
+| 页面观察与草拟 | `tsplay.observe_page`、`tsplay.draft_flow`、`tsplay.finalize_flow` |
 | 校验、执行与修复 | `tsplay.validate_flow`、`tsplay.run_flow`、`tsplay.repair_flow_context`、`tsplay.repair_flow` |
 | 会话管理 | `tsplay.save_session`、`tsplay.list_sessions`、`tsplay.get_session`、`tsplay.export_session_flow_snippet`、`tsplay.delete_session` |
 
 ### 推荐调用顺序
+
+如果你想给小模型或产品化接入一条更短的默认路径，优先用：
+
+1. `tsplay.finalize_flow`
+2. 如果 `status=ready`，直接 `tsplay.run_flow`
+3. 如果 `status=needs_permission`，补授权后再次 `tsplay.finalize_flow`
+4. 如果 `status=needs_input`，补输入后再次 `tsplay.finalize_flow`
+5. 如果 `status=needs_repair`，再进入 `tsplay.validate_flow` / `tsplay.repair_flow_context` / `tsplay.repair_flow`
+
+如果你需要更细粒度控制，再走完整链路：
 
 1. 先调 `tsplay.flow_schema`，拿到严格约束
 2. 需要参考模板时调 `tsplay.flow_examples`
@@ -213,7 +223,7 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 7. 失败后用 `tsplay.repair_flow_context` / `tsplay.repair_flow` 收敛修复
 8. 如果流程要长期复用登录态，再调 `tsplay.save_session`
 
-`tsplay.draft_flow` 和 `tsplay.repair_flow_context` 都会返回统一结构的 `repair_hints`，方便继续交给模型修正。
+`tsplay.draft_flow`、`tsplay.finalize_flow` 和 `tsplay.repair_flow_context` 都会返回统一结构的 `repair_hints` 或修复线索，方便继续交给模型修正。
 
 黄金路径工具现在都会返回统一 envelope，顶层至少包含这些字段：
 
@@ -226,6 +236,21 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 - `run`
 
 其中浏览器类工具会稳定返回 `run.id`、`status`、`queue_wait_ms`、`duration_ms`、`timeout_ms`、`audit_path`、`run_root` 等运行元信息。
+
+另外，和 Flow 结构相关的工具现在会尽量返回结构化诊断：
+
+- `draft.validation.issue`
+- `validate_flow.issue`
+- `finalize_flow.issue`
+
+这些字段适合给模型直接消费，尤其是：
+
+- 未知字段
+- 不支持的 action
+- 参数名写错
+- 安全策略阻塞
+
+例如常见的 `fill -> type_text`、`result_var -> save_as`、`with.headers` 写法错误、`navigate.timeout` 误用，都会尽量返回更明确的修复提示。
 
 ### 从用户意图草拟 Flow
 
@@ -248,6 +273,29 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 - 自动执行一轮与 `validate_flow` 对齐的校验
 - 在 observation 里存在更稳 selector 时自动修正一轮
 - 返回 `validation`、`selector_repairs`、`repair_hints`、建议变量和未解决项
+
+### 一步式收敛：`tsplay.finalize_flow`
+
+`tsplay.finalize_flow` 适合做“小模型友好”的默认入口：它会复用 `draft_flow` 的观察和草拟能力，但直接返回是否已经可以执行。
+
+典型输入：
+
+```json
+{
+  "intent": "搜索订单并导出",
+  "url": "https://example.com/orders",
+  "security_preset": "readonly"
+}
+```
+
+重点看这些字段：
+
+- `status`：`ready` / `needs_input` / `needs_permission` / `needs_repair`
+- `flow_yaml`
+- `validation`
+- `issue`
+- `suggested_vars`
+- `next_action`
 
 ## 浏览器会话与 Flow 级配置
 
