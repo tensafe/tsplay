@@ -53,7 +53,7 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_redis` |
 | 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_database`，`db_transaction` 会自动提交或回滚 |
 | 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_browser_state` 约束 |
-| Flow 便捷动作 | `extract_text`、`assert_visible`、`assert_text`、`set_var`、`append_var` | 是 | 部分 | 是 | 可以 Flow 优先，Lua 可按需补糖 |
+| Flow 便捷动作 | `extract_text`、`assert_visible`、`assert_text`、`set_var`、`append_var` | 是 | 是 | 是 | 已对齐；更适合作为编排语义糖而不是底层原语 |
 | Flow 控制流 | `retry`、`if`、`foreach`、`on_error`、`wait_until` | 是 | 否 | 是 | 不要求同步到 Lua |
 | Lua 回调型能力 | `intercept_request` | 否 | 是 | 否 | 保持 Lua 专属更自然 |
 

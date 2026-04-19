@@ -1256,6 +1256,84 @@ func TestRunFlowLuaExtractAndAssertHelpers(t *testing.T) {
 	}
 }
 
+func TestRunFlowLuaSetAndAppendVarHelpers(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_set_and_append_vars",
+		Vars: map[string]any{
+			"message": "hello",
+		},
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code:   `return set_var("copied_message", "{{message}}")`,
+				SaveAs: "set_result",
+			},
+			{
+				Action: "lua",
+				Code:   `return append_var("items", copied_message)`,
+				SaveAs: "append_one",
+			},
+			{
+				Action: "lua",
+				Code:   `return append_var("items", "tail")`,
+				SaveAs: "append_two",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowLua: true},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["copied_message"]; got != "hello" {
+		t.Fatalf("copied_message = %#v", got)
+	}
+	if got := result.Vars["set_result"]; got != "hello" {
+		t.Fatalf("set_result = %#v", got)
+	}
+
+	appendOne, ok := result.Vars["append_one"].([]any)
+	if !ok || len(appendOne) != 1 || appendOne[0] != "hello" {
+		t.Fatalf("append_one = %#v", result.Vars["append_one"])
+	}
+	appendTwo, ok := result.Vars["append_two"].([]any)
+	if !ok || len(appendTwo) != 2 || appendTwo[0] != "hello" || appendTwo[1] != "tail" {
+		t.Fatalf("append_two = %#v", result.Vars["append_two"])
+	}
+	items, ok := result.Vars["items"].([]any)
+	if !ok || len(items) != 2 || items[0] != "hello" || items[1] != "tail" {
+		t.Fatalf("items = %#v", result.Vars["items"])
+	}
+}
+
+func TestLuaSetAndAppendVarHelpersWithoutFlowContext(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+	ensureFlowActionGlobals(L)
+
+	if err := L.DoString(`
+set_var("message", "hello")
+append_var("items", message)
+append_var("items", "tail")
+`); err != nil {
+		t.Fatalf("run lua: %v", err)
+	}
+
+	if got := luaValueToGo(L.GetGlobal("message")); got != "hello" {
+		t.Fatalf("message = %#v", got)
+	}
+	items, ok := luaValueToGo(L.GetGlobal("items")).([]any)
+	if !ok || len(items) != 2 || items[0] != "hello" || items[1] != "tail" {
+		t.Fatalf("items = %#v", luaValueToGo(L.GetGlobal("items")))
+	}
+}
+
 func TestRunFlowHTTPRequestAndJSONExtract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("q"); got != "山东" {

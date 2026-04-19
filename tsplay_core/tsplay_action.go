@@ -31,6 +31,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"type_text", type_text, "在指定元素中输入文本", "Type text into a specified element. Example: type_text('#input-id', 'Hello World'). Parameters: selector (string) - The selector of the input element; text (string) - The text to type."},
 	{"get_text", get_text, "获取指定元素的文本内容", "Get the text content of a specified element. Example: get_text('#element-id'). Parameters: selector (string) - The selector of the element to retrieve text from."},
 	{"extract_text", extract_text, "提取元素文本，可选正则匹配", "Extract text from a selector, optionally waiting first and applying a regex. Example: extract_text('#status', 5000, 'Status: (.*)'). Parameters: selector (string) - The selector to read from; timeout (int, optional) - Wait timeout in milliseconds; pattern (string, optional) - Regex used to extract the first match. Returns: string or string[]."},
+	{"set_var", set_var, "设置 Flow/Lua 变量", "Set a Flow/Lua variable. Example: set_var('export_message', 'Current orders: ' .. order_count). Parameters: name (string) - Variable name; value (any) - Value to store. Returns: the stored value."},
+	{"append_var", append_var, "向列表变量追加值", "Append a value to a list variable. Example: append_var('processed_rows', row.source_row). Parameters: name (string) - Variable name; value (any) - Value to append. Returns: the updated list."},
 	{"set_value", set_value, "设置指定元素的值", "Set the value of a specified element. Example: set_value('#input-id', 'new value'). Parameters: selector (string) - The selector of the input element; value (string) - The value to set."},
 	{"select_option", select_option, "选择下拉框中的选项", "Select an option in a dropdown. Example: select_option('#dropdown-id', 'option-value'). Parameters: selector (string) - The selector of the dropdown; value (string) - The value of the option to select."},
 	{"hover", hover, "将鼠标悬停在指定元素上", "Hover the mouse over a specified element. Example: hover('#element-id'). Parameters: selector (string) - The selector of the element to hover over."},
@@ -524,6 +526,99 @@ func extract_text(L *lua.LState) int {
 	}
 	L.Push(goValueToLua(L, result))
 	return 1
+}
+
+func set_var(L *lua.LState) int {
+	name, ok := luaFlowVarName(L, "set_var", 1)
+	if !ok {
+		return 0
+	}
+
+	value := luaValueToGo(L.CheckAny(2))
+	flowCtx := flowContextFromState(L)
+	result := value
+	if flowCtx != nil {
+		var err error
+		result, err = runFlowSetVarStep(flowCtx, FlowStep{
+			Action: "set_var",
+			SaveAs: name,
+			With:   map[string]any{"value": value},
+		})
+		if err != nil {
+			L.RaiseError("%v", err)
+			return 0
+		}
+	}
+
+	setLuaFlowVar(L, flowCtx, name, result)
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func append_var(L *lua.LState) int {
+	name, ok := luaFlowVarName(L, "append_var", 1)
+	if !ok {
+		return 0
+	}
+
+	value := luaValueToGo(L.CheckAny(2))
+	flowCtx := flowContextFromState(L)
+
+	var (
+		result any
+		err    error
+	)
+	if flowCtx != nil {
+		result, err = runFlowAppendVarStep(flowCtx, FlowStep{
+			Action: "append_var",
+			SaveAs: name,
+			With:   map[string]any{"value": value},
+		})
+	} else {
+		current := luaValueToGo(L.GetGlobal(name))
+		if current == nil {
+			result = []any{value}
+		} else {
+			items, listErr := toList(current)
+			if listErr != nil {
+				err = fmt.Errorf("append_var save_as %q must already be a list, got %T", name, current)
+			} else {
+				result = append(append([]any(nil), items...), value)
+			}
+		}
+	}
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+
+	setLuaFlowVar(L, flowCtx, name, result)
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func luaFlowVarName(L *lua.LState, action string, index int) (string, bool) {
+	name := strings.TrimSpace(L.CheckString(index))
+	if name == "" {
+		L.RaiseError("%s requires a variable name", action)
+		return "", false
+	}
+	if !flowIdentifierPattern.MatchString(name) {
+		L.RaiseError("%s variable name %q is not valid", action, name)
+		return "", false
+	}
+	return name, true
+}
+
+func setLuaFlowVar(L *lua.LState, ctx *FlowContext, name string, value any) {
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	if ctx != nil {
+		setFlowVar(L, ctx, name, value)
+		return
+	}
+	L.SetGlobal(name, goValueToLua(L, value))
 }
 
 func set_value(L *lua.LState) int {
