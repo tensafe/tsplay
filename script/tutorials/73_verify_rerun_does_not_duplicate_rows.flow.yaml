@@ -1,0 +1,64 @@
+schema_version: "1"
+name: lesson_73_verify_rerun_does_not_duplicate_rows_flow
+description: Load the latest shared batch rows after a rerun and save a package that proves row counts still match the source CSV.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_prefix}}{{latest_batch_id}}"
+    save_as: payload_text
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.input_file"
+    save_as: input_file
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: source_rows
+
+  - action: foreach
+    items: "{{source_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: source_scan
+    steps:
+      - action: set_var
+        save_as: last_source_name
+        with:
+          value: "{{row.name}}"
+
+  - action: db_query
+    connection: reporting
+    save_as: db_rows
+    with:
+      sql: SELECT line_no, name, phone, status, operator_name FROM public.tutorial_import_rows WHERE batch_id = $1 ORDER BY line_no
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: db_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/73-verify-rerun-does-not-duplicate-rows-flow.json
+    with:
+      value:
+        lesson: "73"
+        mode: flow
+        latest_batch_id: "{{latest_batch_id}}"
+        input_file: "{{input_file}}"
+        source_row_count: "{{source_scan.iterations}}"
+        db_count_row: "{{db_count_row}}"
+        db_rows: "{{db_rows}}"

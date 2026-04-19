@@ -7,6 +7,30 @@ import (
 	"testing"
 )
 
+func TestParseObservationForDraftAllowsContentOnlyObservation(t *testing.T) {
+	observation, err := ParseObservationForDraft(`{
+  "title": "网易财经",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h2",
+      "text": "财经要闻",
+      "selector": "xpath=/html/body/main/section[1]/h2[1]"
+    }
+  ]
+}`)
+	if err != nil {
+		t.Fatalf("parse observation: %v", err)
+	}
+	if observation == nil || observation.Title != "网易财经" {
+		t.Fatalf("expected parsed observation title, got %#v", observation)
+	}
+	if len(observation.ContentElements) != 1 {
+		t.Fatalf("expected content elements, got %#v", observation.ContentElements)
+	}
+}
+
 func TestBuildDraftFlowSearchAndExport(t *testing.T) {
 	observation := &PageObservation{
 		URL:          "https://example.com/orders",
@@ -246,6 +270,119 @@ func TestBuildDraftFlowUploadIntent(t *testing.T) {
 	}
 	if draft.Validation == nil || !draft.Validation.Valid {
 		t.Fatalf("expected structural validation to pass, got %#v", draft.Validation)
+	}
+}
+
+func TestBuildDraftFlowUsesContentElementsForNewsList(t *testing.T) {
+	observation := &PageObservation{
+		URL:          "https://money.163.com/",
+		Title:        "网易财经",
+		ArtifactRoot: t.TempDir(),
+		ContentElements: []PageObservationContentElement{
+			{
+				Index:    1,
+				Kind:     "headline",
+				Tag:      "h2",
+				Text:     "财经要闻",
+				XPath:    "/html/body/main/section[1]/h2[1]",
+				Selector: "xpath=/html/body/main/section[1]/h2[1]",
+			},
+			{
+				Index:    2,
+				Kind:     "article_link",
+				Tag:      "a",
+				Text:     "头条新闻一",
+				Href:     "https://money.163.com/story/1",
+				XPath:    "/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+				Selector: "xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+			},
+			{
+				Index:    3,
+				Kind:     "article_link",
+				Tag:      "a",
+				Text:     "头条新闻二",
+				Href:     "https://money.163.com/story/2",
+				XPath:    "/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+				Selector: "xpath=/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+			},
+		},
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:      "查看财经要闻内容",
+		Observation: observation,
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if !strings.Contains(draft.FlowYAML, `action: get_all_links`) {
+		t.Fatalf("expected get_all_links step from content elements: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `save_as: content_links`) {
+		t.Fatalf("expected content_links variable: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `save_as: content_section_title`) {
+		t.Fatalf("expected content section title extraction: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `xpath=/html/body/main/section[1]`) {
+		t.Fatalf("expected derived content container selector: %s", draft.FlowYAML)
+	}
+	if !draftHasAnyPlannedAction(draft.PlannedActions, "view_content") {
+		t.Fatalf("expected view_content planned action, got %#v", draft.PlannedActions)
+	}
+	flow, err := ParseFlow([]byte(draft.FlowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse drafted flow: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate drafted flow: %v", err)
+	}
+}
+
+func TestBuildDraftFlowUsesContentElementsForArticlePage(t *testing.T) {
+	observation := &PageObservation{
+		URL:          "https://money.163.com/story/1",
+		Title:        "文章详情",
+		ArtifactRoot: t.TempDir(),
+		ContentElements: []PageObservationContentElement{
+			{
+				Index:    1,
+				Kind:     "headline",
+				Tag:      "h1",
+				Text:     "A股午盘观察",
+				XPath:    "/html/body/main/article[1]/h1[1]",
+				Selector: "xpath=/html/body/main/article[1]/h1[1]",
+			},
+			{
+				Index:    2,
+				Kind:     "summary_text",
+				Tag:      "p",
+				Text:     "今日市场围绕科技和消费板块展开，成交额较上一交易日明显放大。",
+				XPath:    "/html/body/main/article[1]/p[1]",
+				Selector: "xpath=/html/body/main/article[1]/p[1]",
+			},
+		},
+	}
+
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:      "阅读文章内容",
+		Observation: observation,
+	})
+	if err != nil {
+		t.Fatalf("build draft flow: %v", err)
+	}
+	if !strings.Contains(draft.FlowYAML, `save_as: article_title`) {
+		t.Fatalf("expected article_title extraction: %s", draft.FlowYAML)
+	}
+	if !strings.Contains(draft.FlowYAML, `save_as: article_summary`) {
+		t.Fatalf("expected article_summary extraction: %s", draft.FlowYAML)
+	}
+	flow, err := ParseFlow([]byte(draft.FlowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse drafted flow: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate drafted flow: %v", err)
 	}
 }
 

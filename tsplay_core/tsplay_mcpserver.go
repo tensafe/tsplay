@@ -18,6 +18,23 @@ import (
 
 const MCP_TINY_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAARgAAAEYCAIAAAAI7H7bAAAZyUlEQVR4nOzce1RVZd4H8MM5BwERQUDxQpCoI0RajDWjomSEkOaltDBvaaIVy5aJltNkadkSdXJoWs6IKZko6bh0aABXxDTCKFgwgwalOKCICiJyEY7cz+Fw3rV63nnWb/a5eNSfWNP389fZt2dvNvu797Of5zlHazKZVABwZ9T3+gAA/hcgSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABho7/UBwM9L9w9M/43OkZ/FyhaXqlQqOp+uJrYy/qCrq0t87urqMhqN3d3dKpWq6wdiUi7t6uoSJZhvJRaZTCYxKTY0Go0eHh7Lly/v06eP+LsQpJ8vcZUYDAb9D8SFJSfF5SU+GwwGcQnq/0NuaDAYxIaKRWKp0Wg0mUzyYqUXrtFoFBe9nJRXv7hY5YaKRWJDOikS0pO8vLwyMzNlin56QZJ3I4vzzT/f6srimuj6D/n/MxgM8o5lMBjkZSEW0f863Zbe6hRligLpYciixFJ6uSgORnH7VCxSXLt0qVikOI2KU2r/pO01/1e5uLjMmzfv9ddfDwwMpPNvEiSDwXD06FHxH6VPUvn0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2rVrtPNq4MCB1tqIc3Nzb+Xf/l/i4uIslqnoJzhz5gz9lgSvkJAQnU73u9/97uDBg6J6cuzYsfj4+NWrV+fk5BQVFcmjio+PF52tPj4+u3btMr9a7om7HqScnBxaSTPvWBDkqIIDBw6YL1X8uMK6deto/dDZ2dnaaOIvv/ySbrh79276ew/+/v4Wt1L0HcfGxup0OtpTPm/ePIsbKrpEXVxcTp8+be3MKL4PsmTJkhMnTtBOgtDQ0JaWFtoxOnbsWGulKb6Lbj+tViu/fqeg+GJlSkqK4jnMZfTo0eIYXnrppdLS0uLiYrVaffXq1V//+tfiZwLE92EbGhrEC3avXr0WLFhAv3B5z931xgbR2iM+9+nTZ9y4cRZXmzJlimg8ffrpp82XKt6RCgoK6IDr8PBwa+PKFJX4oqIi2ixm7UdU5s6dS4cL7dmzp6SkhDbjWvyJQJVK9eSTT7722mtysr29feHChdaGOSve1oYOHXr+/HnaRPHwww8rvvwTFBRksSgxtMzaItvmzZtn8Yux5iNNs7KybPzy220QnXjbt28/ceKEOIby8vIPP/xQ9G5t3LgxODj4hRdeWLx4cUVFRV5e3iOPPPLVV1+99dZbpaWl+/btszik61656z/HJX6G9/935uBgrQ1H/OipWq221tZko3NGo9FYexURdUs5qVar6ZVqY3ei7VhOarVag8EgH61ardbar+SIn8+mc6z15yjWFH8CbZURe+no6JD7tfGX0vN8S+w/ew4ODFeLqDzLv06j0dCHsDjtckdardZoNDo4OOTm5s6YMaO1tfXw4cOzZ8++w2O4G/C7dvCj1tbW9u67737wwQdBQUFbt26dOnXqvT4iy35iP6IPPysVFRXR0dFarTYtLS0iIsLen5i7F36SP+oNPwepqamRkZELFiz45ptvZsyY8WNOEZ5I8GOUn58fFxcXGBiYl5d3S1/av4fwjgQ/LhcvXoyIiNi/f/89Gelz2/BEgh+XwsLCo0ePKoa//PjhiQTAAI0NAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAwQJAAGCBIAAwQJgAGCBMAAQQJggCABMECQABggSAAMECQABggSAAMECYABggTAAEECYIAgATBAkAAYIEgADBAkAAYIEgADBAmAAYIEwABBAmCAIAEwQJAAGCBIAAz+LwAA///FzJto8JNVBwAAAABJRU5ErkJggg=="
 
+const draftFlowObservationDescription = "Optional PageObservation input. You may pass either a JSON string or a structured object; both plain PageObservation objects and wrappers with an observation field are accepted."
+
+func withDraftFlowObservationInput() mcp.ToolOption {
+	return func(tool *mcp.Tool) {
+		tool.InputSchema.Properties["observation"] = map[string]any{
+			"description": draftFlowObservationDescription,
+			"oneOf": []any{
+				map[string]any{"type": "string"},
+				map[string]any{
+					"type":                 "object",
+					"additionalProperties": true,
+				},
+			},
+		}
+	}
+}
+
 func McpServerSSE() {
 	var addr string
 	flag.StringVar(&addr, "addr", ":8080", "address to listen on")
@@ -368,7 +385,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	), handleFlowExamplesTool)
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.draft_flow",
-		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation, then auto-validate it and do one selector repair pass when a better observed selector exists. If observation is omitted, the tool will open the page first."),
+		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation, then auto-validate it and do one selector repair pass when a better observed selector exists. Recommended workflow: observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow."),
 		mcp.WithString("intent",
 			mcp.Description("User intent in natural language, for example 搜索订单并导出 or upload a file and submit."),
 			mcp.Required(),
@@ -376,9 +393,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithString("url",
 			mcp.Description("Optional page URL. Required when observation is not provided."),
 		),
-		mcp.WithString("observation",
-			mcp.Description("Optional PageObservation JSON, or a wrapper that contains an observation field."),
-		),
+		withDraftFlowObservationInput(),
 		mcp.WithString("flow_name",
 			mcp.Description("Optional explicit flow name. Defaults to an auto-generated draft name."),
 		),
@@ -393,6 +408,10 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithNumber("max_elements",
 			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
 		),
 		mcp.WithBoolean("allow_lua",
 			mcp.Description("Allow lua during the auto validation pass."),
@@ -418,6 +437,61 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithOpenWorldHintAnnotation(true),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleDraftFlowToolWithOptions(ctx, request, options)
+	})
+
+	mcpServer.AddTool(mcp.NewTool("tsplay.finalize_flow",
+		mcp.WithDescription("Draft and validate a TSPlay Flow in one step, then return a model-friendly readiness status such as ready, needs_input, needs_permission, or needs_repair."),
+		mcp.WithString("intent",
+			mcp.Description("User intent in natural language, for example 搜索订单并导出 or upload a file and submit."),
+			mcp.Required(),
+		),
+		mcp.WithString("url",
+			mcp.Description("Optional page URL. Required when observation is not provided."),
+		),
+		withDraftFlowObservationInput(),
+		mcp.WithString("flow_name",
+			mcp.Description("Optional explicit flow name. Defaults to an auto-generated draft name."),
+		),
+		mcp.WithBoolean("headless",
+			mcp.Description("Run browser in headless mode when url is provided. Defaults to true."),
+		),
+		mcp.WithNumber("timeout",
+			mcp.Description("Navigation timeout in milliseconds when url is provided. Defaults to 30000."),
+		),
+		mcp.WithNumber("run_timeout",
+			mcp.Description("Total MCP browser run timeout in milliseconds, including queue wait and artifact capture. Defaults to the server runtime policy."),
+		),
+		mcp.WithNumber("max_elements",
+			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
+		),
+		mcp.WithBoolean("allow_lua",
+			mcp.Description("Allow lua during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_javascript",
+			mcp.Description("Allow execute_script and evaluate during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_file_access",
+			mcp.Description("Allow upload/download/screenshot/save_html actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_browser_state",
+			mcp.Description("Allow browser storage/cookie actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_http",
+			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_redis",
+			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_database",
+			mcp.Description("Allow database write actions such as db_insert during the auto validation pass."),
+		),
+		mcp.WithOpenWorldHintAnnotation(true),
+	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleFinalizeFlowToolWithOptions(ctx, request, options)
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.repair_flow_context",
@@ -485,7 +559,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.observe_page",
-		mcp.WithDescription("Open a page and return an AI-friendly observation: screenshot path, DOM snapshot path, and interactive elements with selector candidates."),
+		mcp.WithDescription("Open a page and return an AI-friendly observation: page summary, DOM snapshot excerpt, content elements, screenshot path, DOM snapshot path, and interactive elements with selector candidates."),
 		mcp.WithString("url",
 			mcp.Description("URL to open and observe."),
 			mcp.Required(),
@@ -508,7 +582,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.validate_flow",
-		mcp.WithDescription("Validate a TSPlay Flow YAML or JSON document without launching a browser."),
+		mcp.WithDescription("Validate a TSPlay Flow YAML or JSON document without launching a browser. Recommended workflow: observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow."),
 		mcp.WithString("flow",
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
@@ -518,6 +592,10 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithString("format",
 			mcp.Description("Optional format hint: yaml or json."),
 			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
 		),
 		mcp.WithBoolean("allow_lua",
 			mcp.Description("Allow lua steps for this request. Defaults to false."),
@@ -546,7 +624,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.run_flow",
-		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace. Prefer browser config in the flow itself; the headless argument is only an override."),
+		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace. Prefer browser config in the flow itself; the headless argument is only an override. Recommended workflow: observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow."),
 		mcp.WithString("flow",
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
@@ -556,6 +634,10 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithString("format",
 			mcp.Description("Optional format hint: yaml or json."),
 			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
 		),
 		mcp.WithBoolean("headless",
 			mcp.Description("Run browser in headless mode. Defaults to true."),
@@ -594,7 +676,7 @@ func handleFlowListActionsTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.list_actions", map[string]any{
 		"actions": buildFlowActionManifest(),
 	})
 }
@@ -613,16 +695,20 @@ func handleListSessionsToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	sessions, err := ListFlowSavedSessions(options.ArtifactRoot)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.list_sessions", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
+	actor := flowSavedSessionAccessFromContext(ctx)
 	items := make([]map[string]any, 0, len(sessions))
 	for _, session := range sessions {
-		items = append(items, BuildFlowSavedSessionView(session, options.ArtifactRoot))
+		if err := validateFlowSavedSessionAccess(&session, actor, "viewed"); err != nil {
+			continue
+		}
+		items = append(items, BuildFlowSavedSessionViewForActor(session, options.ArtifactRoot, actor))
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.list_sessions", map[string]any{
 		"ok":       true,
 		"sessions": items,
 	})
@@ -642,14 +728,21 @@ func handleGetSessionToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	session, err := LoadFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.get_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	actor := flowSavedSessionAccessFromContext(ctx)
+	if err := validateFlowSavedSessionAccess(session, actor, "viewed"); err != nil {
+		return newTSPlayToolResult("tsplay.get_session", map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	return newTSPlayToolResult("tsplay.get_session", map[string]any{
 		"ok":      true,
-		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+		"session": BuildFlowSavedSessionDetailForActor(*session, options.ArtifactRoot, actor),
 	})
 }
 
@@ -667,21 +760,28 @@ func handleExportSessionFlowSnippetToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	session, err := LoadFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.export_session_flow_snippet", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	exported, err := ExportFlowSavedSessionFlowSnippet(*session, options.ArtifactRoot, request.GetString("format", ""))
+	actor := flowSavedSessionAccessFromContext(ctx)
+	if err := validateFlowSavedSessionAccess(session, actor, "exported"); err != nil {
+		return newTSPlayToolResult("tsplay.export_session_flow_snippet", map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	exported, err := ExportFlowSavedSessionFlowSnippetForActor(*session, options.ArtifactRoot, request.GetString("format", ""), actor)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.export_session_flow_snippet", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 	result := map[string]any{
 		"ok":      true,
-		"session": BuildFlowSavedSessionDetail(*session, options.ArtifactRoot),
+		"session": BuildFlowSavedSessionDetailForActor(*session, options.ArtifactRoot, actor),
 		"export":  exported,
 	}
 	if snippets, ok := exported["snippets"]; ok {
@@ -690,7 +790,7 @@ func handleExportSessionFlowSnippetToolWithOptions(
 	if snippet, ok := exported["snippet"]; ok {
 		result["snippet"] = snippet
 	}
-	return newJSONToolResult(result)
+	return newTSPlayToolResult("tsplay.export_session_flow_snippet", result)
 }
 
 func handleDeleteSessionTool(
@@ -711,12 +811,12 @@ func handleDeleteSessionToolWithOptions(
 		flowSavedSessionAccessFromContext(ctx),
 	)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.delete_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.delete_session", map[string]any{
 		"ok":      true,
 		"deleted": deleted,
 	})
@@ -747,14 +847,14 @@ func handleSaveSessionToolWithOptions(
 		OwnerClientVersion: actor.ClientVersion,
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.save_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.save_session", map[string]any{
 		"ok":      true,
-		"session": BuildFlowSavedSessionView(*session, options.ArtifactRoot),
+		"session": BuildFlowSavedSessionViewForActor(*session, options.ArtifactRoot, actor),
 	})
 }
 
@@ -762,7 +862,7 @@ func handleFlowSchemaTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.flow_schema", map[string]any{
 		"schema":              BuildFlowJSONSchema(),
 		"action_manifest":     buildFlowActionManifest(),
 		"generation_rules":    flowSchemaGenerationRules(),
@@ -776,7 +876,7 @@ func handleFlowExamplesTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.flow_examples", map[string]any{
 		"examples":                BuildFlowExamples(),
 		"example_selection_hints": flowExampleSelectionHints(),
 	})
@@ -794,39 +894,135 @@ func handleDraftFlowToolWithOptions(
 	request mcp.CallToolRequest,
 	options TSPlayMCPServerOptions,
 ) (*mcp.CallToolResult, error) {
-	intent := strings.TrimSpace(request.GetString("intent", ""))
-	if intent == "" {
-		return newJSONToolResult(map[string]any{
-			"ok":    false,
-			"error": "intent is required",
-		})
+	payload := draftFlowPayloadWithOptions(ctx, request, options, "tsplay.draft_flow")
+	return newTSPlayToolResult("tsplay.draft_flow", payload)
+}
+
+func handleFinalizeFlowTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return handleFinalizeFlowToolWithOptions(ctx, request, DefaultTSPlayMCPServerOptions())
+}
+
+func handleFinalizeFlowToolWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+) (*mcp.CallToolResult, error) {
+	payload := draftFlowPayloadWithOptions(ctx, request, options, "tsplay.finalize_flow")
+	draft, _ := payload["draft"].(*FlowDraft)
+	if draft == nil {
+		return newTSPlayToolResult("tsplay.finalize_flow", payload)
 	}
 
-	observation, err := ParseObservationForDraft(request.GetString("observation", ""))
+	status, blockingReason := finalizeFlowStatus(draft)
+	payload["status"] = status
+	payload["flow_yaml"] = draft.FlowYAML
+	payload["validation"] = draft.Validation
+	if draft.Validation != nil && draft.Validation.Issue != nil {
+		payload["issue"] = draft.Validation.Issue
+	}
+	AttachRecommendedExamples(payload, draft.Intent, draft, draft.Validation.Issue, 3)
+	AttachRepairExample(payload, draft.Validation.Issue)
+	if blockingReason != "" {
+		payload["blocking_reason"] = blockingReason
+	}
+	if len(draft.SuggestedVars) > 0 {
+		payload["suggested_vars"] = draft.SuggestedVars
+	}
+	if len(draft.Unresolved) > 0 {
+		payload["unresolved"] = draft.Unresolved
+	}
+	return newTSPlayToolResult("tsplay.finalize_flow", payload)
+}
+
+func observationFromDraftToolRequest(request mcp.CallToolRequest) (*PageObservation, error) {
+	rawObservation, ok := request.GetArguments()["observation"]
+	if !ok || rawObservation == nil {
+		return nil, nil
+	}
+	if text, ok := rawObservation.(string); ok {
+		return ParseObservationForDraft(text)
+	}
+	normalized := normalizeDraftObservationArgument(rawObservation)
+	observationJSON, err := json.Marshal(normalized)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return nil, fmt.Errorf("observation must be a JSON string or object: %w", err)
+	}
+	return ParseObservationForDraft(string(observationJSON))
+}
+
+func normalizeDraftObservationArgument(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		normalized := make(map[string]any, len(typed))
+		for key, nested := range typed {
+			cleanKey := strings.TrimSpace(strings.TrimRight(key, `\`))
+			if cleanKey == "" {
+				cleanKey = key
+			}
+			normalized[cleanKey] = normalizeDraftObservationArgument(nested)
+		}
+		return normalized
+	case []any:
+		normalized := make([]any, 0, len(typed))
+		for _, item := range typed {
+			normalized = append(normalized, normalizeDraftObservationArgument(item))
+		}
+		return normalized
+	default:
+		return value
+	}
+}
+
+func draftFlowPayloadWithOptions(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+	options TSPlayMCPServerOptions,
+	toolName string,
+) map[string]any {
+	intent := strings.TrimSpace(request.GetString("intent", ""))
+	if intent == "" {
+		return map[string]any{
+			"ok":    false,
+			"error": "intent is required",
+		}
+	}
+
+	observation, err := observationFromDraftToolRequest(request)
+	if err != nil {
+		return map[string]any{
 			"ok":    false,
 			"error": err.Error(),
-		})
+		}
 	}
 
 	url := strings.TrimSpace(request.GetString("url", ""))
-	security := flowSecurityPolicyFromToolRequest(request, options)
+	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		return map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		}
+	}
+	security := securityResolution.Policy
 	var runHandle *tsplayBrowserRunHandle
 	if observation == nil {
 		if url == "" {
-			return newJSONToolResult(map[string]any{
+			return map[string]any{
 				"ok":    false,
 				"error": "url or observation is required",
-			})
+			}
 		}
-		runHandle, ctx, err = beginTSPlayBrowserRun(ctx, request, "tsplay.draft_flow", options, &security)
+		runHandle, ctx, err = beginTSPlayBrowserRun(ctx, request, toolName, options, &security)
 		if err != nil {
-			return newJSONToolResult(map[string]any{
-				"ok":    false,
-				"error": err.Error(),
-				"run":   runHandle.snapshot(),
-			})
+			return map[string]any{
+				"ok":       false,
+				"error":    err.Error(),
+				"run":      runHandle.snapshot(),
+				"security": securityResolution,
+			}
 		}
 		observation, err = ObservePage(PageObservationOptions{
 			URL:          url,
@@ -842,11 +1038,12 @@ func handleDraftFlowToolWithOptions(
 			run := runHandle.finish(err, map[string]any{
 				"url": url,
 			})
-			return newJSONToolResult(map[string]any{
-				"ok":    false,
-				"error": err.Error(),
-				"run":   run,
-			})
+			return map[string]any{
+				"ok":       false,
+				"error":    err.Error(),
+				"run":      run,
+				"security": securityResolution,
+			}
 		}
 	}
 
@@ -860,26 +1057,29 @@ func handleDraftFlowToolWithOptions(
 	})
 	if err != nil {
 		payload := map[string]any{
-			"ok":    false,
-			"error": err.Error(),
+			"ok":       false,
+			"error":    err.Error(),
+			"security": securityResolution,
 		}
 		if runHandle != nil {
 			payload["run"] = runHandle.finish(err, map[string]any{
 				"url": url,
 			})
 		}
-		return newJSONToolResult(map[string]any{
-			"ok":    payload["ok"],
-			"error": payload["error"],
-			"run":   payload["run"],
-		})
+		return payload
 	}
 
 	result := map[string]any{
 		"ok":          true,
 		"observation": observation,
 		"draft":       draft,
+		"security":    securityResolution,
 	}
+	if draft.Validation != nil && draft.Validation.Issue != nil {
+		result["issue"] = draft.Validation.Issue
+	}
+	attachObservationPayloadFields(result, observation)
+	AttachRecommendedExamples(result, intent, draft, draft.Validation.Issue, 3)
 	if runHandle != nil {
 		result["run"] = runHandle.finish(nil, map[string]any{
 			"url":              firstNonEmpty(url, observation.URL),
@@ -888,7 +1088,86 @@ func handleDraftFlowToolWithOptions(
 			"selector_repairs": len(draft.SelectorRepairs),
 		})
 	}
-	return newJSONToolResult(result)
+	return result
+}
+
+func attachObservationPayloadFields(payload map[string]any, observation *PageObservation) {
+	if payload == nil || observation == nil {
+		return
+	}
+	if observation.PageSummary != "" {
+		payload["page_summary"] = observation.PageSummary
+	}
+	if observation.DOMSnapshotExcerpt != "" {
+		payload["dom_snapshot_excerpt"] = observation.DOMSnapshotExcerpt
+	}
+	if len(observation.ContentElements) > 0 {
+		payload["content_elements"] = observation.ContentElements
+	}
+}
+
+func finalizeFlowStatus(draft *FlowDraft) (string, string) {
+	if draft == nil {
+		return "failed", "Draft did not produce a usable flow."
+	}
+	if draft.Validation == nil {
+		return "needs_repair", "The draft did not produce a validation result."
+	}
+	if draft.Validation != nil && !draft.Validation.Valid {
+		if draft.Validation.Issue != nil && draft.Validation.Issue.Code == "security_policy" {
+			return "needs_permission", firstNonEmpty(draft.Validation.Issue.Suggestion, draft.Validation.Error)
+		}
+		return "needs_repair", draft.Validation.Error
+	}
+	if draftHasTODOInput(draft) || len(draft.Unresolved) > 0 {
+		return "needs_input", "Fill the remaining TODO variables or unresolved intent gaps before execution."
+	}
+	return "ready", ""
+}
+
+func draftHasTODOInput(draft *FlowDraft) bool {
+	if draft == nil {
+		return false
+	}
+	if flowValueContainsTODO(draft.SuggestedVars) {
+		return true
+	}
+	if draft.Flow != nil && flowValueContainsTODO(draft.Flow.Vars) {
+		return true
+	}
+	return false
+}
+
+func flowValueContainsTODO(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "TODO")
+	case []string:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	case map[string]string:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func handleRepairFlowContextTool(
@@ -905,7 +1184,7 @@ func handleRepairFlowContextToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -916,7 +1195,7 @@ func handleRepairFlowContextToolWithOptions(
 		request.GetString("trace", ""),
 	)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -930,12 +1209,12 @@ func handleRepairFlowContextToolWithOptions(
 		MaxArtifactExcerpt: request.GetInt("max_artifact_excerpt", defaultFlowRepairArtifactExcerpt),
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 		"ok":      true,
 		"context": context,
 	})
@@ -955,7 +1234,7 @@ func handleRepairFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -963,7 +1242,7 @@ func handleRepairFlowToolWithOptions(
 
 	repairHints, err := ParseFlowRepairHintsInput(request.GetString("repair_hints", ""))
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -971,7 +1250,7 @@ func handleRepairFlowToolWithOptions(
 
 	repairContext, err := ParseFlowRepairContextInput(request.GetString("repair_context", ""))
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -983,7 +1262,7 @@ func handleRepairFlowToolWithOptions(
 			request.GetString("trace", ""),
 		)
 		if parseErr != nil {
-			return newJSONToolResult(map[string]any{
+			return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 				"ok":    false,
 				"error": parseErr.Error(),
 			})
@@ -996,7 +1275,7 @@ func handleRepairFlowToolWithOptions(
 			MaxArtifactExcerpt: request.GetInt("max_artifact_excerpt", defaultFlowRepairArtifactExcerpt),
 		})
 		if err != nil {
-			return newJSONToolResult(map[string]any{
+			return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 				"ok":    false,
 				"error": err.Error(),
 			})
@@ -1009,13 +1288,13 @@ func handleRepairFlowToolWithOptions(
 		Context:     repairContext,
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 		"ok":     true,
 		"repair": repair,
 	})
@@ -1035,7 +1314,7 @@ func handleObservePageToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	runHandle, runCtx, err := beginTSPlayBrowserRun(ctx, request, "tsplay.observe_page", options, nil)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.observe_page", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 			"run":   runHandle.snapshot(),
@@ -1055,20 +1334,22 @@ func handleObservePageToolWithOptions(
 		run := runHandle.finish(err, map[string]any{
 			"url": request.GetString("url", ""),
 		})
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.observe_page", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 			"run":   run,
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	payload := map[string]any{
 		"ok":          true,
 		"observation": observation,
 		"run": runHandle.finish(nil, map[string]any{
 			"url":           observation.URL,
 			"element_count": len(observation.Elements),
 		}),
-	})
+	}
+	attachObservationPayloadFields(payload, observation)
+	return newTSPlayToolResult("tsplay.observe_page", payload)
 }
 
 func handleValidateFlowTool(
@@ -1085,30 +1366,55 @@ func handleValidateFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		payload := map[string]any{
+			"valid": false,
+			"error": err.Error(),
+		}
+		if issue := ExtractFlowIssue(err, nil); issue != nil {
+			payload["issue"] = issue
+			AttachRepairExample(payload, issue)
+		}
+		return newTSPlayToolResult("tsplay.validate_flow", payload)
+	}
+	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
 			"valid": false,
 			"error": err.Error(),
 		})
 	}
-	security := flowSecurityPolicyFromToolRequest(request, options)
+	security := securityResolution.Policy
 	if err := ValidateFlow(flow); err != nil {
-		return newJSONToolResult(map[string]any{
-			"valid": false,
-			"name":  flow.Name,
-			"error": err.Error(),
-		})
+		payload := map[string]any{
+			"valid":    false,
+			"name":     flow.Name,
+			"error":    err.Error(),
+			"security": securityResolution,
+		}
+		if issue := ExtractFlowIssue(err, flow); issue != nil {
+			payload["issue"] = issue
+			AttachRepairExample(payload, issue)
+		}
+		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
 	if err := ValidateFlowSecurity(flow, security); err != nil {
-		return newJSONToolResult(map[string]any{
-			"valid": false,
-			"name":  flow.Name,
-			"error": err.Error(),
-		})
+		payload := map[string]any{
+			"valid":    false,
+			"name":     flow.Name,
+			"error":    err.Error(),
+			"security": securityResolution,
+		}
+		if issue := ExtractFlowIssue(err, flow); issue != nil {
+			payload["issue"] = issue
+			AttachRepairExample(payload, issue)
+		}
+		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
-	return newJSONToolResult(map[string]any{
-		"valid": true,
-		"name":  flow.Name,
-		"steps": len(flow.Steps),
+	return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+		"valid":    true,
+		"name":     flow.Name,
+		"steps":    len(flow.Steps),
+		"security": securityResolution,
 	})
 }
 
@@ -1126,13 +1432,24 @@ func handleRunFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		payload := map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		}
+		if issue := ExtractFlowIssue(err, nil); issue != nil {
+			payload["issue"] = issue
+		}
+		return newTSPlayToolResult("tsplay.run_flow", payload)
+	}
+
+	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-
-	security := flowSecurityPolicyFromToolRequest(request, options)
+	security := securityResolution.Policy
 	if _, ok := request.GetArguments()["headless"]; ok {
 		headless := request.GetBool("headless", true)
 		if flow.Browser == nil {
@@ -1148,10 +1465,11 @@ func handleRunFlowToolWithOptions(
 	}
 	runHandle, runCtx, err := beginTSPlayBrowserRun(ctx, request, "tsplay.run_flow", options, &security)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
-			"ok":    false,
-			"error": err.Error(),
-			"run":   runHandle.snapshot(),
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+			"ok":       false,
+			"error":    err.Error(),
+			"run":      runHandle.snapshot(),
+			"security": securityResolution,
 		})
 	}
 	result, err := RunFlow(flow, FlowRunOptions{
@@ -1171,16 +1489,18 @@ func handleRunFlowToolWithOptions(
 		if flow.Browser != nil && strings.TrimSpace(flow.Browser.UseSession) != "" {
 			runDetails["requested_saved_session"] = flow.Browser.UseSession
 		}
-		return newJSONToolResult(map[string]any{
-			"ok":     false,
-			"error":  err.Error(),
-			"result": flowResultForTool(result),
-			"run":    runHandle.finish(err, runDetails),
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+			"ok":       false,
+			"error":    err.Error(),
+			"result":   flowResultForTool(result),
+			"run":      runHandle.finish(err, runDetails),
+			"security": securityResolution,
 		})
 	}
-	return newJSONToolResult(map[string]any{
-		"ok":     true,
-		"result": flowResultForTool(result),
+	return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+		"ok":       true,
+		"result":   flowResultForTool(result),
+		"security": securityResolution,
 		"run": runHandle.finish(nil, map[string]any{
 			"flow_name": flow.Name,
 			"trace_len": len(result.Trace),
@@ -1206,8 +1526,15 @@ func flowFromToolRequest(request mcp.CallToolRequest) (*Flow, error) {
 func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayMCPServerOptions) (*Flow, error) {
 	flowPath := request.GetString("flow_path", "")
 	flowContent := request.GetString("flow", "")
+	flowYAMLContent := request.GetString("flow_yaml", "")
+	if flowContent != "" && flowYAMLContent != "" {
+		return nil, fmt.Errorf("use either flow or flow_yaml, not both")
+	}
+	if flowContent == "" {
+		flowContent = flowYAMLContent
+	}
 	if flowPath != "" && flowContent != "" {
-		return nil, fmt.Errorf("use either flow or flow_path, not both")
+		return nil, fmt.Errorf("use either flow, flow_yaml, or flow_path, not both")
 	}
 	if flowPath != "" {
 		resolvedPath, err := resolveMCPFlowPath(flowPath, options.FlowPathRoot)
@@ -1217,23 +1544,20 @@ func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayM
 		return LoadFlowFile(resolvedPath)
 	}
 	if flowContent == "" {
-		return nil, fmt.Errorf("either flow or flow_path is required")
+		return nil, fmt.Errorf("either flow, flow_yaml, or flow_path is required")
 	}
 	return ParseFlow([]byte(flowContent), request.GetString("format", "yaml"))
 }
 
 func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPlayMCPServerOptions) FlowSecurityPolicy {
-	return FlowSecurityPolicy{
-		AllowLua:          request.GetBool("allow_lua", false),
-		AllowJavaScript:   request.GetBool("allow_javascript", false),
-		AllowFileAccess:   request.GetBool("allow_file_access", false),
-		AllowBrowserState: request.GetBool("allow_browser_state", false),
-		AllowHTTP:         request.GetBool("allow_http", false),
-		AllowRedis:        request.GetBool("allow_redis", false),
-		AllowDatabase:     request.GetBool("allow_database", false),
-		FileInputRoot:     options.ArtifactRoot,
-		FileOutputRoot:    options.ArtifactRoot,
+	resolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		policy, _ := flowSecurityPolicyPreset("")
+		policy.FileInputRoot = options.ArtifactRoot
+		policy.FileOutputRoot = options.ArtifactRoot
+		return policy
 	}
+	return resolution.Policy
 }
 
 func resolveMCPFlowPath(flowPath string, flowRoot string) (string, error) {
@@ -1278,6 +1602,9 @@ func resolveMCPFlowPath(flowPath string, flowRoot string) (string, error) {
 
 func buildFlowActionManifest() []map[string]any {
 	descriptions := map[string]string{}
+	commonAliases := map[string][]string{
+		"type_text": {"fill", "type"},
+	}
 	for _, fn := range GlobalPlayWrightFunc {
 		descriptions[fn.Name] = fn.Description_en
 	}
@@ -1324,6 +1651,12 @@ func buildFlowActionManifest() []map[string]any {
 			"description": descriptions[name],
 			"args":        args,
 		}
+		if aliases := commonAliases[name]; len(aliases) > 0 {
+			item["common_aliases"] = aliases
+		}
+		if capabilities, ok := flowActionCapabilitiesFor(name); ok {
+			item["capabilities"] = capabilities.manifestValue()
+		}
 		if name == "extract_text" {
 			item["returns"] = "string|string[]"
 			item["encouraged_save_as"] = true
@@ -1350,6 +1683,9 @@ func buildFlowActionManifest() []map[string]any {
 				{"name": "interval_ms", "type": "int", "required": false, "default": 0},
 				{"name": "steps", "type": "steps", "required": true},
 			}
+		}
+		if name == "navigate" {
+			item["notes"] = appendStringNotes(item["notes"], "Do not put timeout on the navigate step itself; use browser.timeout or the MCP tool timeout instead.")
 		}
 		if name == "if" {
 			item["args"] = []map[string]any{
@@ -1553,6 +1889,21 @@ func buildFlowActionManifest() []map[string]any {
 		actions = append(actions, item)
 	}
 	return actions
+}
+
+func appendStringNotes(existing any, values ...string) []string {
+	notes := []string{}
+	if current, ok := existing.([]string); ok {
+		notes = append(notes, current...)
+	} else if current, ok := existing.([]any); ok {
+		for _, item := range current {
+			if text, ok := item.(string); ok {
+				notes = append(notes, text)
+			}
+		}
+	}
+	notes = append(notes, values...)
+	return notes
 }
 
 func newJSONToolResult(value any) (*mcp.CallToolResult, error) {
@@ -1881,6 +2232,18 @@ func McpServerMCP(addr string, options ...TSPlayMCPServerOptions) {
 	log.Printf("MCP flow_path root: %s", normalizedOptions.FlowPathRoot)
 	log.Printf("MCP artifact root: %s", normalizedOptions.ArtifactRoot)
 	if err := httpServer.Start(addr); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}
+
+func McpServerStdio(options ...TSPlayMCPServerOptions) {
+	normalizedOptions := normalizeTSPlayMCPServerOptions(options)
+	mcpServer := NewTSPlayMCPServer(normalizedOptions)
+
+	log.Printf("TSPlay MCP stdio server starting")
+	log.Printf("MCP flow_path root: %s", normalizedOptions.FlowPathRoot)
+	log.Printf("MCP artifact root: %s", normalizedOptions.ArtifactRoot)
+	if err := server.ServeStdio(mcpServer); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

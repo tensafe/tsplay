@@ -1,0 +1,35 @@
+schema_version: "1"
+name: lesson_20_download_report_flow
+description: Download a local CSV report from the demo page, read it back, and write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/download.html
+  save_path: artifacts/tutorials/20-downloaded-monthly-report-flow.csv
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#download-report"
+    timeout: 5000
+
+  - action: download_file
+    selector: "#download-report"
+    save_path: "{{save_path}}"
+
+  - action: read_csv
+    file_path: "{{save_path}}"
+    save_as: rows
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "20"
+        mode: flow
+        page_url: "{{page_url}}"
+        save_path: "{{save_path}}"
+        rows: "{{rows}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/20-download-report-flow.json
+    value: "{{payload}}"

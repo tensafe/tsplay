@@ -1,0 +1,29 @@
+schema_version: "1"
+name: lesson_25_read_excel_range_headers_flow
+description: Read an Excel range with explicit headers and write the structured rows to JSON.
+vars:
+  input_file: demo/data/import_users.xlsx
+steps:
+  - action: read_excel
+    file_path: "{{input_file}}"
+    sheet: RangeDemo
+    range: A2:B4
+    with:
+      headers:
+        - name
+        - phone
+      row_number_field: source_row
+    save_as: rows
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "25"
+        mode: flow
+        input_file: "{{input_file}}"
+        rows: "{{rows}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/25-read-excel-range-headers-flow.json
+    value: "{{payload}}"

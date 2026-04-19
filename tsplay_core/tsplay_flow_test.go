@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,6 +47,59 @@ steps:
 	}
 	if len(flow.Steps) != 3 {
 		t.Fatalf("unexpected step count: %d", len(flow.Steps))
+	}
+}
+
+func TestParseFlowRejectsUnknownStepFieldWithSuggestion(t *testing.T) {
+	_, err := ParseFlow([]byte(`
+schema_version: "1"
+name: bad_alias
+steps:
+  - action: evaluate
+    selector: "div.g"
+    script: return []
+    result_var: rows
+`), "yaml")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Code != "unknown_field" {
+		t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+	}
+	if parseErr.Issue.StepPath != "1" {
+		t.Fatalf("unexpected step path: %#v", parseErr.Issue.StepPath)
+	}
+	if parseErr.Issue.Field != "result_var" || parseErr.Issue.DidYouMean != "save_as" {
+		t.Fatalf("unexpected suggestion: %#v", parseErr.Issue)
+	}
+}
+
+func TestParseFlowRejectsDottedStepFieldWithSuggestion(t *testing.T) {
+	_, err := ParseFlow([]byte(`
+schema_version: "1"
+name: bad_nested
+steps:
+  - action: write_csv
+    file_path: reports/out.csv
+    value: "{{rows}}"
+    with.headers:
+      - title
+`), "yaml")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Field != "with.headers" || parseErr.Issue.DidYouMean != "with.headers" {
+		t.Fatalf("unexpected dotted-field issue: %#v", parseErr.Issue)
 	}
 }
 
@@ -1156,6 +1210,130 @@ func TestRunFlowAssertVisibleAndText(t *testing.T) {
 	}
 }
 
+func TestRunFlowLuaExtractAndAssertHelpers(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_extract_and_assert",
+		Steps: []FlowStep{
+			{
+				Action: "navigate",
+				URL:    `data:text/html,<html><body><div id="ready">Order complete</div><div id="status">Status: shipped</div></body></html>`,
+			},
+			{
+				Action: "lua",
+				Code:   `return extract_text("#status", "Status: (.*)")`,
+				SaveAs: "status_text",
+			},
+			{
+				Action: "lua",
+				Code:   `return assert_visible("#ready", 1000)`,
+				SaveAs: "visible_ok",
+			},
+			{
+				Action: "lua",
+				Code:   `return assert_text("#ready", "complete", 1000)`,
+				SaveAs: "text_assert",
+			},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{Headless: true})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["status_text"]; got != "shipped" {
+		t.Fatalf("status_text = %#v", got)
+	}
+	if got := result.Vars["visible_ok"]; got != true {
+		t.Fatalf("visible_ok = %#v", got)
+	}
+	assertResult, ok := result.Vars["text_assert"].(map[string]any)
+	if !ok {
+		t.Fatalf("text_assert = %#v", result.Vars["text_assert"])
+	}
+	if got := assertResult["text"]; got != "complete" {
+		t.Fatalf("assert text = %#v", got)
+	}
+}
+
+func TestRunFlowLuaSetAndAppendVarHelpers(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_set_and_append_vars",
+		Vars: map[string]any{
+			"message": "hello",
+		},
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code:   `return set_var("copied_message", "{{message}}")`,
+				SaveAs: "set_result",
+			},
+			{
+				Action: "lua",
+				Code:   `return append_var("items", copied_message)`,
+				SaveAs: "append_one",
+			},
+			{
+				Action: "lua",
+				Code:   `return append_var("items", "tail")`,
+				SaveAs: "append_two",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowLua: true},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["copied_message"]; got != "hello" {
+		t.Fatalf("copied_message = %#v", got)
+	}
+	if got := result.Vars["set_result"]; got != "hello" {
+		t.Fatalf("set_result = %#v", got)
+	}
+
+	appendOne, ok := result.Vars["append_one"].([]any)
+	if !ok || len(appendOne) != 1 || appendOne[0] != "hello" {
+		t.Fatalf("append_one = %#v", result.Vars["append_one"])
+	}
+	appendTwo, ok := result.Vars["append_two"].([]any)
+	if !ok || len(appendTwo) != 2 || appendTwo[0] != "hello" || appendTwo[1] != "tail" {
+		t.Fatalf("append_two = %#v", result.Vars["append_two"])
+	}
+	items, ok := result.Vars["items"].([]any)
+	if !ok || len(items) != 2 || items[0] != "hello" || items[1] != "tail" {
+		t.Fatalf("items = %#v", result.Vars["items"])
+	}
+}
+
+func TestLuaSetAndAppendVarHelpersWithoutFlowContext(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+	ensureFlowActionGlobals(L)
+
+	if err := L.DoString(`
+set_var("message", "hello")
+append_var("items", message)
+append_var("items", "tail")
+`); err != nil {
+		t.Fatalf("run lua: %v", err)
+	}
+
+	if got := luaValueToGo(L.GetGlobal("message")); got != "hello" {
+		t.Fatalf("message = %#v", got)
+	}
+	items, ok := luaValueToGo(L.GetGlobal("items")).([]any)
+	if !ok || len(items) != 2 || items[0] != "hello" || items[1] != "tail" {
+		t.Fatalf("items = %#v", luaValueToGo(L.GetGlobal("items")))
+	}
+}
+
 func TestRunFlowHTTPRequestAndJSONExtract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("q"); got != "山东" {
@@ -1277,6 +1455,161 @@ func TestRunFlowHTTPRequestMultipartAndSavePath(t *testing.T) {
 
 	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
 		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["captcha_text"]; got != "ABCD" {
+		t.Fatalf("captcha_text = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "ocr.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"text":"ABCD"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
+func TestRunFlowLuaHTTPRequestHonorsAllowHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("request should not have been sent: %s", r.URL.String())
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_http_policy",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code: fmt.Sprintf(`return http_request({
+  url = %q,
+  response_as = "json"
+})`, server.URL),
+			},
+		},
+	}
+
+	_, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowLua: true},
+	})
+	if err == nil {
+		t.Fatalf("expected allow_http runtime error")
+	}
+	if !strings.Contains(err.Error(), "allow_http") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFlowLuaHTTPRequestRequiresFileAccessForMultipartAndSavePath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.txt"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_http_file_policy",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code: `return http_request({
+  url = "https://example.com/ocr",
+  save_path = "responses/ocr.json",
+  multipart_files = {image = "captcha.txt"}
+})`,
+			},
+		},
+	}
+
+	_, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowLua:  true,
+			AllowHTTP: true,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected allow_file_access runtime error")
+	}
+	if !strings.Contains(err.Error(), "allow_file_access") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "responses", "ocr.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no saved response, stat err=%v", statErr)
+	}
+}
+
+func TestRunFlowLuaHTTPRequestUsesFlowFileRoots(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.txt"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		if got := r.FormValue("scene"); got != "login" {
+			t.Fatalf("unexpected scene: %q", got)
+		}
+		file, _, err := r.FormFile("image")
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart content: %v", err)
+		}
+		if string(content) != "captcha-image" {
+			t.Fatalf("unexpected multipart content: %q", string(content))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"ABCD"}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_http_file_roots",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				SaveAs: "ocr_result",
+				Code: fmt.Sprintf(`return http_request({
+  url = %q,
+  save_path = "responses/ocr.json",
+  multipart_files = {image = "captcha.txt"},
+  multipart_fields = {scene = "login"},
+  response_as = "json"
+})`, server.URL),
+			},
+			{
+				Action: "lua",
+				SaveAs: "captcha_text",
+				Code:   `return json_extract(ocr_result, "$.body.text")`,
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowLua:        true,
 			AllowHTTP:       true,
 			AllowFileAccess: true,
 			FileInputRoot:   root,

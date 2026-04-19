@@ -1,0 +1,94 @@
+schema_version: "1"
+name: lesson_65_sync_latest_redis_batch_to_postgres_summary_flow
+description: Read the latest Redis batch payload, count the source CSV rows again, and upsert the shared summary into Postgres.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_prefix}}{{latest_batch_id}}"
+    save_as: payload_text
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.input_file"
+    save_as: input_file
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.latest_operator"
+    save_as: latest_operator
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: sync_scan
+    steps:
+      - action: set_var
+        save_as: last_row_name
+        with:
+          value: "{{row.name}}"
+
+  - action: db_upsert
+    connection: reporting
+    save_as: upsert_result
+    with:
+      table: public.tutorial_import_batches
+      columns:
+        - batch_id
+        - report_file
+        - source_lesson
+        - row_count
+        - operator_name
+      key_columns:
+        - batch_id
+      update_columns:
+        - report_file
+        - source_lesson
+        - row_count
+        - operator_name
+      returning:
+        - batch_id
+        - report_file
+        - source_lesson
+        - row_count
+        - operator_name
+      row:
+        batch_id: "{{latest_batch_id}}"
+        report_file: "{{input_file}}"
+        source_lesson: "65"
+        row_count: "{{sync_scan.iterations}}"
+        operator_name: "{{latest_operator}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: summary_row
+    with:
+      sql: SELECT batch_id, report_file, source_lesson, row_count, operator_name FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/65-sync-latest-redis-batch-to-postgres-summary-flow.json
+    with:
+      value:
+        lesson: "65"
+        mode: flow
+        latest_key: "{{latest_key}}"
+        latest_batch_id: "{{latest_batch_id}}"
+        input_file: "{{input_file}}"
+        row_count: "{{sync_scan.iterations}}"
+        latest_operator: "{{latest_operator}}"
+        upsert_result: "{{upsert_result}}"
+        summary_row: "{{summary_row}}"

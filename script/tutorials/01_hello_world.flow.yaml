@@ -1,0 +1,19 @@
+schema_version: "1"
+name: lesson_01_hello_world_flow
+description: Minimal Flow example without opening a page.
+steps:
+  - action: set_var
+    save_as: greeting
+    value: hello from flow
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "01"
+        mode: flow
+        greeting: "{{greeting}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/01-hello-world-flow.json
+    value: "{{payload}}"

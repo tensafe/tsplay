@@ -1,0 +1,40 @@
+schema_version: "1"
+name: lesson_77_export_external_sync_audit_history_flow
+description: Export the latest shared batch audit history to a local CSV file.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: db_query
+    connection: reporting
+    save_as: audit_rows
+    with:
+      sql: SELECT audit_id, batch_id, event_type, status, detail, success_count, failure_count, source_lesson FROM public.tutorial_import_audits WHERE batch_id = $1 ORDER BY audit_id
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/77-export-external-sync-audit-history-flow.csv
+    with:
+      value: "{{audit_rows}}"
+      headers:
+        - audit_id
+        - batch_id
+        - event_type
+        - status
+        - detail
+        - success_count
+        - failure_count
+        - source_lesson
+
+  - action: write_json
+    file_path: artifacts/tutorials/77-export-external-sync-audit-history-flow.json
+    with:
+      value:
+        lesson: "77"
+        mode: flow
+        latest_batch_id: "{{latest_batch_id}}"
+        audit_rows: "{{audit_rows}}"

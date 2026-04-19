@@ -1,0 +1,87 @@
+schema_version: "1"
+name: lesson_50_use_session_batch_import_excel_flow
+description: Reuse a named session, read Excel rows, and batch-import them through the protected form.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users.xlsx
+  session_name: session_import_demo
+steps:
+  - action: set_var
+    save_as: import_results
+    with:
+      value: []
+
+  - action: read_excel
+    file_path: "{{input_file}}"
+    sheet: Users
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: assert_text
+    selector: "#auth-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+      - action: assert_text
+        selector: "#submit-status"
+        text: "Imported"
+        timeout: 5000
+      - action: append_var
+        save_as: import_results
+        with:
+          value:
+            source_row: "{{row.source_row}}"
+            name: "{{row.name}}"
+            phone: "{{row.phone}}"
+            status: success
+      - action: click
+        selector: "#clear-form"
+
+  - action: extract_text
+    selector: "#auth-status"
+    timeout: 5000
+    save_as: auth_status
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "50"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        auth_status: "{{auth_status}}"
+        import_count: "{{import_count}}"
+        results: "{{import_results}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/50-use-session-batch-import-excel-flow.json
+    value: "{{payload}}"

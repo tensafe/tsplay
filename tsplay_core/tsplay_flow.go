@@ -18,7 +18,6 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 	lua "github.com/yuin/gopher-lua"
-	"gopkg.in/yaml.v3"
 )
 
 // Flow is the structured workflow format used by TSPlay.
@@ -99,13 +98,14 @@ type FlowStep struct {
 }
 
 type FlowResult struct {
-	Name         string          `json:"name"`
-	Vars         map[string]any  `json:"vars,omitempty"`
-	Trace        []FlowStepTrace `json:"trace"`
-	ArtifactRoot string          `json:"artifact_root,omitempty"`
-	RunID        string          `json:"run_id,omitempty"`
-	RunRoot      string          `json:"run_root,omitempty"`
-	SessionID    string          `json:"session_id,omitempty"`
+	Name         string           `json:"name"`
+	Vars         map[string]any   `json:"vars,omitempty"`
+	Trace        []FlowStepTrace  `json:"trace"`
+	ArtifactRoot string           `json:"artifact_root,omitempty"`
+	RunID        string           `json:"run_id,omitempty"`
+	RunRoot      string           `json:"run_root,omitempty"`
+	SessionID    string           `json:"session_id,omitempty"`
+	Playwright   *PlaywrightUsage `json:"playwright,omitempty"`
 }
 
 type FlowStepTrace struct {
@@ -189,6 +189,7 @@ type FlowSecurityPolicy struct {
 
 const CurrentFlowSchemaVersion = "1"
 const DefaultFlowArtifactRoot = "artifacts"
+const flowContextStateGlobal = "__tsplay_flow_context"
 
 type flowActionSpec struct {
 	Args       []flowArgSpec
@@ -203,8 +204,6 @@ type flowArgSpec struct {
 var placeholderPattern = regexp.MustCompile(`^\{\{\s*([^{}]+?)\s*\}\}$`)
 var replacePattern = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 var flowIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-var flowPlaywrightLuaCallPattern = regexp.MustCompile(`\b(?:navigate|click|reload|go_back|go_forward|type_text|get_text|set_value|select_option|hover|scroll_to|wait_for_network_idle|wait_for_selector|wait_for_text|screenshot|screenshot_element|save_html|accept_alert|dismiss_alert|set_alert_text|execute_script|evaluate|upload_file|upload_multiple_files|download_file|download_url|get_attribute|get_html|get_all_links|capture_table|find_element|find_elements|is_visible|is_enabled|is_checked|is_selected|is_aria_selected|new_tab|close_tab|switch_to_tab|intercept_request|block_request|get_response|get_storage_state|get_cookies_string)\s*\(`)
-var flowPlaywrightLuaGlobalPattern = regexp.MustCompile(`\b(?:page|browser|context)\b`)
 
 var flowActionSpecs = map[string]flowActionSpec{
 	"navigate":              {Args: []flowArgSpec{{Name: "url", Required: true}}},
@@ -309,21 +308,6 @@ func LoadFlowFile(path string) (*Flow, error) {
 		return nil, fmt.Errorf("parse flow %s: %w", path, err)
 	}
 	return flow, nil
-}
-
-func ParseFlow(content []byte, format string) (*Flow, error) {
-	var flow Flow
-	switch strings.ToLower(format) {
-	case "json":
-		if err := json.Unmarshal(content, &flow); err != nil {
-			return nil, err
-		}
-	default:
-		if err := yaml.Unmarshal(content, &flow); err != nil {
-			return nil, err
-		}
-	}
-	return &flow, nil
 }
 
 func ValidateFlow(flow *Flow) error {
@@ -1763,146 +1747,6 @@ func FlowActionNames() []string {
 	return names
 }
 
-func flowUsesPlaywright(flow *Flow) bool {
-	if flow == nil {
-		return false
-	}
-	if flowBrowserConfigNeedsPlaywright(flow.Browser) {
-		return true
-	}
-	return flowStepsUsePlaywright(flow.Steps)
-}
-
-func flowBrowserConfigNeedsPlaywright(config *FlowBrowserConfig) bool {
-	if config == nil {
-		return false
-	}
-	loadPath, _ := config.loadStorageStatePath()
-	return strings.TrimSpace(config.UseSession) != "" ||
-		loadPath != "" ||
-		strings.TrimSpace(config.SaveStorageState) != "" ||
-		config.wantsPersistentContext()
-}
-
-func flowStepsUsePlaywright(steps []FlowStep) bool {
-	for _, step := range steps {
-		if flowStepUsesPlaywright(step) {
-			return true
-		}
-	}
-	return false
-}
-
-func flowStepUsesPlaywright(step FlowStep) bool {
-	switch step.Action {
-	case "retry", "foreach", "db_transaction":
-		return flowStepsUsePlaywright(step.Steps)
-	case "if":
-		return (step.Condition != nil && flowStepUsesPlaywright(*step.Condition)) ||
-			flowStepsUsePlaywright(step.Then) ||
-			flowStepsUsePlaywright(step.Else)
-	case "on_error":
-		return flowStepsUsePlaywright(step.Steps) || flowStepsUsePlaywright(step.OnError)
-	case "wait_until":
-		return step.Condition != nil && flowStepUsesPlaywright(*step.Condition)
-	case "http_request":
-		return flowHTTPRequestUsesPlaywright(step)
-	case "lua":
-		return flowLuaStepUsesPlaywright(step)
-	case "sleep",
-		"set_var",
-		"append_var",
-		"json_extract",
-		"db_insert",
-		"db_insert_many",
-		"db_upsert",
-		"db_query",
-		"db_query_one",
-		"db_execute",
-		"read_csv",
-		"read_excel",
-		"write_json",
-		"write_csv",
-		"redis_get",
-		"redis_set",
-		"redis_del",
-		"redis_incr":
-		return false
-	default:
-		return true
-	}
-}
-
-func flowHTTPRequestUsesPlaywright(step FlowStep) bool {
-	for _, name := range []string{"use_browser_cookies", "use_browser_referer", "use_browser_user_agent"} {
-		if flowStepBoolParamMayRequirePlaywright(step, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func flowStepBoolParamMayRequirePlaywright(step FlowStep, name string) bool {
-	value, ok := step.param(name)
-	if !ok {
-		return false
-	}
-	if len(flowReferences(value)) > 0 {
-		return true
-	}
-	switch typed := value.(type) {
-	case bool:
-		return typed
-	case string:
-		trimmed := strings.TrimSpace(strings.ToLower(typed))
-		return trimmed != "" && trimmed != "false" && trimmed != "0" && trimmed != "no"
-	case int:
-		return typed != 0
-	case int8:
-		return typed != 0
-	case int16:
-		return typed != 0
-	case int32:
-		return typed != 0
-	case int64:
-		return typed != 0
-	case uint:
-		return typed != 0
-	case uint8:
-		return typed != 0
-	case uint16:
-		return typed != 0
-	case uint32:
-		return typed != 0
-	case uint64:
-		return typed != 0
-	case float32:
-		return typed != 0
-	case float64:
-		return typed != 0
-	default:
-		return value != nil
-	}
-}
-
-func flowLuaStepUsesPlaywright(step FlowStep) bool {
-	rawCode := any(step.Code)
-	code := strings.TrimSpace(step.Code)
-	if code == "" {
-		if value, ok := step.param("code"); ok {
-			rawCode = value
-			code = strings.TrimSpace(fmt.Sprint(value))
-		}
-	}
-	if code == "" {
-		return false
-	}
-	if len(flowReferences(rawCode)) > 0 {
-		return true
-	}
-	return flowPlaywrightLuaCallPattern.MatchString(code) || flowPlaywrightLuaGlobalPattern.MatchString(code)
-}
-
 func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err := ValidateFlow(flow); err != nil {
 		return nil, err
@@ -1912,7 +1756,8 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 			return nil, err
 		}
 	}
-	needsPlaywright := flowUsesPlaywright(flow)
+	playwrightUsage := AnalyzeFlowPlaywrightUsage(flow)
+	needsPlaywright := playwrightUsage.NeedsPlaywright
 
 	browserConfig, err := resolveFlowBrowserConfig(flow, options)
 	if err != nil {
@@ -1949,6 +1794,10 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if needsPlaywright {
 		pw, err = StartPlaywright()
 		if err != nil {
+			summary := playwrightUsage.Summary(3)
+			if summary != "" {
+				return nil, fmt.Errorf("flow requires Playwright because %s: %w", summary, err)
+			}
 			return nil, err
 		}
 		if browserConfig.wantsPersistentContext() {
@@ -2171,6 +2020,8 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		ClientName:    options.ClientName,
 		ClientVersion: options.ClientVersion,
 	}
+	restoreFlowContext := setFlowContextState(L, ctx)
+	defer restoreFlowContext()
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))
@@ -2183,6 +2034,11 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 		RunID:        runID,
 		RunRoot:      runRoot,
 		SessionID:    options.SessionID,
+	}
+	playwrightUsage := AnalyzeFlowPlaywrightUsage(flow)
+	if playwrightUsage.NeedsPlaywright {
+		usageCopy := playwrightUsage
+		result.Playwright = &usageCopy
 	}
 	traces, err := runFlowStepSequence(L, ctx, flow.Steps, "", 0, 0)
 	result.Trace = append(result.Trace, traces...)
@@ -3100,6 +2956,39 @@ func flowPageFromState(L *lua.LState) (playwright.Page, bool) {
 	}
 	page, ok := userData.Value.(playwright.Page)
 	return page, ok && page != nil
+}
+
+func flowContextFromState(L *lua.LState) *FlowContext {
+	if L == nil {
+		return nil
+	}
+	value := L.GetGlobal(flowContextStateGlobal)
+	userData, ok := value.(*lua.LUserData)
+	if !ok || userData == nil || userData.Value == nil {
+		return nil
+	}
+	ctx, ok := userData.Value.(*FlowContext)
+	if !ok || ctx == nil {
+		return nil
+	}
+	return ctx
+}
+
+func setFlowContextState(L *lua.LState, ctx *FlowContext) func() {
+	if L == nil {
+		return func() {}
+	}
+	previous := L.GetGlobal(flowContextStateGlobal)
+	if ctx == nil {
+		L.SetGlobal(flowContextStateGlobal, lua.LNil)
+	} else {
+		userData := L.NewUserData()
+		userData.Value = ctx
+		L.SetGlobal(flowContextStateGlobal, userData)
+	}
+	return func() {
+		L.SetGlobal(flowContextStateGlobal, previous)
+	}
 }
 
 var artifactSegmentPattern = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

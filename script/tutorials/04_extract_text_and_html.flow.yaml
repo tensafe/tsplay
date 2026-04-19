@@ -1,0 +1,42 @@
+schema_version: "1"
+name: lesson_04_extract_text_and_html_flow
+description: Open a local page, extract text, capture an HTML fragment, and write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/extract.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#summary-count"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#page-title"
+    timeout: 5000
+    save_as: page_title
+
+  - action: extract_text
+    selector: "#summary-count"
+    timeout: 5000
+    pattern: "([0-9]+)"
+    save_as: order_count
+
+  - action: get_html
+    selector: "#notice"
+    save_as: notice_html
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "04"
+        mode: flow
+        page_url: "{{page_url}}"
+        page_title: "{{page_title}}"
+        order_count: "{{order_count}}"
+        notice_html: "{{notice_html}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/04-extract-text-and-html-flow.json
+    value: "{{payload}}"

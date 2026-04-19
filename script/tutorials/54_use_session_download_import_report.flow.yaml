@@ -1,0 +1,73 @@
+schema_version: "1"
+name: lesson_54_use_session_download_import_report_flow
+description: Reuse a named session, import rows on the protected page, and download the exported CSV report.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users.csv
+  session_name: session_import_demo
+  save_path: artifacts/tutorials/54-use-session-import-report-flow.csv
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+      - action: assert_text
+        selector: "#submit-status"
+        text: "Imported"
+        timeout: 5000
+      - action: click
+        selector: "#clear-form"
+
+  - action: wait_for_selector
+    selector: "#download-import-report"
+    timeout: 5000
+
+  - action: download_file
+    selector: "#download-import-report"
+    save_path: "{{save_path}}"
+
+  - action: extract_text
+    selector: "#export-status"
+    timeout: 5000
+    save_as: export_status
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: write_json
+    file_path: artifacts/tutorials/54-use-session-download-import-report-flow.json
+    with:
+      value:
+        lesson: "54"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        save_path: "{{save_path}}"
+        export_status: "{{export_status}}"
+        import_count: "{{import_count}}"

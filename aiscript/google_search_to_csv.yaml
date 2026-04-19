@@ -1,0 +1,68 @@
+schema_version: "1"
+name: google_search_to_csv
+description: "在谷歌搜索特定关键词，获取搜索结果，并将结果保存为CSV文件"
+vars:
+  target_url: "https://www.google.com/"
+  search_keyword: "人工智能"
+  output_file: "google_search_results.csv"
+steps:
+  # 步骤1: 打开谷歌首页
+  - name: "open google homepage"
+    action: navigate
+    url: "{{target_url}}"
+
+  # 步骤2: 在搜索框输入关键词
+  - name: "input search keyword"
+    action: type_text
+    selector: "textarea#APjFqb"
+    text: "{{search_keyword}}"
+
+  # 步骤3: 点击搜索按钮
+  - name: "click search button"
+    action: click
+    selector: "input[name=\"btnK\"][type=\"submit\"]"
+
+  # 步骤4: 等待搜索结果加载
+  - name: "wait for search results"
+    action: wait_for_selector
+    selector: "div.g"
+    timeout: 15000
+
+  # 步骤5: 提取搜索结果
+  - name: "extract search results"
+    action: evaluate
+    selector: "div.g"
+    script: |
+      const results = [];
+      const resultCards = document.querySelectorAll('div.g');
+      
+      resultCards.forEach((card, index) => {
+        const titleEl = card.querySelector('h3 a');
+        const linkEl = card.querySelector('h3 a');
+        const descEl = card.querySelector('div > cite') || card.querySelector('div[role="heading"]');
+      
+        if (titleEl) {
+          results.push({
+            index: index + 1,
+            title: titleEl.textContent,
+            link: linkEl.href,
+            description: descEl ? descEl.textContent : '',
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+      
+      return results;
+    save_as: search_results
+
+  # 步骤6: 保存CSV文件
+  - name: "save CSV file"
+    action: write_csv
+    file_path: "artifacts/{{output_file}}"
+    value: "{{search_results}}"
+    with.headers:
+      - index
+      - title
+      - link
+      - description
+      - timestamp

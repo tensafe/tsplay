@@ -3,6 +3,9 @@ package tsplay_core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -20,6 +23,7 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 		"tsplay.delete_session",
 		"tsplay.draft_flow",
 		"tsplay.export_session_flow_snippet",
+		"tsplay.finalize_flow",
 		"tsplay.flow_examples",
 		"tsplay.flow_schema",
 		"tsplay.get_session",
@@ -34,6 +38,26 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("tool names = %#v, want %#v", names, want)
+	}
+}
+
+func TestWithDraftFlowObservationInputAcceptsStringOrObject(t *testing.T) {
+	tool := mcp.NewTool("test.tool", withDraftFlowObservationInput())
+	observationSchema, ok := tool.InputSchema.Properties["observation"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected observation schema, got %#v", tool.InputSchema.Properties["observation"])
+	}
+	oneOf, ok := observationSchema["oneOf"].([]any)
+	if !ok || len(oneOf) != 2 {
+		t.Fatalf("expected observation oneOf schema, got %#v", observationSchema["oneOf"])
+	}
+	stringSchema, _ := oneOf[0].(map[string]any)
+	objectSchema, _ := oneOf[1].(map[string]any)
+	if stringSchema["type"] != "string" {
+		t.Fatalf("expected string schema first, got %#v", stringSchema)
+	}
+	if objectSchema["type"] != "object" || objectSchema["additionalProperties"] != true {
+		t.Fatalf("expected flexible object schema, got %#v", objectSchema)
 	}
 }
 
@@ -150,6 +174,78 @@ func TestHandleListSessionsTool(t *testing.T) {
 	}
 	if _, ok := first["source"].(string); !ok {
 		t.Fatalf("expected source description, got %#v", first["source"])
+	}
+}
+
+func TestSessionToolsHideOwnedSessionsFromOtherMCPCallers(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:               "admin",
+		ArtifactRoot:       options.ArtifactRoot,
+		StorageStateJSON:   `{"cookies":[],"origins":[]}`,
+		OwnerSessionID:     "session-owner",
+		OwnerClientName:    "codex",
+		OwnerClientVersion: "1.0.0",
+	}); err != nil {
+		t.Fatalf("seed admin session: %v", err)
+	}
+
+	makeCtx := func(id string) context.Context {
+		session := &runtimeTestSession{
+			id:          id,
+			initialized: true,
+			notify:      make(chan mcp.JSONRPCNotification, 1),
+			clientInfo:  mcp.Implementation{Name: "codex", Version: "1.0.0"},
+		}
+		return server.NewMCPServer("test", "1.0.0").WithContext(context.Background(), session)
+	}
+
+	otherCtx := makeCtx("session-other")
+	listResult, err := handleListSessionsToolWithOptions(otherCtx, mcp.CallToolRequest{}, options)
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	var listPayload map[string]any
+	decodeToolText(t, listResult, &listPayload)
+	sessions, ok := listPayload["sessions"].([]any)
+	if !ok || len(sessions) != 0 {
+		t.Fatalf("expected no visible sessions for other caller, got %#v", listPayload["sessions"])
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{"name": "admin"},
+		},
+	}
+	getResult, err := handleGetSessionToolWithOptions(otherCtx, request, options)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	var getPayload map[string]any
+	decodeToolText(t, getResult, &getPayload)
+	if getPayload["ok"] != false || !strings.Contains(getPayload["error"].(string), "owned by MCP session") {
+		t.Fatalf("expected ownership error, got %#v", getPayload)
+	}
+
+	exportResult, err := handleExportSessionFlowSnippetToolWithOptions(otherCtx, request, options)
+	if err != nil {
+		t.Fatalf("export session: %v", err)
+	}
+	var exportPayload map[string]any
+	decodeToolText(t, exportResult, &exportPayload)
+	if exportPayload["ok"] != false || !strings.Contains(exportPayload["error"].(string), "owned by MCP session") {
+		t.Fatalf("expected ownership error, got %#v", exportPayload)
+	}
+
+	ownerCtx := makeCtx("session-owner")
+	ownerGetResult, err := handleGetSessionToolWithOptions(ownerCtx, request, options)
+	if err != nil {
+		t.Fatalf("owner get session: %v", err)
+	}
+	var ownerPayload map[string]any
+	decodeToolText(t, ownerGetResult, &ownerPayload)
+	if ownerPayload["ok"] != true {
+		t.Fatalf("expected owner access, got %#v", ownerPayload)
 	}
 }
 
@@ -453,6 +549,37 @@ func TestHandleFlowSchemaTool(t *testing.T) {
 	if !ok || len(manifest) == 0 {
 		t.Fatalf("expected action manifest, got %#v", defs["action_manifest"])
 	}
+	foundNavigate := false
+	foundHTTPRequest := false
+	for _, raw := range manifest {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("expected manifest item object, got %#v", raw)
+		}
+		capabilities, ok := item["capabilities"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected capabilities on manifest item, got %#v", item["capabilities"])
+		}
+		switch item["name"] {
+		case "navigate":
+			foundNavigate = true
+			if capabilities["needs_playwright"] != true || capabilities["needs_runtime"] != true || capabilities["needs_page"] != true {
+				t.Fatalf("navigate capabilities = %#v", capabilities)
+			}
+		case "http_request":
+			foundHTTPRequest = true
+			args, ok := capabilities["conditional_playwright_args"].([]any)
+			if !ok || len(args) == 0 {
+				t.Fatalf("http_request conditional capabilities = %#v", capabilities)
+			}
+		}
+	}
+	if !foundNavigate {
+		t.Fatalf("expected navigate manifest item")
+	}
+	if !foundHTTPRequest {
+		t.Fatalf("expected http_request manifest item")
+	}
 	if rules, ok := payload["generation_rules"].([]any); !ok || len(rules) == 0 {
 		t.Fatalf("expected generation rules, got %#v", payload["generation_rules"])
 	}
@@ -522,6 +649,27 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
   "url": "https://example.com/orders",
   "title": "Orders",
   "artifact_root": "/tmp/artifacts",
+  "page_summary": "Observed \"Orders\" with 2 interactive elements and 2 content elements. Top content: Order Center; Export orders.",
+  "dom_snapshot_excerpt": "h1: Order Center\na: Export orders -> /export",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h1",
+      "text": "Order Center",
+      "xpath": "/html/body/main/h1[1]",
+      "selector": "xpath=/html/body/main/h1[1]"
+    },
+    {
+      "index": 2,
+      "kind": "article_link",
+      "tag": "a",
+      "text": "Export orders",
+      "href": "/export",
+      "xpath": "/html/body/main/a[1]",
+      "selector": "xpath=/html/body/main/a[1]"
+    }
+  ],
   "elements": [
     {
       "index": 1,
@@ -582,6 +730,504 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	validation, ok := draft["validation"].(map[string]any)
 	if !ok || validation["valid"] != true {
 		t.Fatalf("expected validation.valid=true, got %#v", draft["validation"])
+	}
+	if payload["tool"] != "tsplay.draft_flow" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	if _, ok := payload["summary"].(string); !ok {
+		t.Fatalf("expected summary string, got %#v", payload["summary"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+	run, ok := payload["run"].(map[string]any)
+	if !ok || run["status"] != "not_started" {
+		t.Fatalf("expected synthetic run metadata for observation-only draft, got %#v", payload["run"])
+	}
+	security, ok := payload["security"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected security metadata, got %#v", payload["security"])
+	}
+	if preset, ok := security["preset"].(string); !ok || preset != "" {
+		t.Fatalf("expected empty preset by default, got %#v", security["preset"])
+	}
+	if summary, ok := payload["page_summary"].(string); !ok || !strings.Contains(summary, "Order Center") {
+		t.Fatalf("expected page_summary passthrough, got %#v", payload["page_summary"])
+	}
+	if excerpt, ok := payload["dom_snapshot_excerpt"].(string); !ok || !strings.Contains(excerpt, "Export orders") {
+		t.Fatalf("expected dom_snapshot_excerpt passthrough, got %#v", payload["dom_snapshot_excerpt"])
+	}
+	content, ok := payload["content_elements"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("expected content_elements passthrough, got %#v", payload["content_elements"])
+	}
+}
+
+func TestHandleDraftFlowToolExposesTopLevelIssue(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/upload",
+  "title": "Upload",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "file",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#file-input"]
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Upload",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["text=\"Upload\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "上传文件并提交",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level issue payload, got %#v", payload["issue"])
+	}
+	if issue["code"] != "security_policy" {
+		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+}
+
+func TestHandleDraftFlowToolUsesContentElementsForContentIntent(t *testing.T) {
+	observation := `{
+  "url": "https://money.163.com/",
+  "title": "网易财经",
+  "artifact_root": "/tmp/artifacts",
+  "page_summary": "Observed \"网易财经\" with 1 interactive elements and 3 content elements. Top content: 财经要闻; 头条新闻一; 头条新闻二.",
+  "dom_snapshot_excerpt": "h2: 财经要闻\na: 头条新闻一 -> https://money.163.com/story/1",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h2",
+      "text": "财经要闻",
+      "xpath": "/html/body/main/section[1]/h2[1]",
+      "selector": "xpath=/html/body/main/section[1]/h2[1]"
+    },
+    {
+      "index": 2,
+      "kind": "article_link",
+      "tag": "a",
+      "text": "头条新闻一",
+      "href": "https://money.163.com/story/1",
+      "xpath": "/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+      "selector": "xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]"
+    },
+    {
+      "index": 3,
+      "kind": "article_link",
+      "tag": "a",
+      "text": "头条新闻二",
+      "href": "https://money.163.com/story/2",
+      "xpath": "/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+      "selector": "xpath=/html/body/main/section[1]/ul[1]/li[2]/a[1]"
+    }
+  ],
+  "elements": [
+    {
+      "index": 1,
+      "tag": "a",
+      "type": "link",
+      "text": "头条新闻一",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]"]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "查看财经要闻内容",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	flowYAML, ok := draft["flow_yaml"].(string)
+	if !ok || !strings.Contains(flowYAML, `action: get_all_links`) {
+		t.Fatalf("expected content-oriented draft flow, got %#v", draft["flow_yaml"])
+	}
+}
+
+func TestHandleDraftFlowToolAcceptsStructuredObservationObject(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent": "查看财经要闻内容",
+				"observation": map[string]any{
+					"title": "网易财经",
+					"content_elements\\": []any{
+						map[string]any{
+							"index":    1,
+							"kind":     "headline",
+							"tag":      "h2",
+							"text":     "财经要闻",
+							"xpath":    "/html/body/main/section[1]/h2[1]",
+							"selector": "xpath=/html/body/main/section[1]/h2[1]",
+						},
+						map[string]any{
+							"index":    2,
+							"kind":     "article_link",
+							"tag":      "a",
+							"text":     "头条新闻一",
+							"href":     "https://money.163.com/story/1",
+							"xpath":    "/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+							"selector": "xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+						},
+						map[string]any{
+							"index":    3,
+							"kind":     "article_link",
+							"tag":      "a",
+							"text":     "头条新闻二",
+							"href":     "https://money.163.com/story/2",
+							"xpath":    "/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+							"selector": "xpath=/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	flowYAML, ok := draft["flow_yaml"].(string)
+	if !ok || !strings.Contains(flowYAML, `action: get_all_links`) {
+		t.Fatalf("expected content-oriented flow from structured observation, got %#v", draft["flow_yaml"])
+	}
+}
+
+func TestHandleDraftFlowToolIncludesRecommendedExamples(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "搜索订单并导出 CSV",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	recommended, ok := payload["recommended_examples"].([]any)
+	if !ok || len(recommended) == 0 {
+		t.Fatalf("expected recommended_examples, got %#v", payload["recommended_examples"])
+	}
+	first, ok := recommended[0].(map[string]any)
+	if !ok || first["id"] != "search_results_to_csv" {
+		t.Fatalf("expected search_results_to_csv first, got %#v", payload["recommended_examples"])
+	}
+	flowYAML, ok := first["flow_yaml"].(string)
+	if !ok || strings.TrimSpace(flowYAML) == "" {
+		t.Fatalf("expected flow_yaml in recommended example, got %#v", first["flow_yaml"])
+	}
+	flow, err := ParseFlow([]byte(flowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse recommended example: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate recommended example: %v", err)
+	}
+}
+
+func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "page_summary": "Observed \"Orders\" with 2 interactive elements and 2 content elements. Top content: Order Center; Export orders.",
+  "dom_snapshot_excerpt": "h1: Order Center\na: Export orders -> /export",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h1",
+      "text": "Order Center",
+      "xpath": "/html/body/main/h1[1]",
+      "selector": "xpath=/html/body/main/h1[1]"
+    }
+  ],
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      `搜索订单 "A10086"`,
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleFinalizeFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("finalize flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true || payload["status"] != "ready" {
+		t.Fatalf("expected ready finalize payload, got %#v", payload)
+	}
+	if _, ok := payload["flow_yaml"].(string); !ok {
+		t.Fatalf("expected flow_yaml, got %#v", payload["flow_yaml"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+	recommended, ok := payload["recommended_examples"].([]any)
+	if !ok || len(recommended) == 0 {
+		t.Fatalf("expected recommended_examples, got %#v", payload["recommended_examples"])
+	}
+	first, ok := recommended[0].(map[string]any)
+	if !ok || first["id"] != "search_results_to_csv" {
+		t.Fatalf("expected search_results_to_csv first, got %#v", payload["recommended_examples"])
+	}
+	if summary, ok := payload["page_summary"].(string); !ok || !strings.Contains(summary, "Order Center") {
+		t.Fatalf("expected page_summary passthrough, got %#v", payload["page_summary"])
+	}
+	if excerpt, ok := payload["dom_snapshot_excerpt"].(string); !ok || !strings.Contains(excerpt, "Export orders") {
+		t.Fatalf("expected dom_snapshot_excerpt passthrough, got %#v", payload["dom_snapshot_excerpt"])
+	}
+	content, ok := payload["content_elements"].([]any)
+	if !ok || len(content) != 1 {
+		t.Fatalf("expected content_elements passthrough, got %#v", payload["content_elements"])
+	}
+}
+
+func TestHandleFinalizeFlowToolWithObservationNeedsInput(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "搜索订单",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleFinalizeFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("finalize flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true || payload["status"] != "needs_input" {
+		t.Fatalf("expected needs_input finalize payload, got %#v", payload)
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.finalize_flow" {
+		t.Fatalf("expected next_action tsplay.finalize_flow, got %#v", payload["next_action"])
+	}
+}
+
+func TestHandleFinalizeFlowToolWithObservationNeedsPermission(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/upload",
+  "title": "Upload",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "file",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#file-input"]
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Upload",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["text=\"Upload\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "上传文件并提交",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleFinalizeFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("finalize flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true || payload["status"] != "needs_permission" {
+		t.Fatalf("expected needs_permission finalize payload, got %#v", payload)
+	}
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok || issue["code"] != "security_policy" {
+		t.Fatalf("expected security issue, got %#v", payload["issue"])
+	}
+	recommended, ok := payload["recommended_examples"].([]any)
+	if !ok || len(recommended) == 0 {
+		t.Fatalf("expected recommended_examples, got %#v", payload["recommended_examples"])
+	}
+	first, ok := recommended[0].(map[string]any)
+	if !ok || first["id"] != "upload_file_then_submit" {
+		t.Fatalf("expected upload_file_then_submit first, got %#v", payload["recommended_examples"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.finalize_flow" {
+		t.Fatalf("expected next_action tsplay.finalize_flow, got %#v", payload["next_action"])
+	}
+}
+
+func TestFinalizeFlowStatusNeedsRepair(t *testing.T) {
+	draft := &FlowDraft{
+		Validation: &FlowDraftValidation{
+			Valid: false,
+			Error: `step 2 uses unsupported action "fill"`,
+			Issue: &FlowIssue{
+				Code:       "unsupported_action",
+				DidYouMean: "type_text",
+			},
+		},
+	}
+
+	status, reason := finalizeFlowStatus(draft)
+	if status != "needs_repair" {
+		t.Fatalf("expected needs_repair, got %q", status)
+	}
+	if !strings.Contains(reason, `unsupported action "fill"`) {
+		t.Fatalf("unexpected reason: %q", reason)
 	}
 }
 
@@ -851,13 +1497,26 @@ steps:
 	if failedStep["index"] != float64(2) {
 		t.Fatalf("unexpected failed step index: %#v", failedStep["index"])
 	}
+	if failedStep["path"] != "2" {
+		t.Fatalf("unexpected failed step path: %#v", failedStep["path"])
+	}
 	artifacts, ok := contextPayload["artifacts"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected artifacts, got %#v", contextPayload["artifacts"])
 	}
+	if summary, ok := artifacts["artifact_summary"].([]any); !ok || len(summary) == 0 {
+		t.Fatalf("expected artifact summary, got %#v", artifacts["artifact_summary"])
+	}
 	excerpt, ok := artifacts["dom_snapshot_excerpt"].(string)
 	if !ok || !strings.Contains(excerpt, "Export orders") {
 		t.Fatalf("expected dom excerpt, got %#v", artifacts["dom_snapshot_excerpt"])
+	}
+	relevantSelectors, ok := artifacts["relevant_selectors"].([]any)
+	if !ok || len(relevantSelectors) == 0 {
+		t.Fatalf("expected relevant selectors, got %#v", artifacts["relevant_selectors"])
+	}
+	if relevantSelectors[0] != "#export" && relevantSelectors[0] != `text="Export orders"` {
+		t.Fatalf("unexpected relevant selectors: %#v", relevantSelectors)
 	}
 	encoded, err := json.Marshal(contextPayload)
 	if err != nil {
@@ -888,6 +1547,14 @@ steps:
 	}
 	if firstHint["failure_category"] != "selector_or_timing" {
 		t.Fatalf("expected selector_or_timing hint category, got %#v", firstHint)
+	}
+	traceSummary, ok := contextPayload["trace_summary"].([]any)
+	if !ok || len(traceSummary) < 2 {
+		t.Fatalf("expected trace summary, got %#v", contextPayload["trace_summary"])
+	}
+	secondTrace, ok := traceSummary[1].(map[string]any)
+	if !ok || secondTrace["label"] != "2 click export (click)" {
+		t.Fatalf("unexpected trace label: %#v", traceSummary[1])
 	}
 	if _, ok := contextPayload["validation_checklist"].([]any); !ok {
 		t.Fatalf("expected validation checklist, got %#v", contextPayload["validation_checklist"])
@@ -1165,6 +1832,84 @@ func TestHandleObservePageToolMissingURL(t *testing.T) {
 	if !strings.Contains(payload["error"].(string), "url") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
 	}
+	if payload["tool"] != "tsplay.observe_page" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	if _, ok := payload["summary"].(string); !ok {
+		t.Fatalf("expected summary string, got %#v", payload["summary"])
+	}
+	warnings, ok := payload["warnings"].([]any)
+	if !ok || len(warnings) != 0 {
+		t.Fatalf("expected warnings array, got %#v", payload["warnings"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.observe_page" {
+		t.Fatalf("expected retry next_action, got %#v", payload["next_action"])
+	}
+	run, ok := payload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected run metadata, got %#v", payload["run"])
+	}
+	for _, key := range []string{"id", "status", "queue_wait_ms", "duration_ms", "timeout_ms", "audit_path", "run_root"} {
+		if _, ok := run[key]; !ok {
+			t.Fatalf("expected run metadata key %q in %#v", key, run)
+		}
+	}
+}
+
+func TestHandleObservePageToolIncludesObservationSummaryFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html>
+<html>
+<head><title>Finance</title></head>
+<body>
+  <main>
+    <h1>财经要闻</h1>
+    <p>今日市场聚焦宏观经济数据和行业财报。</p>
+    <a href="/story/1">头条新闻一</a>
+    <a href="/story/2">头条新闻二</a>
+  </main>
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"url": server.URL,
+			},
+		},
+	}
+
+	result, err := handleObservePageToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()})
+	if err != nil {
+		t.Fatalf("observe page: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	if summary, ok := payload["page_summary"].(string); !ok || !strings.Contains(summary, "财经要闻") {
+		t.Fatalf("expected page_summary, got %#v", payload["page_summary"])
+	}
+	if excerpt, ok := payload["dom_snapshot_excerpt"].(string); !ok || !strings.Contains(excerpt, "头条新闻一") {
+		t.Fatalf("expected dom_snapshot_excerpt, got %#v", payload["dom_snapshot_excerpt"])
+	}
+	content, ok := payload["content_elements"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("expected content_elements, got %#v", payload["content_elements"])
+	}
+	observation, ok := payload["observation"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected observation payload, got %#v", payload["observation"])
+	}
+	if observation["page_summary"] != payload["page_summary"] {
+		t.Fatalf("expected observation.page_summary to match top-level summary, got %#v", observation["page_summary"])
+	}
 }
 
 func TestHandleValidateFlowTool(t *testing.T) {
@@ -1196,6 +1941,48 @@ steps:
 	if payload["name"] != "validate_from_mcp" {
 		t.Fatalf("unexpected flow name: %#v", payload["name"])
 	}
+	if payload["tool"] != "tsplay.validate_flow" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+	security, ok := payload["security"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected security metadata, got %#v", payload["security"])
+	}
+	policy, ok := security["policy"].(map[string]any)
+	if !ok || policy["allow_lua"] != true {
+		t.Fatalf("expected allow_lua in security policy, got %#v", payload["security"])
+	}
+}
+
+func TestHandleValidateFlowToolAcceptsFlowYAMLAlias(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow_yaml": `
+schema_version: "1"
+name: validate_from_flow_yaml
+steps:
+  - action: click
+    selector: "#submit"
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != true || payload["name"] != "validate_from_flow_yaml" {
+		t.Fatalf("expected flow_yaml alias to validate, got %#v", payload)
+	}
 }
 
 func TestHandleValidateFlowToolRejectsLuaWithoutAllow(t *testing.T) {
@@ -1225,6 +2012,178 @@ steps:
 	}
 	if !strings.Contains(payload["error"].(string), "allow_lua") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.validate_flow" {
+		t.Fatalf("expected validate retry next_action, got %#v", payload["next_action"])
+	}
+}
+
+func TestHandleValidateFlowToolReturnsIssueForUnsupportedActionAlias(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: bad_alias
+steps:
+  - action: fill
+    selector: "#kw"
+    text: "hello"
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected issue payload, got %#v", payload["issue"])
+	}
+	if issue["code"] != "unsupported_action" || issue["did_you_mean"] != "type_text" {
+		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+	repairExample, ok := payload["repair_example"].(map[string]any)
+	if !ok || repairExample["id"] != "repair_fill_to_type_text" {
+		t.Fatalf("expected fill repair example, got %#v", payload["repair_example"])
+	}
+}
+
+func TestHandleValidateFlowToolReturnsRepairExampleForUnknownFieldAlias(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: bad_result_var
+steps:
+  - action: evaluate
+    selector: "body"
+    script: |
+      return []
+    result_var: rows
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	repairExample, ok := payload["repair_example"].(map[string]any)
+	if !ok || repairExample["id"] != "repair_result_var_to_save_as" {
+		t.Fatalf("expected result_var repair example, got %#v", payload["repair_example"])
+	}
+}
+
+func TestHandleValidateFlowToolReturnsIssueForUnexpectedParameter(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: bad_param
+steps:
+  - action: navigate
+    url: "https://example.com"
+    timeout: 3000
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected issue payload, got %#v", payload["issue"])
+	}
+	if issue["code"] != "unexpected_parameter" || issue["field"] != "timeout" {
+		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+	if suggestion, _ := issue["suggestion"].(string); !strings.Contains(suggestion, "browser.timeout") {
+		t.Fatalf("expected browser.timeout hint, got %#v", issue)
+	}
+	repairExample, ok := payload["repair_example"].(map[string]any)
+	if !ok || repairExample["id"] != "repair_navigate_timeout_to_browser_timeout" {
+		t.Fatalf("expected navigate timeout repair example, got %#v", payload["repair_example"])
+	}
+}
+
+func TestFlowSecurityPolicyResolutionFromToolRequestSupportsPresetOverrides(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"security_preset": "full_automation",
+				"allow_http":      false,
+			},
+		},
+	}
+
+	resolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		t.Fatalf("resolve security preset: %v", err)
+	}
+	if resolution.Preset != "full_automation" {
+		t.Fatalf("unexpected preset: %#v", resolution.Preset)
+	}
+	if resolution.Policy.AllowLua != true || resolution.Policy.AllowJavaScript != true || resolution.Policy.AllowDatabase != true {
+		t.Fatalf("expected full automation grants, got %#v", resolution.Policy)
+	}
+	if resolution.Policy.AllowHTTP != false {
+		t.Fatalf("expected explicit allow_http override to win, got %#v", resolution.Policy)
+	}
+	if resolution.Policy.FileInputRoot != options.ArtifactRoot || resolution.Policy.FileOutputRoot != options.ArtifactRoot {
+		t.Fatalf("expected artifact roots in security policy, got %#v", resolution.Policy)
+	}
+}
+
+func TestHandleValidateFlowToolSupportsSecurityPreset(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: validate_browser_write
+steps:
+  - action: screenshot
+    path: capture.png
+`,
+				"security_preset": "browser_write",
+			},
+		},
+	}
+
+	result, err := handleValidateFlowToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("validate flow with browser_write: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != true {
+		t.Fatalf("expected valid flow with browser_write preset, got %#v", payload)
+	}
+	security, ok := payload["security"].(map[string]any)
+	if !ok || security["preset"] != "browser_write" {
+		t.Fatalf("expected browser_write preset metadata, got %#v", payload["security"])
 	}
 }
 
@@ -1447,6 +2406,13 @@ func TestHandleRunFlowToolMissingFlow(t *testing.T) {
 	}
 	if !strings.Contains(payload["error"].(string), "flow") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if payload["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.repair_flow_context" {
+		t.Fatalf("expected repair_flow_context next_action, got %#v", payload["next_action"])
 	}
 }
 

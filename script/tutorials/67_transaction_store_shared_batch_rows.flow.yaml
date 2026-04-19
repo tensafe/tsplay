@@ -1,0 +1,131 @@
+schema_version: "1"
+name: lesson_67_transaction_store_shared_batch_rows_flow
+description: Reuse the Redis-owned batch id, then upsert the summary and rewrite all detail rows inside one transaction.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+  detail_rows: []
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_prefix}}{{latest_batch_id}}"
+    save_as: payload_text
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.input_file"
+    save_as: input_file
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.latest_operator"
+    save_as: latest_operator
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: detail_scan
+    steps:
+      - action: append_var
+        save_as: detail_rows
+        with:
+          value:
+            batch_id: "{{latest_batch_id}}"
+            line_no: "{{row.line_no}}"
+            name: "{{row.name}}"
+            phone: "{{row.phone}}"
+            status: "{{row.status}}"
+            operator_name: "{{latest_operator}}"
+
+  - action: db_transaction
+    save_as: transaction_result
+    steps:
+      - action: db_upsert
+        connection: reporting
+        save_as: summary_upsert_result
+        with:
+          table: public.tutorial_import_batches
+          columns:
+            - batch_id
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          key_columns:
+            - batch_id
+          update_columns:
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          row:
+            batch_id: "{{latest_batch_id}}"
+            report_file: "{{input_file}}"
+            source_lesson: "67"
+            row_count: "{{detail_scan.iterations}}"
+            operator_name: "{{latest_operator}}"
+
+      - action: db_execute
+        connection: reporting
+        save_as: delete_rows_result
+        with:
+          sql: DELETE FROM public.tutorial_import_rows WHERE batch_id = $1
+          args:
+            - "{{latest_batch_id}}"
+
+      - action: db_insert_many
+        connection: reporting
+        save_as: detail_insert_result
+        with:
+          table: public.tutorial_import_rows
+          columns:
+            - batch_id
+            - line_no
+            - name
+            - phone
+            - status
+            - operator_name
+          rows: "{{detail_rows}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: summary_row
+    with:
+      sql: SELECT batch_id, report_file, source_lesson, row_count, operator_name FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: detail_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/67-transaction-store-shared-batch-rows-flow.json
+    with:
+      value:
+        lesson: "67"
+        mode: flow
+        latest_batch_id: "{{latest_batch_id}}"
+        payload_key: "{{payload_prefix}}{{latest_batch_id}}"
+        input_file: "{{input_file}}"
+        latest_operator: "{{latest_operator}}"
+        transaction_result: "{{transaction_result}}"
+        summary_upsert_result: "{{summary_upsert_result}}"
+        delete_rows_result: "{{delete_rows_result}}"
+        detail_insert_result: "{{detail_insert_result}}"
+        summary_row: "{{summary_row}}"
+        detail_count_row: "{{detail_count_row}}"

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retry And Wait Until Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 32px;
+      line-height: 1.6;
+    }
+    .panel {
+      max-width: 520px;
+      margin-bottom: 24px;
+      padding: 16px 20px;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      background: #f6f8fa;
+    }
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border-radius: 8px;
+      border: 1px solid #d8dee4;
+    }
+    .badge {
+      display: none;
+      margin-top: 12px;
+      padding: 8px 12px;
+      color: #0a3622;
+      background: #dafbe1;
+      border-radius: 999px;
+      width: fit-content;
+    }
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      background: #1f883d;
+      color: #ffffff;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Retry And Wait Until Demo</h1>
+
+  <section class="panel">
+    <h2>Retry Demo</h2>
+    <p>第一次点击只会进入准备态，第二次点击才会完成。</p>
+    <button id="retry-button" type="button">触发导出</button>
+    <div class="status" id="retry-status">Waiting for export</div>
+    <div class="badge" id="retry-result">Export badge ready</div>
+  </section>
+
+  <section class="panel">
+    <h2>Wait Until Demo</h2>
+    <p>点击后会启动一个异步任务，大约 1.2 秒后才完成。</p>
+    <button id="start-job" type="button">启动异步任务</button>
+    <div class="status" id="job-status">Idle</div>
+    <div class="badge" id="job-ready">Async job ready</div>
+  </section>
+
+  <script>
+    let retryAttempts = 0;
+
+    document.getElementById('retry-button').addEventListener('click', function() {
+      retryAttempts += 1;
+      const status = document.getElementById('retry-status');
+      const badge = document.getElementById('retry-result');
+
+      if (retryAttempts < 2) {
+        status.textContent = 'Preparing export';
+        badge.style.display = 'none';
+        return;
+      }
+
+      status.textContent = 'Export complete';
+      badge.style.display = 'inline-block';
+    });
+
+    document.getElementById('start-job').addEventListener('click', function() {
+      const status = document.getElementById('job-status');
+      const badge = document.getElementById('job-ready');
+
+      status.textContent = 'Running';
+      badge.style.display = 'none';
+
+      window.setTimeout(function() {
+        status.textContent = 'Complete';
+        badge.style.display = 'inline-block';
+      }, 1200);
+    });
+  </script>
+</body>
+</html>

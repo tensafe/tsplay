@@ -1,0 +1,55 @@
+schema_version: "1"
+name: lesson_30_browser_state_snapshot_pack_flow
+description: Seed a local session, then combine status text, storage state, and cookies into one JSON artifact.
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_lab.html
+  username: demo-user
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#page-title"
+    timeout: 5000
+
+  - action: click
+    selector: "#clear-state"
+
+  - action: type_text
+    selector: "#username"
+    text: "{{username}}"
+
+  - action: click
+    selector: "#login"
+
+  - action: assert_text
+    selector: "#session-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#session-status"
+    timeout: 5000
+    save_as: session_status
+
+  - action: get_storage_state
+    save_as: storage_state_json
+
+  - action: get_cookies_string
+    save_as: cookie_header
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "30"
+        mode: flow
+        page_url: "{{page_url}}"
+        username: "{{username}}"
+        session_status: "{{session_status}}"
+        storage_state_json: "{{storage_state_json}}"
+        cookie_header: "{{cookie_header}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/30-browser-state-snapshot-pack-flow.json
+    value: "{{payload}}"

@@ -30,6 +30,9 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	// 行为类 / Actions
 	{"type_text", type_text, "在指定元素中输入文本", "Type text into a specified element. Example: type_text('#input-id', 'Hello World'). Parameters: selector (string) - The selector of the input element; text (string) - The text to type."},
 	{"get_text", get_text, "获取指定元素的文本内容", "Get the text content of a specified element. Example: get_text('#element-id'). Parameters: selector (string) - The selector of the element to retrieve text from."},
+	{"extract_text", extract_text, "提取元素文本，可选正则匹配", "Extract text from a selector, optionally waiting first and applying a regex. Example: extract_text('#status', 5000, 'Status: (.*)'). Parameters: selector (string) - The selector to read from; timeout (int, optional) - Wait timeout in milliseconds; pattern (string, optional) - Regex used to extract the first match. Returns: string or string[]."},
+	{"set_var", set_var, "设置 Flow/Lua 变量", "Set a Flow/Lua variable. Example: set_var('export_message', 'Current orders: ' .. order_count). Parameters: name (string) - Variable name; value (any) - Value to store. Returns: the stored value."},
+	{"append_var", append_var, "向列表变量追加值", "Append a value to a list variable. Example: append_var('processed_rows', row.source_row). Parameters: name (string) - Variable name; value (any) - Value to append. Returns: the updated list."},
 	{"set_value", set_value, "设置指定元素的值", "Set the value of a specified element. Example: set_value('#input-id', 'new value'). Parameters: selector (string) - The selector of the input element; value (string) - The value to set."},
 	{"select_option", select_option, "选择下拉框中的选项", "Select an option in a dropdown. Example: select_option('#dropdown-id', 'option-value'). Parameters: selector (string) - The selector of the dropdown; value (string) - The value of the option to select."},
 	{"hover", hover, "将鼠标悬停在指定元素上", "Hover the mouse over a specified element. Example: hover('#element-id'). Parameters: selector (string) - The selector of the element to hover over."},
@@ -39,6 +42,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"wait_for_network_idle", wait_for_network_idle, "等待网络空闲", "Wait for the network to be idle. Example: wait_for_network_idle(). No parameters."},
 	{"wait_for_selector", wait_for_selector, "等待指定选择器匹配的元素出现", "Wait for an element matching the specified selector to appear. Example: wait_for_selector('#element-id', 5000). Parameters: selector (string) - The selector to wait for; timeout (int, optional) - Timeout in milliseconds (default is 30000)."},
 	{"wait_for_text", wait_for_text, "等待指定文本出现在页面中", "Wait for specified text to appear on the page. Example: wait_for_text('#element-id', 'Hello World', 5000). Parameters: selector (string) - The selector of the element; text (string) - The expected text; timeout (int, optional) - Timeout in milliseconds (default is 30000)."},
+	{"assert_visible", assert_visible, "断言元素可见", "Assert that a selector is visible. Example: assert_visible('#ready', 5000). Parameters: selector (string) - The selector to check; timeout (int, optional) - Wait timeout in milliseconds. Returns: true when visible."},
+	{"assert_text", assert_text, "断言元素文本包含指定内容", "Assert that a selector text contains the expected text. Example: assert_text('#ready', 'complete', 5000). Parameters: selector (string) - The selector to check; text (string) - Expected text fragment; timeout (int, optional) - Wait timeout in milliseconds. Returns: assertion details."},
 	{"sleep", sleep, "暂停执行指定的时间", "Pause execution for a specified duration. Example: sleep(2). Parameters: seconds (number) - The duration to sleep in seconds."},
 
 	// 页面截图 / Screenshots
@@ -101,9 +106,13 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"db_query", db_query, "查询数据库返回多行", "Run a SELECT-style SQL query using database/sql. Example: db_query({sql='SELECT keyword FROM crawl_results WHERE rank >= $1', args={1}, connection='reporting', driver='pgsql'}). Parameters: sql (string) - Query SQL; args (list|object, optional) - Positional or named arguments; connection (string, optional) - Named database connection; driver (string, optional) - mysql, pgsql, sqlserver, or oracle."},
 	{"db_query_one", db_query_one, "查询数据库返回单行", "Run a SELECT-style SQL query and return the first row. Example: db_query_one({sql='SELECT keyword FROM crawl_results WHERE id = $1', args={42}, connection='reporting', driver='pgsql'}). Parameters: sql (string) - Query SQL; args (list|object, optional) - Positional or named arguments; connection (string, optional) - Named database connection; driver (string, optional) - mysql, pgsql, sqlserver, or oracle."},
 	{"db_execute", db_execute, "执行数据库 SQL", "Run a non-query SQL statement using database/sql. Example: db_execute({sql='DELETE FROM crawl_results WHERE created_at < $1', args={'2025-01-01'}, connection='reporting', driver='pgsql'}). Parameters: sql (string) - SQL statement; args (list|object, optional) - Positional or named arguments; connection (string, optional) - Named database connection; driver (string, optional) - mysql, pgsql, sqlserver, or oracle."},
+	{"db_transaction", db_transaction, "在事务中执行一组数据库操作", "Run a Lua callback inside a database transaction scope. Example: db_transaction(function() return db_insert({table='crawl_results', row={keyword='山东大学'}, connection='reporting', driver='pgsql'}) end, 5000). Parameters: callback (function) - The Lua callback to execute; timeout_ms (int, optional) - Transaction timeout in milliseconds. Returns: the callback return values, or true when the callback returns nothing."},
 
 	// StateStorage 管理 / State Storage Management
 	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},
+	{"save_storage_state", save_storage_state, "将当前页面的存储状态保存到文件", "Save the current browser storage state to a file. Example: save_storage_state('states/admin.json'). Parameters: path (string) - The file path to save the browser storage state."},
+	{"load_storage_state", load_storage_state, "从文件加载浏览器存储状态", "Load browser storage state from a file into a fresh browser context. Example: load_storage_state('states/admin.json'). Parameters: path (string) - The file path of the saved browser storage state."},
+	{"use_session", use_session, "复用已保存的命名浏览器会话", "Reuse a named saved browser session backed by a storage state file. Example: use_session('admin'). Parameters: name (string) - The saved session name registered under the artifact root."},
 	{"get_cookies_string", get_cookies_string, "获取当前页面的 Cookie 字符串", "Get cookies as a string. Example: get_cookies_string(). No parameters."},
 }
 
@@ -224,6 +233,20 @@ func flowBrowserContextFromState(L *lua.LState) (playwright.BrowserContext, bool
 		return nil, false
 	}
 	return contexts[0], true
+}
+
+func luaArtifactRootFromState(L *lua.LState) string {
+	if L == nil {
+		return DefaultFlowArtifactRoot
+	}
+	value := L.GetGlobal("artifact_root")
+	if asString, ok := value.(lua.LString); ok {
+		trimmed := strings.TrimSpace(string(asString))
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return DefaultFlowArtifactRoot
 }
 
 func flowBrowserContextsFromState(L *lua.LState) []playwright.BrowserContext {
@@ -487,6 +510,134 @@ func get_text(L *lua.LState) int {
 	return 1
 }
 
+func extract_text(L *lua.LState) int {
+	selector := L.CheckString(1)
+	step := FlowStep{
+		Action:   "extract_text",
+		Selector: selector,
+	}
+
+	if L.GetTop() >= 2 && L.Get(2) != lua.LNil {
+		switch value := L.Get(2).(type) {
+		case lua.LNumber:
+			step.Timeout = int(value)
+		case lua.LString:
+			step.Pattern = string(value)
+		default:
+			L.RaiseError("extract_text second argument must be a timeout number or pattern string")
+			return 0
+		}
+	}
+	if L.GetTop() >= 3 && L.Get(3) != lua.LNil {
+		if step.Pattern != "" {
+			L.RaiseError("extract_text third argument can only be used when the second argument is timeout")
+			return 0
+		}
+		step.Pattern = L.CheckString(3)
+	}
+
+	result, err := runFlowExtractTextStep(L, flowContextFromState(L), step)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func set_var(L *lua.LState) int {
+	name, ok := luaFlowVarName(L, "set_var", 1)
+	if !ok {
+		return 0
+	}
+
+	value := luaValueToGo(L.CheckAny(2))
+	flowCtx := flowContextFromState(L)
+	result := value
+	if flowCtx != nil {
+		var err error
+		result, err = runFlowSetVarStep(flowCtx, FlowStep{
+			Action: "set_var",
+			SaveAs: name,
+			With:   map[string]any{"value": value},
+		})
+		if err != nil {
+			L.RaiseError("%v", err)
+			return 0
+		}
+	}
+
+	setLuaFlowVar(L, flowCtx, name, result)
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func append_var(L *lua.LState) int {
+	name, ok := luaFlowVarName(L, "append_var", 1)
+	if !ok {
+		return 0
+	}
+
+	value := luaValueToGo(L.CheckAny(2))
+	flowCtx := flowContextFromState(L)
+
+	var (
+		result any
+		err    error
+	)
+	if flowCtx != nil {
+		result, err = runFlowAppendVarStep(flowCtx, FlowStep{
+			Action: "append_var",
+			SaveAs: name,
+			With:   map[string]any{"value": value},
+		})
+	} else {
+		current := luaValueToGo(L.GetGlobal(name))
+		if current == nil {
+			result = []any{value}
+		} else {
+			items, listErr := toList(current)
+			if listErr != nil {
+				err = fmt.Errorf("append_var save_as %q must already be a list, got %T", name, current)
+			} else {
+				result = append(append([]any(nil), items...), value)
+			}
+		}
+	}
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+
+	setLuaFlowVar(L, flowCtx, name, result)
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func luaFlowVarName(L *lua.LState, action string, index int) (string, bool) {
+	name := strings.TrimSpace(L.CheckString(index))
+	if name == "" {
+		L.RaiseError("%s requires a variable name", action)
+		return "", false
+	}
+	if !flowIdentifierPattern.MatchString(name) {
+		L.RaiseError("%s variable name %q is not valid", action, name)
+		return "", false
+	}
+	return name, true
+}
+
+func setLuaFlowVar(L *lua.LState, ctx *FlowContext, name string, value any) {
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	if ctx != nil {
+		setFlowVar(L, ctx, name, value)
+		return
+	}
+	L.SetGlobal(name, goValueToLua(L, value))
+}
+
 func set_value(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {
@@ -667,6 +818,39 @@ func wait_for_text(L *lua.LState) int {
 
 	fmt.Printf("Successfully waited for text '%s' in selector: %s\n", expectedText, selector)
 	return 0
+}
+
+func assert_visible(L *lua.LState) int {
+	step := FlowStep{
+		Action:   "assert_visible",
+		Selector: L.CheckString(1),
+		Timeout:  L.OptInt(2, 0),
+	}
+
+	result, err := runFlowAssertVisibleStep(L, flowContextFromState(L), step)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func assert_text(L *lua.LState) int {
+	step := FlowStep{
+		Action:   "assert_text",
+		Selector: L.CheckString(1),
+		Text:     L.CheckString(2),
+		Timeout:  L.OptInt(3, 0),
+	}
+
+	result, err := runFlowAssertTextStep(L, flowContextFromState(L), step)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
 }
 
 func sleep(L *lua.LState) int {
@@ -1785,43 +1969,134 @@ func get_storage_state(L *lua.LState) int {
 	return 1
 }
 
-//	func set_storage_state(L *lua.LState) int {
-//		// 获取浏览器对象
-//		browser := safe_browser(L)
-//		if browser == nil {
-//			L.RaiseError("Failed to get browser object")
-//			return 0
-//		}
-//
-//		// 获取上下文索引（从 Lua 参数中获取，默认为第一个上下文）
-//		contextIndex := L.OptInt(1, 1) - 1 // Lua 索引从 1 开始，Go 数组索引从 0 开始
-//		contexts := browser.Contexts()
-//
-//		// 检查上下文索引是否合法
-//		if contextIndex < 0 || contextIndex >= len(contexts) {
-//			L.RaiseError("Invalid context index: %d", contextIndex+1)
-//			return 0
-//		}
-//
-//		// 获取指定的上下文
-//		context := contexts[contextIndex]
-//
-//		// 获取传入的存储状态 JSON 字符串
-//		storageStateJSON := L.CheckString(2)
-//
-//		// 设置存储状态到指定的上下文
-//		err := context.SetStorageState(playwright.BrowserContextSetStorageStateOptions{
-//			StorageState: playwright.String(storageStateJSON),
-//		})
-//		if err != nil {
-//			L.RaiseError("Failed to set storage state: %v", err)
-//			return 0
-//		}
-//
-//		// 返回成功状态
-//		L.Push(lua.LBool(true))
-//		return 1
-//	}
+func save_storage_state(L *lua.LState) int {
+	context := safe_context(L)
+	if context == nil {
+		return 0
+	}
+
+	path := L.CheckString(1)
+	if strings.TrimSpace(path) == "" {
+		L.RaiseError("Path cannot be empty")
+		return 0
+	}
+
+	if _, err := context.StorageState(path); err != nil {
+		L.RaiseError("Failed to save storage state to '%s': %v", path, err)
+		return 0
+	}
+
+	fmt.Printf("Storage state saved to: %s\n", path)
+	L.Push(lua.LString(path))
+	return 1
+}
+
+func load_storage_state(L *lua.LState) int {
+	browser := safe_browser(L)
+	if browser == nil {
+		return 0
+	}
+
+	path := L.CheckString(1)
+	if strings.TrimSpace(path) == "" {
+		L.RaiseError("Path cannot be empty")
+		return 0
+	}
+
+	oldContext, _ := flowBrowserContextFromState(L)
+	newContext, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		StorageStatePath: playwright.String(path),
+	})
+	if err != nil {
+		L.RaiseError("Failed to load storage state from '%s': %v", path, err)
+		return 0
+	}
+
+	page, err := newContext.NewPage()
+	if err != nil {
+		_ = newContext.Close()
+		L.RaiseError("Failed to create page with storage state '%s': %v", path, err)
+		return 0
+	}
+
+	setFlowBrowserGlobals(L, browser, newContext, page)
+	if oldContext != nil {
+		_ = oldContext.Close()
+	}
+
+	fmt.Printf("Storage state loaded from: %s\n", path)
+	L.Push(lua.LString(path))
+	return 1
+}
+
+func use_session(L *lua.LState) int {
+	name := L.CheckString(1)
+	if strings.TrimSpace(name) == "" {
+		L.RaiseError("Session name cannot be empty")
+		return 0
+	}
+
+	artifactRoot := luaArtifactRootFromState(L)
+	config, err := ResolveFlowSavedSessionBrowserConfig(name, artifactRoot)
+	if err != nil {
+		L.RaiseError("Failed to resolve saved session '%s': %v", name, err)
+		return 0
+	}
+	if config == nil {
+		L.RaiseError("Saved session '%s' returned no browser config", name)
+		return 0
+	}
+	if config.Persistent {
+		L.RaiseError("Saved session '%s' uses a persistent profile, which is not supported by Lua use_session()", name)
+		return 0
+	}
+
+	loadPath, err := config.runtimeLoadStorageStatePath(&FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileInputRoot:     artifactRoot,
+		FileOutputRoot:    artifactRoot,
+	})
+	if err != nil {
+		L.RaiseError("Failed to resolve storage state for session '%s': %v", name, err)
+		return 0
+	}
+	if strings.TrimSpace(loadPath) == "" {
+		L.RaiseError("Saved session '%s' does not contain a storage_state file", name)
+		return 0
+	}
+
+	browser := safe_browser(L)
+	if browser == nil {
+		return 0
+	}
+
+	oldContext, _ := flowBrowserContextFromState(L)
+	newContext, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		StorageStatePath: playwright.String(loadPath),
+	})
+	if err != nil {
+		L.RaiseError("Failed to load saved session '%s': %v", name, err)
+		return 0
+	}
+
+	page, err := newContext.NewPage()
+	if err != nil {
+		_ = newContext.Close()
+		L.RaiseError("Failed to create page for saved session '%s': %v", name, err)
+		return 0
+	}
+
+	setFlowBrowserGlobals(L, browser, newContext, page)
+	if oldContext != nil {
+		_ = oldContext.Close()
+	}
+	_, _ = MarkFlowSavedSessionUsed(name, artifactRoot)
+
+	fmt.Printf("Saved session loaded: %s\n", name)
+	L.Push(lua.LString(name))
+	return 1
+}
+
 func get_cookies_string(L *lua.LState) int {
 	// 获取上下文索引（默认为第一个上下文）
 	contextIndex := L.OptInt(1, 1) - 1

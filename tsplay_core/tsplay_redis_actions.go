@@ -42,6 +42,10 @@ func redis_get(L *lua.LState) int {
 	if L.GetTop() >= 2 {
 		connection = L.OptString(2, "")
 	}
+	if err := luaRedisExecutionAllowed(L, "redis_get"); err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
 	value, err := redisGet(key, connection)
 	if err != nil {
 		L.RaiseError("%v", err)
@@ -67,6 +71,10 @@ func redis_set(L *lua.LState) int {
 			connection = string(third)
 		}
 	}
+	if err := luaRedisExecutionAllowed(L, "redis_set"); err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
 
 	result, err := redisSet(key, value, ttlSeconds, connection)
 	if err != nil {
@@ -82,6 +90,10 @@ func redis_del(L *lua.LState) int {
 	connection := ""
 	if L.GetTop() >= 2 {
 		connection = L.OptString(2, "")
+	}
+	if err := luaRedisExecutionAllowed(L, "redis_del"); err != nil {
+		L.RaiseError("%v", err)
+		return 0
 	}
 	deleted, err := redisDel(key, connection)
 	if err != nil {
@@ -107,6 +119,10 @@ func redis_incr(L *lua.LState) int {
 			connection = string(second)
 		}
 	}
+	if err := luaRedisExecutionAllowed(L, "redis_incr"); err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
 
 	value, err := redisIncr(key, delta, connection)
 	if err != nil {
@@ -115,6 +131,14 @@ func redis_incr(L *lua.LState) int {
 	}
 	L.Push(goValueToLua(L, value))
 	return 1
+}
+
+func luaRedisExecutionAllowed(L *lua.LState, action string) error {
+	flowCtx := flowContextFromState(L)
+	if flowCtx != nil && flowCtx.Security != nil && !flowCtx.Security.AllowRedis {
+		return fmt.Errorf("%s is disabled by security policy; set allow_redis=true only for trusted flows", action)
+	}
+	return nil
 }
 
 func redisGet(key string, connection string) (any, error) {

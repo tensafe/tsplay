@@ -1,0 +1,73 @@
+schema_version: "1"
+name: lesson_52_use_session_capture_import_table_flow
+description: Reuse a named session, import CSV rows, and capture the protected results table from the page.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users.csv
+  session_name: session_import_demo
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: assert_text
+    selector: "#auth-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+      - action: assert_text
+        selector: "#submit-status"
+        text: "Imported"
+        timeout: 5000
+      - action: click
+        selector: "#clear-form"
+
+  - action: capture_table
+    selector: "#import-results"
+    save_as: table_rows
+
+  - action: extract_text
+    selector: "#auth-status"
+    timeout: 5000
+    save_as: auth_status
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: write_json
+    file_path: artifacts/tutorials/52-use-session-capture-import-table-flow.json
+    with:
+      value:
+        lesson: "52"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        auth_status: "{{auth_status}}"
+        import_count: "{{import_count}}"
+        table_rows: "{{table_rows}}"

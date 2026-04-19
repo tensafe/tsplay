@@ -1,0 +1,74 @@
+schema_version: "1"
+name: lesson_55_use_session_download_import_report_readback_flow
+description: Reuse a named session, download the protected import report, read it back, and write a JSON summary.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users.csv
+  session_name: session_import_demo
+  save_path: artifacts/tutorials/55-use-session-import-report-flow.csv
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+      - action: assert_text
+        selector: "#submit-status"
+        text: "Imported"
+        timeout: 5000
+      - action: click
+        selector: "#clear-form"
+
+  - action: download_file
+    selector: "#download-import-report"
+    save_path: "{{save_path}}"
+
+  - action: read_csv
+    file_path: "{{save_path}}"
+    save_as: downloaded_rows
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: extract_text
+    selector: "#export-status"
+    timeout: 5000
+    save_as: export_status
+
+  - action: write_json
+    file_path: artifacts/tutorials/55-use-session-download-import-report-readback-flow.json
+    with:
+      value:
+        lesson: "55"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        save_path: "{{save_path}}"
+        import_count: "{{import_count}}"
+        export_status: "{{export_status}}"
+        downloaded_rows: "{{downloaded_rows}}"

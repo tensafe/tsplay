@@ -1,0 +1,68 @@
+schema_version: "1"
+name: lesson_53_use_session_capture_import_table_to_csv_flow
+description: Reuse a named session, capture the protected results table, and write it to a local CSV file.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users.csv
+  session_name: session_import_demo
+  output_file: artifacts/tutorials/53-use-session-captured-import-table-flow.csv
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+      - action: assert_text
+        selector: "#submit-status"
+        text: "Imported"
+        timeout: 5000
+      - action: click
+        selector: "#clear-form"
+
+  - action: capture_table
+    selector: "#import-results"
+    save_as: table_rows
+
+  - action: write_csv
+    file_path: "{{output_file}}"
+    with:
+      value: "{{table_rows}}"
+      headers:
+        - Name
+        - Phone
+        - Status
+        - Operator
+
+  - action: write_json
+    file_path: artifacts/tutorials/53-use-session-capture-import-table-to-csv-flow.json
+    with:
+      value:
+        lesson: "53"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        output_file: "{{output_file}}"
+        table_rows: "{{table_rows}}"

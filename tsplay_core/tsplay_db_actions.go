@@ -89,21 +89,21 @@ var openFlowDatabase = func(driverName string, dsn string) (flowDatabase, error)
 var flowDatabaseCache sync.Map
 var dbSimpleIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]*$`)
 var dbReservedIdentifierSet = map[string]struct{}{
-	"all":     {},
-	"from":    {},
-	"group":   {},
-	"insert":  {},
-	"key":     {},
-	"order":   {},
-	"rank":    {},
-	"select":  {},
-	"table":   {},
-	"to":      {},
-	"update":  {},
-	"user":    {},
-	"value":   {},
-	"values":  {},
-	"where":   {},
+	"all":    {},
+	"from":   {},
+	"group":  {},
+	"insert": {},
+	"key":    {},
+	"order":  {},
+	"rank":   {},
+	"select": {},
+	"table":  {},
+	"to":     {},
+	"update": {},
+	"user":   {},
+	"value":  {},
+	"values": {},
+	"where":  {},
 }
 
 type sqlFlowDatabase struct {
@@ -147,7 +147,13 @@ func runLuaDBInsert(L *lua.LState, action string, forcedDriver string) int {
 		return 0
 	}
 
-	result, err := executeDBInsert(context.Background(), config)
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, action)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+
+	result, err := executeDBInsertWithFlow(flowCtx, runCtx, config)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0

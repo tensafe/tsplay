@@ -47,6 +47,11 @@ func http_request(L *lua.LState) int {
 		L.RaiseError("%v", err)
 		return 0
 	}
+	config, err = applyLuaHTTPRequestRuntimePolicy(L, config)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
 	result, err := executeHTTPRequest(L, config)
 	if err != nil {
 		L.RaiseError("%v", err)
@@ -306,6 +311,23 @@ func normalizeHTTPRequestConfig(values map[string]any) (flowHTTPRequestConfig, e
 		}
 	}
 	return config, nil
+}
+
+func applyLuaHTTPRequestRuntimePolicy(L *lua.LState, config flowHTTPRequestConfig) (flowHTTPRequestConfig, error) {
+	ctx := flowContextFromState(L)
+	if ctx == nil || ctx.Security == nil {
+		return config, nil
+	}
+	if !ctx.Security.AllowHTTP {
+		return flowHTTPRequestConfig{}, fmt.Errorf("http_request is disabled by security policy; set allow_http=true only for trusted flows")
+	}
+	if config.SavePath == "" && len(config.MultipartFiles) == 0 {
+		return config, nil
+	}
+	if !ctx.Security.AllowFileAccess {
+		return flowHTTPRequestConfig{}, fmt.Errorf("http_request file access is disabled by security policy; set allow_file_access=true only for trusted flows")
+	}
+	return rewriteHTTPRequestRuntimePaths(config, *ctx.Security)
 }
 
 func rewriteHTTPRequestRuntimePaths(config flowHTTPRequestConfig, policy FlowSecurityPolicy) (flowHTTPRequestConfig, error) {

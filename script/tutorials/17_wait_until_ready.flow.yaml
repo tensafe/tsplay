@@ -1,0 +1,47 @@
+schema_version: "1"
+name: lesson_17_wait_until_ready_flow
+description: Start a delayed local job, wait until the ready badge appears, and write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/retry_wait_until.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#start-job"
+    timeout: 5000
+
+  - action: click
+    selector: "#start-job"
+
+  - action: wait_until
+    timeout: 5000
+    interval_ms: 200
+    condition:
+      action: is_visible
+      selector: "#job-ready"
+    save_as: wait_result
+
+  - action: assert_text
+    selector: "#job-status"
+    text: "Complete"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#job-status"
+    timeout: 5000
+    save_as: job_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "17"
+        mode: flow
+        page_url: "{{page_url}}"
+        wait_result: "{{wait_result}}"
+        job_status: "{{job_status}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/17-wait-until-ready-flow.json
+    value: "{{payload}}"

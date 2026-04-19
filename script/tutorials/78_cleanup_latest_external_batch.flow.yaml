@@ -1,0 +1,76 @@
+schema_version: "1"
+name: lesson_78_cleanup_latest_external_batch_flow
+description: Delete the latest Redis batch payload and remove its Postgres summary and detail rows while leaving the audit trail intact.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+  cleanup_rows: []
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: set_var
+    save_as: payload_key
+    with:
+      value: "{{payload_prefix}}{{latest_batch_id}}"
+
+  - action: redis_del
+    key: "{{payload_key}}"
+    save_as: payload_deleted
+
+  - action: redis_del
+    key: "{{latest_key}}"
+    save_as: latest_deleted
+
+  - action: db_execute
+    connection: reporting
+    save_as: rows_deleted
+    with:
+      sql: DELETE FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: db_execute
+    connection: reporting
+    save_as: batch_deleted
+    with:
+      sql: DELETE FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: append_var
+    save_as: cleanup_rows
+    with:
+      value:
+        batch_id: "{{latest_batch_id}}"
+        payload_key: "{{payload_key}}"
+        payload_deleted: "{{payload_deleted}}"
+        latest_deleted: "{{latest_deleted}}"
+        rows_deleted: "{{rows_deleted.rows_affected}}"
+        batch_deleted: "{{batch_deleted.rows_affected}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/78-cleanup-latest-external-batch-flow.csv
+    with:
+      value: "{{cleanup_rows}}"
+      headers:
+        - batch_id
+        - payload_key
+        - payload_deleted
+        - latest_deleted
+        - rows_deleted
+        - batch_deleted
+
+  - action: write_json
+    file_path: artifacts/tutorials/78-cleanup-latest-external-batch-flow.json
+    with:
+      value:
+        lesson: "78"
+        mode: flow
+        latest_batch_id: "{{latest_batch_id}}"
+        payload_key: "{{payload_key}}"
+        payload_deleted: "{{payload_deleted}}"
+        latest_deleted: "{{latest_deleted}}"
+        rows_deleted: "{{rows_deleted}}"
+        batch_deleted: "{{batch_deleted}}"

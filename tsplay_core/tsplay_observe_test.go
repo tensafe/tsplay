@@ -39,14 +39,35 @@ func TestObservePageCapturesInteractiveElements(t *testing.T) {
 	if observation.Title != "Orders" {
 		t.Fatalf("title = %q", observation.Title)
 	}
+	if strings.TrimSpace(observation.PageSummary) == "" {
+		t.Fatalf("expected page summary, got %#v", observation.PageSummary)
+	}
 	if observation.ScreenshotPath == "" || observation.DOMSnapshotPath == "" {
 		t.Fatalf("expected artifact paths: %#v", observation)
+	}
+	if strings.TrimSpace(observation.DOMSnapshotExcerpt) == "" || !strings.Contains(observation.DOMSnapshotExcerpt, "Order Center") {
+		t.Fatalf("expected dom snapshot excerpt, got %#v", observation.DOMSnapshotExcerpt)
 	}
 	if _, err := os.Stat(observation.ScreenshotPath); err != nil {
 		t.Fatalf("expected screenshot artifact: %v", err)
 	}
 	if _, err := os.Stat(observation.DOMSnapshotPath); err != nil {
 		t.Fatalf("expected dom snapshot artifact: %v", err)
+	}
+	if len(observation.ContentElements) == 0 {
+		t.Fatalf("expected content elements, got %#v", observation.ContentElements)
+	}
+	headline := findObservedContentElement(observation.ContentElements, func(element PageObservationContentElement) bool {
+		return element.Kind == "headline" && strings.Contains(element.Text, "Order Center")
+	})
+	if headline == nil {
+		t.Fatalf("expected headline content element, got %#v", observation.ContentElements)
+	}
+	linkContent := findObservedContentElement(observation.ContentElements, func(element PageObservationContentElement) bool {
+		return element.Kind == "article_link" && strings.Contains(element.Text, "Export orders")
+	})
+	if linkContent == nil || linkContent.Selector == "" {
+		t.Fatalf("expected link content element with selector, got %#v", observation.ContentElements)
 	}
 
 	input := findObservedElement(observation.Elements, func(element PageObservationElement) bool {
@@ -57,6 +78,15 @@ func TestObservePageCapturesInteractiveElements(t *testing.T) {
 	}
 	if input.Label != "Order keyword" {
 		t.Fatalf("input label = %q", input.Label)
+	}
+	if input.PrimarySelector != `[data-testid="order-query"]` {
+		t.Fatalf("input primary selector = %q", input.PrimarySelector)
+	}
+	if input.SelectorCandidates[0] != input.PrimarySelector {
+		t.Fatalf("expected primary selector first, got %#v", input.SelectorCandidates)
+	}
+	if input.SelectorRationale == "" {
+		t.Fatalf("expected selector rationale, got %#v", input)
 	}
 	if !containsString(input.SelectorCandidates, `[data-testid="order-query"]`) {
 		t.Fatalf("missing data-testid selector: %#v", input.SelectorCandidates)
@@ -70,6 +100,9 @@ func TestObservePageCapturesInteractiveElements(t *testing.T) {
 	})
 	if button == nil {
 		t.Fatalf("search button not found: %#v", observation.Elements)
+	}
+	if button.PrimarySelector != `button#search-button` && button.PrimarySelector != `#search-button` {
+		t.Fatalf("unexpected button primary selector: %#v", button)
 	}
 	if !containsString(button.SelectorCandidates, `text="Search"`) {
 		t.Fatalf("missing text selector: %#v", button.SelectorCandidates)
@@ -87,6 +120,15 @@ func TestObservePageCapturesInteractiveElements(t *testing.T) {
 }
 
 func findObservedElement(elements []PageObservationElement, match func(PageObservationElement) bool) *PageObservationElement {
+	for i := range elements {
+		if match(elements[i]) {
+			return &elements[i]
+		}
+	}
+	return nil
+}
+
+func findObservedContentElement(elements []PageObservationContentElement, match func(PageObservationContentElement) bool) *PageObservationContentElement {
 	for i := range elements {
 		if match(elements[i]) {
 			return &elements[i]

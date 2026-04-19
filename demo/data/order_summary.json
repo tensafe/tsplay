@@ -1,0 +1,26 @@
+{
+  "team": "ops",
+  "generated_at": "2026-04-19T12:00:00Z",
+  "summary": {
+    "open": 12,
+    "closed": 3,
+    "owner": "demo-bot"
+  },
+  "orders": [
+    {
+      "id": "A1001",
+      "status": "pending",
+      "amount": 128.5
+    },
+    {
+      "id": "A1002",
+      "status": "reviewing",
+      "amount": 256.0
+    },
+    {
+      "id": "A1003",
+      "status": "ready",
+      "amount": 512.25
+    }
+  ]
+}

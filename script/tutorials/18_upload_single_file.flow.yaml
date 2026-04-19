@@ -1,0 +1,43 @@
+schema_version: "1"
+name: lesson_18_upload_single_file_flow
+description: Upload a single local file to the demo page and capture the selected file information.
+vars:
+  page_url: http://127.0.0.1:8000/demo/upload.html
+  input_file: demo/data/upload_receipt.pdf
+  expected_filename: upload_receipt.pdf
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#fileInput"
+    timeout: 5000
+
+  - action: upload_file
+    selector: "#fileInput"
+    file_path: "{{input_file}}"
+
+  - action: assert_text
+    selector: "#fileInfo"
+    text: "{{expected_filename}}"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#fileInfo"
+    timeout: 5000
+    save_as: file_info
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "18"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        expected_filename: "{{expected_filename}}"
+        file_info: "{{file_info}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/18-upload-single-file-flow.json
+    value: "{{payload}}"

@@ -1,0 +1,49 @@
+schema_version: "1"
+name: lesson_38_verify_loaded_storage_state_flow
+description: Load a saved browser state via the load_storage_state alias, then verify both cookies and storage state.
+browser:
+  load_storage_state: tutorials/36-session-lab-flow-state.json
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_lab.html
+  loaded_state_path: artifacts/tutorials/36-session-lab-flow-state.json
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: assert_text
+    selector: "#session-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#session-status"
+    timeout: 5000
+    save_as: session_status
+
+  - action: get_storage_state
+    save_as: storage_state_json
+
+  - action: json_extract
+    from: "{{storage_state_json}}"
+    path: "$.origins[0].origin"
+    save_as: storage_origin
+
+  - action: get_cookies_string
+    save_as: cookie_header
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "38"
+        mode: flow
+        page_url: "{{page_url}}"
+        loaded_state_path: "{{loaded_state_path}}"
+        session_status: "{{session_status}}"
+        storage_origin: "{{storage_origin}}"
+        cookie_header: "{{cookie_header}}"
+        storage_state_json: "{{storage_state_json}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/38-verify-loaded-storage-state-flow.json
+    value: "{{payload}}"

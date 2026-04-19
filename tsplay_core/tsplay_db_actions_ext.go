@@ -122,7 +122,12 @@ func db_insert_many(L *lua.LState) int {
 		L.RaiseError("%v", err)
 		return 0
 	}
-	result, err := executeDBInsertManyWithFlow(nil, context.Background(), config)
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, "db_insert_many")
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	result, err := executeDBInsertManyWithFlow(flowCtx, runCtx, config)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
@@ -142,7 +147,12 @@ func db_upsert(L *lua.LState) int {
 		L.RaiseError("%v", err)
 		return 0
 	}
-	result, err := executeDBUpsertWithFlow(nil, context.Background(), config)
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, "db_upsert")
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	result, err := executeDBUpsertWithFlow(flowCtx, runCtx, config)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
@@ -162,7 +172,12 @@ func db_query(L *lua.LState) int {
 		L.RaiseError("%v", err)
 		return 0
 	}
-	result, err := executeDBQueryWithFlow(nil, context.Background(), config)
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, "db_query")
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	result, err := executeDBQueryWithFlow(flowCtx, runCtx, config)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
@@ -182,7 +197,12 @@ func db_query_one(L *lua.LState) int {
 		L.RaiseError("%v", err)
 		return 0
 	}
-	result, err := executeDBQueryOneWithFlow(nil, context.Background(), config)
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, "db_query_one")
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	result, err := executeDBQueryOneWithFlow(flowCtx, runCtx, config)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
@@ -202,13 +222,168 @@ func db_execute(L *lua.LState) int {
 		L.RaiseError("%v", err)
 		return 0
 	}
-	result, err := executeDBExecuteWithFlow(nil, context.Background(), config)
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, "db_execute")
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	result, err := executeDBExecuteWithFlow(flowCtx, runCtx, config)
 	if err != nil {
 		L.RaiseError("%v", err)
 		return 0
 	}
 	L.Push(goValueToLua(L, result))
 	return 1
+}
+
+func db_transaction(L *lua.LState) int {
+	callback, timeoutMS, err := luaDBTransactionParams(L)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+
+	flowCtx, runCtx, err := luaDatabaseExecutionContext(L, "db_transaction")
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	if flowCtx != nil && flowCtx.DBTransaction != nil {
+		L.RaiseError("nested db_transaction is not supported")
+		return 0
+	}
+
+	cancel := func() {}
+	if timeoutMS > 0 {
+		runCtx, cancel = context.WithTimeout(runCtx, time.Duration(timeoutMS)*time.Millisecond)
+	}
+	defer cancel()
+
+	scope := &flowDBTransactionScope{sessions: map[string]*flowDBTransactionSession{}}
+	child := &FlowContext{Context: runCtx, DBTransaction: scope}
+	if flowCtx != nil {
+		cloned := *flowCtx
+		cloned.Context = runCtx
+		cloned.DBTransaction = scope
+		child = &cloned
+	}
+	restoreFlowContext := setFlowContextState(L, child)
+	defer restoreFlowContext()
+
+	top := L.GetTop()
+	if err := L.CallByParam(lua.P{Fn: callback, NRet: lua.MultRet, Protect: true}); err != nil {
+		L.SetTop(top)
+		if rollbackErr := scope.Rollback(); rollbackErr != nil {
+			L.RaiseError("%v (rollback failed: %v)", err, rollbackErr)
+			return 0
+		}
+		L.RaiseError("%v", err)
+		return 0
+	}
+
+	resultCount := L.GetTop() - top
+	if err := scope.Commit(); err != nil {
+		L.SetTop(top)
+		L.RaiseError("%v", err)
+		return 0
+	}
+	if resultCount == 0 {
+		L.Push(lua.LBool(true))
+		return 1
+	}
+	return resultCount
+}
+
+func luaDatabaseExecutionContext(L *lua.LState, action string) (*FlowContext, context.Context, error) {
+	flowCtx := flowContextFromState(L)
+	if flowCtx != nil && flowCtx.Security != nil && !flowCtx.Security.AllowDatabase {
+		return nil, nil, fmt.Errorf("%s is disabled by security policy; set allow_database=true only for trusted flows", action)
+	}
+	runCtx := context.Background()
+	if flowCtx != nil && flowCtx.Context != nil {
+		runCtx = flowCtx.Context
+	}
+	return flowCtx, runCtx, nil
+}
+
+func luaDBTransactionParams(L *lua.LState) (*lua.LFunction, int, error) {
+	if L == nil || L.GetTop() == 0 {
+		return nil, 0, fmt.Errorf("db_transaction requires a callback")
+	}
+
+	argIndex := 1
+	timeoutMS := 0
+
+	if _, ok := L.Get(1).(*lua.LTable); ok {
+		values, ok := luaValueToGo(L.Get(1)).(map[string]any)
+		if !ok {
+			return nil, 0, fmt.Errorf("db_transaction config must be a table")
+		}
+		resolvedTimeout, err := luaDBTransactionTimeoutFromConfig(values)
+		if err != nil {
+			return nil, 0, err
+		}
+		timeoutMS = resolvedTimeout
+		argIndex = 2
+	}
+	if L.GetTop() < argIndex {
+		return nil, 0, fmt.Errorf("db_transaction requires a callback")
+	}
+	callback, ok := L.Get(argIndex).(*lua.LFunction)
+	if !ok || callback == nil {
+		return nil, 0, fmt.Errorf("db_transaction callback must be a function")
+	}
+
+	if L.GetTop() > argIndex && L.Get(argIndex+1) != lua.LNil {
+		if argIndex != 1 {
+			return nil, 0, fmt.Errorf("db_transaction accepts either a config table or a timeout argument, not both")
+		}
+		timeout, err := intParam(luaValueToGo(L.Get(argIndex + 1)))
+		if err != nil {
+			return nil, 0, fmt.Errorf("db_transaction timeout %w", err)
+		}
+		timeoutMS = timeout
+	}
+	if timeoutMS < 0 {
+		return nil, 0, fmt.Errorf("db_transaction timeout must be at least 0")
+	}
+	return callback, timeoutMS, nil
+}
+
+func luaDBTransactionTimeoutFromConfig(values map[string]any) (int, error) {
+	allowed := map[string]bool{"timeout": true, "timeout_ms": true, "timeout_seconds": true}
+	for key := range values {
+		if !allowed[key] {
+			return 0, fmt.Errorf("db_transaction config does not accept parameter %q", key)
+		}
+	}
+
+	timeoutMS := 0
+	if value, ok := values["timeout"]; ok {
+		timeout, err := intParam(value)
+		if err != nil {
+			return 0, fmt.Errorf("db_transaction timeout %w", err)
+		}
+		timeoutMS = timeout
+	}
+	if value, ok := values["timeout_ms"]; ok {
+		timeout, err := intParam(value)
+		if err != nil {
+			return 0, fmt.Errorf("db_transaction timeout_ms %w", err)
+		}
+		timeoutMS = timeout
+	}
+	if value, ok := values["timeout_seconds"]; ok {
+		timeoutSeconds, err := intParam(value)
+		if err != nil {
+			return 0, fmt.Errorf("db_transaction timeout_seconds %w", err)
+		}
+		timeoutMS = timeoutSeconds * 1000
+	}
+	if timeoutMS < 0 {
+		return 0, fmt.Errorf("db_transaction timeout must be at least 0")
+	}
+	return timeoutMS, nil
 }
 
 func runFlowDBInsertManyStep(ctx *FlowContext, step FlowStep, forcedDriver string) (any, error) {

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Import Workflow</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f1e7;
+      --panel: #fffaf2;
+      --ink: #1f2a24;
+      --muted: #65706a;
+      --accent: #0f7b53;
+      --accent-soft: rgba(15, 123, 83, 0.12);
+      --border: #d8d0c0;
+      --warn-bg: #fff1f0;
+      --warn-ink: #8d1b16;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 123, 83, 0.12), transparent 28%),
+        linear-gradient(180deg, #faf7f1 0%, var(--bg) 100%);
+    }
+
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 42px 20px 60px;
+    }
+
+    .hero {
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(30px, 5vw, 48px);
+      line-height: 1.04;
+    }
+
+    .lead {
+      max-width: 680px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      align-items: start;
+    }
+
+    .panel {
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: 0 18px 40px rgba(31, 42, 36, 0.08);
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+    }
+
+    .panel p {
+      margin: 0 0 12px;
+      color: var(--muted);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .status-line,
+    .meta-line {
+      padding: 12px 14px;
+      border: 1px solid rgba(216, 208, 192, 0.9);
+      border-radius: 14px;
+      background: #fffdf8;
+    }
+
+    .status-line {
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .meta-line {
+      margin-bottom: 10px;
+    }
+
+    .meta-line:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .meta-label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input {
+      width: 100%;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      font-size: 16px;
+      background: #fff;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
+    }
+
+    #login,
+    #submit {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    #clear-form,
+    #clear-session {
+      background: #ede6d8;
+      color: var(--ink);
+    }
+
+    .error-banner {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(141, 27, 22, 0.18);
+      background: var(--warn-bg);
+      color: var(--warn-ink);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid rgba(216, 208, 192, 0.95);
+      padding: 10px 12px;
+      text-align: left;
+    }
+
+    th {
+      background: #f7f2e8;
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .download-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 14px;
+      padding: 11px 16px;
+      border-radius: 14px;
+      background: #2f6fdd;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    @media (max-width: 680px) {
+      .page {
+        padding-top: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow" id="page-mode">Authenticated Import Lab</div>
+      <h1 id="page-title">Session Import Workflow</h1>
+      <p class="lead">
+        This page reuses the same cookies and local storage seeded by Session Lab.
+        When browser state is restored correctly, you can skip the login step and land directly in the import form.
+      </p>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <h2>Session Gate</h2>
+        <div class="status-line" id="auth-status">Login required</div>
+
+        <div class="meta-line">
+          <span class="meta-label">Current User</span>
+          <span id="session-user">guest</span>
+        </div>
+
+        <div class="meta-line">
+          <span class="meta-label">Session Preview</span>
+          <span id="session-preview">empty</span>
+        </div>
+
+        <div class="actions">
+          <button id="clear-session" type="button">Clear Session</button>
+        </div>
+
+        <p class="note">
+          这块会告诉你当前页面到底有没有识别到可复用登录态。
+        </p>
+      </section>
+
+      <section class="panel" id="login-panel">
+        <h2>Login</h2>
+        <p>如果没有恢复到浏览器状态，这里就会要求先登录。</p>
+        <label for="username">User Name</label>
+        <input id="username" type="text" value="demo-user" placeholder="demo-user">
+        <div class="actions">
+          <button id="login" type="button">Login</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="import-panel">
+        <h2>Import Form</h2>
+        <form id="import-form">
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" placeholder="Alice">
+
+          <label for="phone">Phone</label>
+          <input id="phone" name="phone" type="text" placeholder="13800000001">
+
+          <div class="actions">
+            <button id="submit" type="submit">Submit Row</button>
+            <button id="clear-form" type="button">Clear Form</button>
+          </div>
+        </form>
+
+        <div class="status-line" id="submit-status">Ready to import</div>
+        <div class="error-banner hidden" id="error-banner">Validation failed</div>
+      </section>
+    </section>
+
+    <section class="panel" style="margin-top: 20px;">
+      <h2>Imported Rows</h2>
+      <div class="meta-line">
+        <span class="meta-label">Imported Count</span>
+        <span id="import-count">0</span>
+      </div>
+
+      <div class="meta-line">
+        <span class="meta-label">Export Status</span>
+        <span id="export-status">Ready to download 0 rows</span>
+      </div>
+
+      <a id="download-import-report" class="download-link" href="#" download="session_import_report.csv">
+        Download Current CSV
+      </a>
+
+      <table id="import-results">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Status</th>
+            <th>Operator</th>
+          </tr>
+        </thead>
+        <tbody id="import-results-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const importedRows = [];
+    let currentExportURL = "";
+
+    function setCookie(name, value) {
+      document.cookie = name + "=" + encodeURIComponent(value) + "; path=/; SameSite=Lax";
+    }
+
+    function clearCookie(name) {
+      document.cookie = name + "=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
+
+    function readCookie(name) {
+      const parts = document.cookie.split(";").map(function (part) {
+        return part.trim();
+      });
+      for (const part of parts) {
+        if (part.startsWith(name + "=")) {
+          return decodeURIComponent(part.slice(name.length + 1));
+        }
+      }
+      return "";
+    }
+
+    function currentUser() {
+      return localStorage.getItem("tsplay_user") || readCookie("tsplay_user") || "";
+    }
+
+    function currentSession() {
+      return localStorage.getItem("tsplay_session") || readCookie("tsplay_session") || "";
+    }
+
+    function isAuthenticated() {
+      return currentUser() !== "" && currentSession() !== "";
+    }
+
+    function renderAuthState() {
+      const user = currentUser();
+      const session = currentSession();
+      const status = document.getElementById("auth-status");
+      const sessionUser = document.getElementById("session-user");
+      const sessionPreview = document.getElementById("session-preview");
+      const loginPanel = document.getElementById("login-panel");
+      const importPanel = document.getElementById("import-panel");
+
+      if (isAuthenticated()) {
+        status.textContent = "Logged in as " + user;
+        sessionUser.textContent = user;
+        sessionPreview.textContent = "tsplay_user=" + user + "; tsplay_session=" + session;
+        loginPanel.classList.add("hidden");
+        importPanel.classList.remove("hidden");
+      } else {
+        status.textContent = "Login required";
+        sessionUser.textContent = "guest";
+        sessionPreview.textContent = "empty";
+        loginPanel.classList.remove("hidden");
+        importPanel.classList.add("hidden");
+      }
+    }
+
+    function clearForm(message) {
+      document.getElementById("name").value = "";
+      document.getElementById("phone").value = "";
+      document.getElementById("submit-status").textContent = message || "Form cleared";
+      document.getElementById("error-banner").classList.add("hidden");
+      document.getElementById("error-banner").textContent = "Validation failed";
+    }
+
+    function importedRowCount() {
+      return document.querySelectorAll("#import-results-body tr").length;
+    }
+
+    function csvEscape(value) {
+      const text = value == null ? "" : String(value);
+      if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+        return "\"" + text.replaceAll("\"", "\"\"") + "\"";
+      }
+      return text;
+    }
+
+    function updateExportLink() {
+      const link = document.getElementById("download-import-report");
+      const exportStatus = document.getElementById("export-status");
+      const lines = ["name,phone,status,operator"];
+
+      for (const row of importedRows) {
+        lines.push([
+          csvEscape(row.name),
+          csvEscape(row.phone),
+          csvEscape(row.status),
+          csvEscape(row.operator)
+        ].join(","));
+      }
+
+      if (currentExportURL) {
+        URL.revokeObjectURL(currentExportURL);
+      }
+
+      const blob = new Blob([lines.join("\r\n") + "\r\n"], {
+        type: "text/csv;charset=utf-8"
+      });
+      currentExportURL = URL.createObjectURL(blob);
+      link.href = currentExportURL;
+      exportStatus.textContent = "Ready to download " + importedRows.length + " rows";
+    }
+
+    function addImportedRow(name, phone, user) {
+      const row = document.createElement("tr");
+      row.innerHTML = "<td>" + name + "</td><td>" + phone + "</td><td>Imported</td><td>" + user + "</td>";
+      document.getElementById("import-results-body").appendChild(row);
+      importedRows.push({
+        name: name,
+        phone: phone,
+        status: "Imported",
+        operator: user
+      });
+      document.getElementById("import-count").textContent = String(importedRowCount());
+      updateExportLink();
+    }
+
+    function validateRow(name, phone) {
+      if (!name || !phone) {
+        return "Validation failed: missing name or phone";
+      }
+      if (name.toLowerCase().startsWith("fail") || phone.includes("999")) {
+        return "Validation failed: simulated bad row";
+      }
+      return "";
+    }
+
+    document.getElementById("login").addEventListener("click", function () {
+      const user = document.getElementById("username").value.trim() || "demo-user";
+      const session = user + "-session";
+      localStorage.setItem("tsplay_user", user);
+      localStorage.setItem("tsplay_session", session);
+      localStorage.setItem("tsplay_role", "operator");
+      setCookie("tsplay_user", user);
+      setCookie("tsplay_session", session);
+      renderAuthState();
+      document.getElementById("submit-status").textContent = "Logged in as " + user;
+      document.getElementById("error-banner").classList.add("hidden");
+    });
+
+    document.getElementById("clear-session").addEventListener("click", function () {
+      localStorage.removeItem("tsplay_user");
+      localStorage.removeItem("tsplay_session");
+      localStorage.removeItem("tsplay_role");
+      clearCookie("tsplay_user");
+      clearCookie("tsplay_session");
+      renderAuthState();
+      clearForm("Session cleared");
+    });
+
+    document.getElementById("clear-form").addEventListener("click", function () {
+      clearForm("Form cleared");
+    });
+
+    document.getElementById("import-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+
+      const name = document.getElementById("name").value.trim();
+      const phone = document.getElementById("phone").value.trim();
+      const user = currentUser();
+      const error = validateRow(name, phone);
+      const errorBanner = document.getElementById("error-banner");
+
+      if (error) {
+        document.getElementById("submit-status").textContent = "Validation failed";
+        errorBanner.textContent = error;
+        errorBanner.classList.remove("hidden");
+        return;
+      }
+
+      addImportedRow(name, phone, user || "guest");
+      document.getElementById("submit-status").textContent = "Imported " + name + " as " + (user || "guest");
+      errorBanner.classList.add("hidden");
+    });
+
+    updateExportLink();
+    renderAuthState();
+  </script>
+</body>
+</html>

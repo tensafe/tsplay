@@ -1,0 +1,104 @@
+schema_version: "1"
+name: lesson_49_use_session_import_recovery_csv_flow
+description: Reuse a named session, import CSV rows, recover locally on failures, and write JSON and CSV ledgers.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users_with_error.csv
+  session_name: session_import_demo
+  import_results: []
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: assert_text
+    selector: "#auth-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: on_error
+        steps:
+          - action: type_text
+            selector: "#name"
+            text: "{{row.name}}"
+          - action: type_text
+            selector: "#phone"
+            text: "{{row.phone}}"
+          - action: click
+            selector: "#submit"
+          - action: assert_text
+            selector: "#submit-status"
+            text: "Imported"
+            timeout: 1000
+          - action: append_var
+            save_as: import_results
+            with:
+              value:
+                source_row: "{{row.source_row}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: success
+                error: ""
+          - action: click
+            selector: "#clear-form"
+        on_error:
+          - action: append_var
+            save_as: import_results
+            with:
+              value:
+                source_row: "{{row.source_row}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: failed
+                error: "{{last_error}}"
+          - action: click
+            selector: "#clear-form"
+
+  - action: extract_text
+    selector: "#auth-status"
+    timeout: 5000
+    save_as: auth_status
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: write_json
+    file_path: artifacts/tutorials/49-use-session-import-recovery-csv-flow.json
+    with:
+      value:
+        lesson: "49"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        auth_status: "{{auth_status}}"
+        import_count: "{{import_count}}"
+        results: "{{import_results}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/49-use-session-import-recovery-csv-flow.csv
+    with:
+      value: "{{import_results}}"
+      headers:
+        - source_row
+        - name
+        - phone
+        - status
+        - error

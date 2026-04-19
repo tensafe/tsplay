@@ -1,0 +1,25 @@
+schema_version: "1"
+name: lesson_24_read_excel_basics_flow
+description: Read a local Excel sheet into structured rows and write the result to JSON.
+vars:
+  input_file: demo/data/import_users.xlsx
+steps:
+  - action: read_excel
+    file_path: "{{input_file}}"
+    sheet: Users
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "24"
+        mode: flow
+        input_file: "{{input_file}}"
+        rows: "{{rows}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/24-read-excel-basics-flow.json
+    value: "{{payload}}"

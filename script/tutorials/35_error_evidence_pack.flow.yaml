@@ -1,0 +1,78 @@
+schema_version: "1"
+name: lesson_35_error_evidence_pack_flow
+description: Trigger a known validation failure, then save a screenshot and HTML snapshot in the on_error branch.
+vars:
+  page_url: http://127.0.0.1:8000/demo/import_workflow.html
+  result_path: artifacts/tutorials/35-error-evidence-pack-flow.json
+  screenshot_path: artifacts/tutorials/35-error-evidence-pack-flow.png
+  html_path: artifacts/tutorials/35-error-evidence-pack-flow.html
+  evidence_status: not_triggered
+  submit_status: unknown
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "35"
+        mode: flow
+        status: starting
+        screenshot_path: "{{screenshot_path}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: type_text
+    selector: "#name"
+    text: Fail Case
+
+  - action: type_text
+    selector: "#phone"
+    text: "99900000000"
+
+  - action: click
+    selector: "#submit"
+
+  - action: on_error
+    steps:
+      - action: assert_text
+        selector: "#submit-status"
+        text: Imported
+        timeout: 1000
+    on_error:
+      - action: extract_text
+        selector: "#submit-status"
+        timeout: 5000
+        save_as: submit_status
+      - action: screenshot
+        path: "{{screenshot_path}}"
+      - action: save_html
+        path: "{{html_path}}"
+      - action: set_var
+        save_as: evidence_status
+        with:
+          value: handled_error
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "35"
+        mode: flow
+        page_url: "{{page_url}}"
+        evidence_status: "{{evidence_status}}"
+        submit_status: "{{submit_status}}"
+        screenshot_path: "{{screenshot_path}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"

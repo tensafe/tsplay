@@ -1,0 +1,49 @@
+schema_version: "1"
+name: lesson_60_read_latest_import_batch_from_redis_flow
+description: Read the latest Redis batch id and fetch the corresponding batch payload back into a local checkpoint JSON.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_prefix}}{{latest_batch_id}}"
+    save_as: batch_payload_text
+
+  - action: json_extract
+    from: "{{batch_payload_text}}"
+    path: "$.batch_id"
+    save_as: stored_batch_id
+
+  - action: json_extract
+    from: "{{batch_payload_text}}"
+    path: "$.row_count"
+    save_as: stored_row_count
+
+  - action: json_extract
+    from: "{{batch_payload_text}}"
+    path: "$.latest_name"
+    save_as: stored_latest_name
+
+  - action: json_extract
+    from: "{{batch_payload_text}}"
+    path: "$.latest_operator"
+    save_as: stored_latest_operator
+
+  - action: write_json
+    file_path: artifacts/tutorials/60-read-latest-import-batch-from-redis-flow.json
+    with:
+      value:
+        lesson: "60"
+        mode: flow
+        latest_key: "{{latest_key}}"
+        payload_key: "{{payload_prefix}}{{latest_batch_id}}"
+        latest_batch_id: "{{latest_batch_id}}"
+        stored_batch_id: "{{stored_batch_id}}"
+        stored_row_count: "{{stored_row_count}}"
+        stored_latest_name: "{{stored_latest_name}}"
+        stored_latest_operator: "{{stored_latest_operator}}"
+        batch_payload_text: "{{batch_payload_text}}"

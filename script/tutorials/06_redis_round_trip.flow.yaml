@@ -1,0 +1,63 @@
+schema_version: "1"
+name: lesson_06_redis_round_trip_flow
+description: Write, read, and increment Redis keys, then write the result to JSON.
+steps:
+  - action: redis_del
+    key: tutorial:greeting
+
+  - action: redis_del
+    key: tutorial:payload
+
+  - action: redis_del
+    key: tutorial:counter
+
+  - action: redis_set
+    key: tutorial:greeting
+    value: hello from flow
+    ttl_seconds: 600
+
+  - action: redis_get
+    key: tutorial:greeting
+    save_as: greeting
+
+  - action: redis_set
+    key: tutorial:payload
+    ttl_seconds: 600
+    with:
+      value:
+        lesson: "06"
+        mode: flow
+        status: ready
+
+  - action: redis_get
+    key: tutorial:payload
+    save_as: payload_text
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.status"
+    save_as: payload_status
+
+  - action: redis_incr
+    key: tutorial:counter
+    save_as: counter_one
+
+  - action: redis_incr
+    key: tutorial:counter
+    delta: 2
+    save_as: counter_three
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "06"
+        mode: flow
+        greeting: "{{greeting}}"
+        payload_status: "{{payload_status}}"
+        counter_one: "{{counter_one}}"
+        counter_three: "{{counter_three}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/06-redis-round-trip-flow.json
+    value: "{{payload}}"

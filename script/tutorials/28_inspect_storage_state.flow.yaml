@@ -1,0 +1,51 @@
+schema_version: "1"
+name: lesson_28_inspect_storage_state_flow
+description: Seed local browser state on the session lab page, then capture the raw storage state JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_lab.html
+  username: demo-user
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#page-title"
+    timeout: 5000
+
+  - action: click
+    selector: "#clear-state"
+
+  - action: type_text
+    selector: "#username"
+    text: "{{username}}"
+
+  - action: click
+    selector: "#login"
+
+  - action: assert_text
+    selector: "#session-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: get_storage_state
+    save_as: storage_state_json
+
+  - action: json_extract
+    from: "{{storage_state_json}}"
+    path: "$.origins[0].origin"
+    save_as: storage_origin
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "28"
+        mode: flow
+        page_url: "{{page_url}}"
+        username: "{{username}}"
+        storage_origin: "{{storage_origin}}"
+        storage_state_json: "{{storage_state_json}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/28-inspect-storage-state-flow.json
+    value: "{{payload}}"

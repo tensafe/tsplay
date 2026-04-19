@@ -1,0 +1,46 @@
+schema_version: "1"
+name: lesson_16_retry_flaky_action_flow
+description: Retry a flaky local action until the page reports success, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/retry_wait_until.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#retry-button"
+    timeout: 5000
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: retry_result
+    steps:
+      - action: click
+        selector: "#retry-button"
+      - action: assert_text
+        selector: "#retry-status"
+        text: "Export complete"
+        timeout: 500
+      - action: assert_visible
+        selector: "#retry-result"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#retry-status"
+    timeout: 5000
+    save_as: status_text
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "16"
+        mode: flow
+        page_url: "{{page_url}}"
+        retry_result: "{{retry_result}}"
+        status_text: "{{status_text}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/16-retry-flaky-action-flow.json
+    value: "{{payload}}"

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -58,12 +57,20 @@ var g_headless = false
 var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | File Server")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
 	flowRoot := flag.String("flow-root", tsplay_core.DefaultMCPFlowPathRoot, "allowed root directory for MCP flow_path")
 	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
+	serveRoot := flag.String("serve-root", "", "optional local root directory for built-in static file server; when omitted tsplay serves bundled assets from the binary")
+	extractRoot := flag.String("extract-root", "tsplay-assets", "target directory for extracting bundled docs/demo/script assets")
+	sessionName := flag.String("session-name", "", "saved session name for session management actions")
+	storageStatePath := flag.String("storage-state-path", "", "storage state path for save-session actions")
+	storageStateJSON := flag.String("storage-state-json", "", "inline storage state JSON for save-session actions")
+	profileName := flag.String("profile-name", "", "persistent profile name for save-session actions")
+	profileSession := flag.String("profile-session", "", "persistent profile session name for save-session actions")
+	sessionFormat := flag.String("session-format", "all", "snippet format for export-session action")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -73,21 +80,17 @@ func main() {
 	g_artifactRoot = *artifactRoot
 
 	if len(*flowfile) != 0 {
-		flow, err := tsplay_core.LoadFlowFile(*flowfile)
+		flow, err := loadFlowDefinition(*flowfile)
 		if err != nil {
 			log.Fatal(err)
 		}
 		run_flow(flow)
 	} else if len(*tsfile) != 0 {
-		// 加载tsfile内容..
-		content, err := ioutil.ReadFile(*tsfile)
+		content, err := loadScriptSource(*tsfile)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		// 将内容转换为字符串
-		script := string(content)
-		run_script(script)
+		run_script(content)
 	} else {
 		switch *action {
 		case "cli":
@@ -101,8 +104,99 @@ func main() {
 				FlowPathRoot: *flowRoot,
 				ArtifactRoot: *artifactRoot,
 			})
+		case "mcp-stdio":
+			tsplay_core.McpServerStdio(tsplay_core.TSPlayMCPServerOptions{
+				FlowPathRoot: *flowRoot,
+				ArtifactRoot: *artifactRoot,
+			})
+		case "file-srv", "demo-srv":
+			if err := serveStaticFiles(*addr, *serveRoot); err != nil {
+				log.Fatal(err)
+			}
+		case "list-assets":
+			names, err := bundledAssetNames()
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, name := range names {
+				fmt.Println(name)
+			}
+		case "extract-assets":
+			count, err := extractBundledAssets(*extractRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("Extracted %d bundled assets to %s\n", count, *extractRoot)
+		case "save-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action save-session")
+			}
+			session, err := tsplay_core.SaveFlowSavedSession(tsplay_core.FlowSavedSessionSaveOptions{
+				Name:             *sessionName,
+				ArtifactRoot:     *artifactRoot,
+				StorageStateJSON: *storageStateJSON,
+				StorageStatePath: *storageStatePath,
+				Profile:          *profileName,
+				Session:          *profileSession,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(tsplay_core.BuildFlowSavedSessionDetail(*session, *artifactRoot))
+		case "list-sessions":
+			sessions, err := tsplay_core.ListFlowSavedSessions(*artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			items := make([]map[string]any, 0, len(sessions))
+			for _, session := range sessions {
+				items = append(items, tsplay_core.BuildFlowSavedSessionView(session, *artifactRoot))
+			}
+			printJSON(map[string]any{
+				"artifact_root": *artifactRoot,
+				"sessions":      items,
+			})
+		case "get-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action get-session")
+			}
+			session, err := tsplay_core.LoadFlowSavedSession(*sessionName, *artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(tsplay_core.BuildFlowSavedSessionDetail(*session, *artifactRoot))
+		case "export-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action export-session")
+			}
+			session, err := tsplay_core.LoadFlowSavedSession(*sessionName, *artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			exported, err := tsplay_core.ExportFlowSavedSessionFlowSnippet(*session, *artifactRoot, *sessionFormat)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(exported)
+		case "delete-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action delete-session")
+			}
+			deleted, err := tsplay_core.DeleteFlowSavedSession(*sessionName, *artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(deleted)
 		}
 	}
+}
+
+func printJSON(value any) {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(encoded))
 }
 
 func run_flow(flow *tsplay_core.Flow) {
@@ -143,60 +237,114 @@ func cli_mode() {
 	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
+	L.SetGlobal("artifact_root", lua.LString(g_artifactRoot))
 
-	pw, err := tsplay_core.StartPlaywright()
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	defer pw.Stop()
-
+	var pw *playwright.Playwright
 	var browser playwright.Browser
 	var page playwright.Page
 
-	// 初始化浏览器和页面
-	initPlaywright := func() error {
-		var err error
-		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+	clearPlaywrightGlobals := func() {
+		L.SetGlobal("browser", lua.LNil)
+		L.SetGlobal("context", lua.LNil)
+		L.SetGlobal("page", lua.LNil)
+	}
+	setPlaywrightGlobals := func() {
+		ud_b := L.NewUserData()
+		ud_b.Value = browser
+		L.SetGlobal("browser", ud_b)
+
+		ud_c := L.NewUserData()
+		ud_c.Value = page.Context()
+		L.SetGlobal("context", ud_c)
+
+		ud_p := L.NewUserData()
+		ud_p.Value = page
+		L.SetGlobal("page", ud_p)
+	}
+	clearPlaywrightGlobals()
+
+	stopPlaywright := func() {
+		clearPlaywrightGlobals()
+		if page != nil {
+			if err := page.Close(); err != nil {
+				log.Printf("failed to close page: %v", err)
+			}
+			page = nil
+		}
+		if browser != nil {
+			if err := browser.Close(); err != nil {
+				log.Printf("failed to close browser: %v", err)
+			}
+			browser = nil
+		}
+		if pw != nil {
+			if err := pw.Stop(); err != nil {
+				log.Printf("failed to stop Playwright runtime: %v", err)
+			}
+			pw = nil
+		}
+	}
+	defer stopPlaywright()
+
+	ensurePlaywrightRuntime := func(reason string) error {
+		if pw != nil {
+			return nil
+		}
+		if strings.TrimSpace(reason) == "" {
+			fmt.Println("Starting Playwright runtime...")
+		} else {
+			fmt.Printf("Starting Playwright runtime because %s...\n", reason)
+		}
+		runtimeHandle, err := tsplay_core.StartPlaywright()
+		if err != nil {
+			return err
+		}
+		pw = runtimeHandle
+		return nil
+	}
+
+	ensurePlaywrightPage := func(reason string) error {
+		if page != nil && browser != nil {
+			setPlaywrightGlobals()
+			return nil
+		}
+		if err := ensurePlaywrightRuntime(reason); err != nil {
+			return err
+		}
+		if strings.TrimSpace(reason) == "" {
+			fmt.Println("Launching Playwright browser and page...")
+		} else {
+			fmt.Printf("Launching Playwright browser and page because %s...\n", reason)
+		}
+		launchedBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 			Headless: playwright.Bool(g_headless),
 		})
 		if err != nil {
 			return fmt.Errorf("could not launch browser: %v", err)
 		}
-		page, err = browser.NewPage()
+		launchedPage, err := launchedBrowser.NewPage()
 		if err != nil {
+			_ = launchedBrowser.Close()
 			return fmt.Errorf("could not create page: %v", err)
 		}
-		fmt.Println("Playwright initialized. Browser and page are ready.")
+		browser = launchedBrowser
+		page = launchedPage
+		setPlaywrightGlobals()
+		fmt.Println("Playwright initialized. Browser, context, and page are ready.")
 		return nil
-	}
-
-	// 将浏览器和页面对象传递给 Lua
-	startPlaywright := func() {
-		if browser == nil || page == nil {
-			fmt.Println("Playwright is not initialized. Initializing now...")
-			if err := initPlaywright(); err != nil {
-				fmt.Printf("Failed to initialize Playwright: %v\n", err)
-				return
-			}
-		}
-		// 将 Playwright 对象传递给 Lua
-		ud_b := L.NewUserData()
-		ud_b.Value = browser
-		L.SetGlobal("browser", ud_b)
-
-		ud_p := L.NewUserData()
-		ud_p.Value = page
-		L.SetGlobal("page", ud_p)
-		fmt.Println("Playwright started. Browser and page objects are now available in Lua.")
 	}
 	fmt.Println("Please input the 'start' command to run and launch tsplay")
 
 	var rl *readline.Instance
 	if os_type == "windows" {
+		var err error
 		rl, err = readline.NewEx(&readline.Config{
 			Prompt:       "> ",
 			AutoComplete: createReadlineCompleter(),
 		})
+		if err != nil {
+			log.Printf("failed to initialize readline: %v", err)
+		}
 	}
 
 	if rl != nil {
@@ -230,94 +378,143 @@ func cli_mode() {
 		// 处理 reset 命令
 		if input == "reset" {
 			fmt.Println("Resetting Playwright...")
-			if browser != nil {
-				if err := browser.Close(); err != nil {
-					log.Printf("failed to close browser: %v", err)
-				}
-				browser = nil
-				page = nil
-			}
-			if err := initPlaywright(); err != nil {
-				log.Printf("Failed to reset Playwright: %v\n", err)
+			if pw == nil && browser == nil && page == nil {
+				fmt.Println("Playwright is already idle.")
 				continue
 			}
-			startPlaywright()
+			stopPlaywright()
+			fmt.Println("Playwright has been reset. It will start again on the next 'start' command or browser action.")
 			continue
 		}
 
 		// 处理 start 命令
 		if input == "start" {
-			startPlaywright()
+			if err := ensurePlaywrightPage("the CLI start command was requested"); err != nil {
+				fmt.Printf("Failed to initialize Playwright: %v\n", err)
+			} else {
+				fmt.Println("Playwright started. Browser and page objects are now available in Lua.")
+			}
 			continue
+		}
+
+		runLuaScript := func(script string) {
+			usage := tsplay_core.AnalyzeLuaScriptPlaywrightUsage(script)
+			var err error
+			switch {
+			case usage.NeedsBrowser():
+				err = ensurePlaywrightPage(usage.Summary(3))
+			case usage.NeedsRuntime:
+				err = ensurePlaywrightRuntime(usage.Summary(3))
+			}
+			if err != nil {
+				fmt.Printf("Failed to initialize Playwright: %v\n", err)
+				return
+			}
+			if err := L.DoString(script); err != nil {
+				fmt.Printf("Lua error: %v\n", err)
+			}
 		}
 
 		// 处理 Lua 脚本
 		if strings.HasPrefix(input, "lua ") {
 			script := strings.TrimPrefix(input, "lua ")
-			if err := L.DoString(script); err != nil {
-				fmt.Printf("Lua error: %v\n", err)
-			}
+			runLuaScript(script)
 			continue
 		}
 		// 默认行为：将输入内容作为 Lua 脚本执行
 		if input != "" {
-			if err := L.DoString(input); err != nil {
-				fmt.Printf("Lua error: %v\n", err)
-			}
+			runLuaScript(input)
 		}
 	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// 等待信号以便优雅地退出
-	<-sigChan
 }
 
 func run_script(script string) {
-	// 初始化 Playwright
-	pw, err := tsplay_core.StartPlaywright()
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	defer pw.Stop()
-
-	// 启动浏览器并打开新页面
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(false),
-	})
-	if err != nil {
-		log.Fatalf("could not launch browser: %v", err)
-	}
-	defer browser.Close()
-
-	page, err := browser.NewPage()
-	if err != nil {
-		log.Fatalf("could not create page: %v", err)
-	}
-	defer page.Close()
-
 	// 创建 Lua 状态机
 	L := lua.NewState()
 	defer L.Close()
-
-	// 将 Playwright Page 对象传递给 Lua
-	ud_b := L.NewUserData()
-	ud_b.Value = browser
-	L.SetGlobal("browser", ud_b)
-
-	// 将 Playwright Page 对象传递给 Lua
-	ud_p := L.NewUserData()
-	ud_p.Value = page
-	L.SetGlobal("page", ud_p)
 
 	// 注册 Go 函数到 Lua
 	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
+	L.SetGlobal("artifact_root", lua.LString(g_artifactRoot))
+
+	usage := tsplay_core.AnalyzeLuaScriptPlaywrightUsage(script)
+	var pw *playwright.Playwright
+	var browser playwright.Browser
+	var page playwright.Page
+	setPlaywrightGlobals := func() {
+		ud_b := L.NewUserData()
+		ud_b.Value = browser
+		L.SetGlobal("browser", ud_b)
+
+		ud_c := L.NewUserData()
+		ud_c.Value = page.Context()
+		L.SetGlobal("context", ud_c)
+
+		ud_p := L.NewUserData()
+		ud_p.Value = page
+		L.SetGlobal("page", ud_p)
+	}
+	stopPlaywright := func() {
+		L.SetGlobal("browser", lua.LNil)
+		L.SetGlobal("context", lua.LNil)
+		L.SetGlobal("page", lua.LNil)
+		if page != nil {
+			_ = page.Close()
+			page = nil
+		}
+		if browser != nil {
+			_ = browser.Close()
+			browser = nil
+		}
+		if pw != nil {
+			_ = pw.Stop()
+			pw = nil
+		}
+	}
+	defer stopPlaywright()
+
+	if usage.NeedsRuntime {
+		var err error
+		pw, err = tsplay_core.StartPlaywright()
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+	}
+	if usage.NeedsBrowser() {
+		if pw == nil {
+			var err error
+			pw, err = tsplay_core.StartPlaywright()
+			if err != nil {
+				log.Fatalf("%v", err)
+			}
+		}
+		var err error
+		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+			Headless: playwright.Bool(g_headless),
+		})
+		if err != nil {
+			log.Fatalf("could not launch browser: %v", err)
+		}
+
+		page, err = browser.NewPage()
+		if err != nil {
+			log.Fatalf("could not create page: %v", err)
+		}
+		setPlaywrightGlobals()
+	}
 
 	if err := L.DoString(script); err != nil {
 		log.Fatalf("error running Lua script: %v", err)
+	}
+
+	if !usage.NeedsBrowser() {
+		return
+	}
+
+	if g_headless {
+		return
 	}
 
 	// 捕捉系统信号，以便优雅地关闭程序

@@ -1,0 +1,39 @@
+schema_version: "1"
+name: lesson_42_use_named_session_flow
+description: Reuse a saved named session and land directly in the logged-in session lab page.
+browser:
+  use_session: session_lab_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_lab.html
+  session_name: session_lab_demo
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: assert_text
+    selector: "#session-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#session-status"
+    timeout: 5000
+    save_as: session_status
+
+  - action: get_cookies_string
+    save_as: cookie_header
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "42"
+        mode: flow
+        page_url: "{{page_url}}"
+        session_name: "{{session_name}}"
+        session_status: "{{session_status}}"
+        cookie_header: "{{cookie_header}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/42-use-named-session-flow.json
+    value: "{{payload}}"

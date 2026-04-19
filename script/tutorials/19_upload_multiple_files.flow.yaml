@@ -1,0 +1,53 @@
+schema_version: "1"
+name: lesson_19_upload_multiple_files_flow
+description: Upload two local files to the multi-file demo page and capture the selected file information.
+vars:
+  page_url: http://127.0.0.1:8000/demo/multi_upfile.html
+  file_a: demo/data/upload_receipt.pdf
+  file_b: demo/data/upload_avatar.png
+  expected_a: upload_receipt.pdf
+  expected_b: upload_avatar.png
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#fileInput"
+    timeout: 5000
+
+  - action: upload_multiple_files
+    selector: "#fileInput"
+    files:
+      - "{{file_a}}"
+      - "{{file_b}}"
+
+  - action: assert_text
+    selector: "#fileInfo"
+    text: "{{expected_a}}"
+    timeout: 5000
+
+  - action: assert_text
+    selector: "#fileInfo"
+    text: "{{expected_b}}"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#fileInfo"
+    timeout: 5000
+    save_as: file_info
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "19"
+        mode: flow
+        page_url: "{{page_url}}"
+        files:
+          - "{{file_a}}"
+          - "{{file_b}}"
+        file_info: "{{file_info}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/19-upload-multiple-files-flow.json
+    value: "{{payload}}"

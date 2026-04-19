@@ -1,0 +1,51 @@
+schema_version: "1"
+name: lesson_32_element_screenshot_flow
+description: Capture an element screenshot from the local debug artifacts page.
+vars:
+  page_url: http://127.0.0.1:8000/demo/debug_artifacts.html
+  result_path: artifacts/tutorials/32-element-screenshot-flow.json
+  screenshot_path: artifacts/tutorials/32-debug-artifacts-card-flow.png
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "32"
+        mode: flow
+        status: starting
+        screenshot_path: "{{screenshot_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#artifact-card"
+    timeout: 5000
+
+  - action: screenshot_element
+    selector: "#artifact-card"
+    path: "{{screenshot_path}}"
+
+  - action: extract_text
+    selector: "#artifact-summary"
+    timeout: 5000
+    save_as: artifact_summary
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "32"
+        mode: flow
+        page_url: "{{page_url}}"
+        selector: "#artifact-card"
+        artifact_summary: "{{artifact_summary}}"
+        screenshot_path: "{{screenshot_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"

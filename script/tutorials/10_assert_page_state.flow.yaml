@@ -1,0 +1,50 @@
+schema_version: "1"
+name: lesson_10_assert_page_state_flow
+description: Open a local page, assert visibility and text, then write the assertion result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/extract.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#notice"
+    timeout: 5000
+
+  - action: assert_visible
+    selector: "#notice"
+    timeout: 5000
+    save_as: notice_visible
+
+  - action: assert_text
+    selector: "#notice"
+    text: "Ready"
+    timeout: 5000
+    save_as: notice_ready
+
+  - action: extract_text
+    selector: "#page-title"
+    timeout: 5000
+    save_as: page_title
+
+  - action: extract_text
+    selector: "#summary-count"
+    timeout: 5000
+    pattern: "([0-9]+)"
+    save_as: order_count
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "10"
+        mode: flow
+        page_url: "{{page_url}}"
+        page_title: "{{page_title}}"
+        order_count: "{{order_count}}"
+        notice_visible: "{{notice_visible}}"
+        notice_ready: "{{notice_ready}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/10-assert-page-state-flow.json
+    value: "{{payload}}"

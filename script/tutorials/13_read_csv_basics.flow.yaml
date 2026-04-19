@@ -1,0 +1,24 @@
+schema_version: "1"
+name: lesson_13_read_csv_basics_flow
+description: Read a local CSV file into structured rows and write the result to JSON.
+vars:
+  input_file: demo/data/tutorial_contacts.csv
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "13"
+        mode: flow
+        input_file: "{{input_file}}"
+        rows: "{{rows}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/13-read-csv-basics-flow.json
+    value: "{{payload}}"

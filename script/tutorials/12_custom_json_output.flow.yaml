@@ -1,0 +1,45 @@
+schema_version: "1"
+name: lesson_12_custom_json_output_flow
+description: Open the local demo page, select an option, and write a custom nested JSON payload.
+vars:
+  demo_url: http://127.0.0.1:8000/demo/demo.html
+  target_value: "5"
+steps:
+  - action: navigate
+    url: "{{demo_url}}"
+
+  - action: wait_for_selector
+    selector: "#options"
+    timeout: 5000
+
+  - action: select_option
+    selector: "#options"
+    value: "{{target_value}}"
+
+  - action: is_selected
+    selector: "#options option[value='{{target_value}}']"
+    save_as: selected_ok
+
+  - action: extract_text
+    selector: "#options option:checked"
+    timeout: 5000
+    save_as: selected_label
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "12"
+        mode: flow
+        source:
+          page: local-demo
+          demo_url: "{{demo_url}}"
+        selection:
+          value: "{{target_value}}"
+          label: "{{selected_label}}"
+          verified: "{{selected_ok}}"
+        summary: "Selected {{selected_label}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/12-custom-json-output-flow.json
+    value: "{{payload}}"

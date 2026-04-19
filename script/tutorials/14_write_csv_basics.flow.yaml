@@ -1,0 +1,41 @@
+schema_version: "1"
+name: lesson_14_write_csv_basics_flow
+description: Build simple rows in Flow, write them to CSV, and record the output metadata.
+steps:
+  - action: set_var
+    save_as: rows
+    with:
+      value:
+        - name: Alice
+          city: Shanghai
+          status: ready
+        - name: Bob
+          city: Hangzhou
+          status: reviewing
+        - name: Carol
+          city: Suzhou
+          status: queued
+
+  - action: write_csv
+    file_path: artifacts/tutorials/14-write-csv-basics-flow.csv
+    with:
+      value: "{{rows}}"
+      headers:
+        - name
+        - city
+        - status
+    save_as: write_result
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "14"
+        mode: flow
+        output_file: artifacts/tutorials/14-write-csv-basics-flow.csv
+        write_result: "{{write_result}}"
+        rows: "{{rows}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/14-write-csv-basics-flow.json
+    value: "{{payload}}"

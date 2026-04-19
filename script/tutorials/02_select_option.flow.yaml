@@ -1,0 +1,33 @@
+schema_version: "1"
+name: lesson_02_select_option_flow
+description: Open the local demo page, select option 5, and write the result to JSON.
+vars:
+  demo_url: http://127.0.0.1:8000/demo/demo.html
+steps:
+  - action: navigate
+    url: "{{demo_url}}"
+
+  - action: wait_for_selector
+    selector: "#options"
+    timeout: 5000
+
+  - action: select_option
+    selector: "#options"
+    value: "5"
+
+  - action: is_selected
+    selector: "#options option[value='5']"
+    save_as: option_5_selected
+
+  - action: set_var
+    save_as: result
+    with:
+      value:
+        lesson: "02"
+        mode: flow
+        demo_url: "{{demo_url}}"
+        selected: "{{option_5_selected}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/02-select-option-flow.json
+    value: "{{result}}"

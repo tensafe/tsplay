@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 32px;
+      line-height: 1.6;
+    }
+    .card {
+      max-width: 520px;
+      padding: 20px;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      background: #f6f8fa;
+    }
+    a {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #0969da;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Download Demo</h1>
+    <p>这个页面专门用于演示 `download_file`。点击下面的链接会下载一份本地 CSV 报表。</p>
+    <a id="download-report" href="data/monthly_report.csv" download="monthly_report.csv">下载月报 CSV</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,20 @@
+schema_version: "1"
+name: lesson_03_capture_table_flow
+description: Open the local table page, capture the table, and write the rows to JSON.
+vars:
+  table_url: http://127.0.0.1:8000/demo/tables.html
+steps:
+  - action: navigate
+    url: "{{table_url}}"
+
+  - action: wait_for_selector
+    selector: "#myTable"
+    timeout: 5000
+
+  - action: capture_table
+    selector: "#myTable"
+    save_as: rows
+
+  - action: write_json
+    file_path: artifacts/tutorials/03-capture-table-flow.json
+    value: "{{rows}}"

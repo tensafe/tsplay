@@ -1,0 +1,49 @@
+schema_version: "1"
+name: lesson_31_full_page_screenshot_flow
+description: Capture a full-page screenshot from the local debug artifacts page.
+vars:
+  page_url: http://127.0.0.1:8000/demo/debug_artifacts.html
+  result_path: artifacts/tutorials/31-full-page-screenshot-flow.json
+  screenshot_path: artifacts/tutorials/31-debug-artifacts-full-page-flow.png
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "31"
+        mode: flow
+        status: starting
+        screenshot_path: "{{screenshot_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#artifact-card"
+    timeout: 5000
+
+  - action: screenshot
+    path: "{{screenshot_path}}"
+
+  - action: extract_text
+    selector: "#artifact-title"
+    timeout: 5000
+    save_as: artifact_title
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "31"
+        mode: flow
+        page_url: "{{page_url}}"
+        artifact_title: "{{artifact_title}}"
+        screenshot_path: "{{screenshot_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
