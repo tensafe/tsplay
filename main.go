@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -58,12 +57,14 @@ var g_headless = false
 var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | File Server")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
 	flowRoot := flag.String("flow-root", tsplay_core.DefaultMCPFlowPathRoot, "allowed root directory for MCP flow_path")
 	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
+	serveRoot := flag.String("serve-root", "", "optional local root directory for built-in static file server; when omitted tsplay serves bundled assets from the binary")
+	extractRoot := flag.String("extract-root", "tsplay-assets", "target directory for extracting bundled docs/demo/script assets")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -73,21 +74,17 @@ func main() {
 	g_artifactRoot = *artifactRoot
 
 	if len(*flowfile) != 0 {
-		flow, err := tsplay_core.LoadFlowFile(*flowfile)
+		flow, err := loadFlowDefinition(*flowfile)
 		if err != nil {
 			log.Fatal(err)
 		}
 		run_flow(flow)
 	} else if len(*tsfile) != 0 {
-		// 加载tsfile内容..
-		content, err := ioutil.ReadFile(*tsfile)
+		content, err := loadScriptSource(*tsfile)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		// 将内容转换为字符串
-		script := string(content)
-		run_script(script)
+		run_script(content)
 	} else {
 		switch *action {
 		case "cli":
@@ -106,6 +103,24 @@ func main() {
 				FlowPathRoot: *flowRoot,
 				ArtifactRoot: *artifactRoot,
 			})
+		case "file-srv", "demo-srv":
+			if err := serveStaticFiles(*addr, *serveRoot); err != nil {
+				log.Fatal(err)
+			}
+		case "list-assets":
+			names, err := bundledAssetNames()
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, name := range names {
+				fmt.Println(name)
+			}
+		case "extract-assets":
+			count, err := extractBundledAssets(*extractRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("Extracted %d bundled assets to %s\n", count, *extractRoot)
 		}
 	}
 }

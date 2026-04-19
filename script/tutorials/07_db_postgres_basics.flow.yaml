@@ -1,0 +1,47 @@
+schema_version: "1"
+name: lesson_07_db_postgres_basics_flow
+description: Clean, insert, and query one Postgres row, then write the result to JSON.
+steps:
+  - action: db_execute
+    connection: reporting
+    save_as: cleanup
+    with:
+      sql: DELETE FROM public.tutorial_orders WHERE order_id = $1
+      args:
+        - T1001
+
+  - action: db_insert
+    connection: reporting
+    save_as: insert_result
+    with:
+      table: public.tutorial_orders
+      columns:
+        - order_id
+        - status
+        - amount
+      row:
+        order_id: T1001
+        status: ready
+        amount: 99.5
+
+  - action: db_query_one
+    connection: reporting
+    save_as: row
+    with:
+      sql: SELECT order_id, status, amount FROM public.tutorial_orders WHERE order_id = $1
+      args:
+        - T1001
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "07"
+        mode: flow
+        cleanup: "{{cleanup}}"
+        insert_result: "{{insert_result}}"
+        row: "{{row}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/07-db-postgres-basics-flow.json
+    value: "{{payload}}"

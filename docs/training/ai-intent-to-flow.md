@@ -102,10 +102,11 @@ go run . -action srv -addr :8081 -flow-root script -artifact-root artifacts
 
 ### 2. 如果要练仓库里的 demo 页面
 
-用任意静态文件服务把 `demo/` 目录跑起来，例如：
+用 TSPlay 内置静态文件服务把仓库根目录跑起来，例如：
 
 ```bash
-python3 -m http.server 8000
+go run . -action file-srv -addr :8000
+./tsplay -action file-srv -addr :8000
 ```
 
 然后可以访问：

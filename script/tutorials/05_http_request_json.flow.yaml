@@ -1,0 +1,41 @@
+schema_version: "1"
+name: lesson_05_http_request_json_flow
+description: Request a local JSON endpoint, extract fields, and write the result to JSON.
+vars:
+  api_url: http://127.0.0.1:8000/demo/data/order_summary.json
+steps:
+  - action: http_request
+    url: "{{api_url}}"
+    save_as: api_result
+    with:
+      response_as: json
+
+  - action: json_extract
+    from: "{{api_result}}"
+    path: "$.status"
+    save_as: http_status
+
+  - action: json_extract
+    from: "{{api_result}}"
+    path: "$.body.summary.open"
+    save_as: open_count
+
+  - action: json_extract
+    from: "{{api_result}}"
+    path: "$.body.orders[0].id"
+    save_as: first_order_id
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "05"
+        mode: flow
+        api_url: "{{api_url}}"
+        http_status: "{{http_status}}"
+        open_count: "{{open_count}}"
+        first_order_id: "{{first_order_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/05-http-request-json-flow.json
+    value: "{{payload}}"

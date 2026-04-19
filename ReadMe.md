@@ -84,9 +84,19 @@ go mod download
 | 启动交互式 CLI | `go run . -action cli` |
 | 运行 Lua 脚本 | `go run . -script script/open_url.lua` |
 | 运行 Flow | `go run . -flow script/demo_baidu.flow.yaml` |
+| 启动内置静态文件服务 | `go run . -action file-srv -addr :8000` |
+| 列出二进制内置资源 | `go run . -action list-assets` |
+| 释放内置 docs/script/demo | `go run . -action extract-assets -extract-root ./tsplay-assets` |
 | 启动 MCP Server | `go run . -action srv` |
 
 如果想隐藏浏览器窗口，可以追加 `-headless`。
+
+当你构建 `./tsplay` 二进制后，`ReadMe.md`、`docs/`、`script/`、`demo/` 会一并打包进二进制：
+
+- 可以直接运行内置示例：`./tsplay -script script/tutorials/01_hello_world.lua`
+- 可以直接运行内置 Flow：`./tsplay -flow script/tutorials/01_hello_world.flow.yaml`
+- 可以直接服务内置 demo：`./tsplay -action file-srv -addr :8000`
+- 也可以把参考资料释放到本地目录：`./tsplay -action extract-assets -extract-root ./tsplay-assets`
 
 ### 先跑一个 Flow
 
