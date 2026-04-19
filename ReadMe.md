@@ -175,6 +175,9 @@ go run . -flow script/demo_baidu.flow.yaml -artifact-root artifacts
 
 TSPlay 可以作为 MCP Server 启动，让 Agent 不必直接读整页 HTML，也不必手写 selector。
 
+如果你想先从“用户通过大模型驱动 TSPlay”这条路线入门，建议配合阅读：
+[docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md)
+
 ### 启动方式
 
 ```bash

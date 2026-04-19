@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 项目入口 | TSPlay 的核心概念、运行方式、Flow 和 MCP 能力 | [../ReadMe.md](../ReadMe.md) |
 | 培训总览 | 培训对象、交付模式、成功指标和文档清单 | [training/README.md](training/README.md) |
-| AI 新手教程 | 面向 Codex 等 Agent 的“用户意图 -> Flow”无感入门路线 | [training/ai-intent-to-flow.md](training/ai-intent-to-flow.md) |
+| AI 新手教程 | 面向 Codex、OpenClaw 等 Agent 的“用户意图 -> MCP -> Flow -> 执行修复”实战教程 | [training/ai-intent-to-flow.md](training/ai-intent-to-flow.md) |
 | 学习路径 | 从新人到讲师的分层路线图 | [training/learning-path.md](training/learning-path.md) |
 | 课程安排 | 2 天 Bootcamp 和 4 周应用节奏 | [training/bootcamp-plan.md](training/bootcamp-plan.md) |
 | 实操实验 | 结合本仓库 `demo/` 和 `script/` 的实验清单 | [training/labs.md](training/labs.md) |
@@ -43,6 +43,7 @@
 ## 使用建议
 
 - 对想直接用 AI 做事的新手：先看“AI 无感入门”，再做 MCP 相关实验
+- 对想把 TSPlay 接到大模型产品里的同学：先看“AI 无感入门”，重点关注接入方式、system prompt、授权策略和失败闭环
 - 对个人学习者：按“总览 -> 学习路径 -> Labs”走最快
 - 对项目经理或 Enablement 负责人：先看“培训体系总览”和“课程安排”
 - 对讲师：先看“讲师手册”，再按 cohort 目标挑 Labs 和 Capstone

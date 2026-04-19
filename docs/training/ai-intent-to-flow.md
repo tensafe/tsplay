@@ -1,110 +1,142 @@
-# TSPlay AI 无感入门：从用户意图到 Flow（以 Codex 为例）
+# TSPlay AI 无感入门：如何让用户通过大模型驱动 TSPlay
 
-这篇教程服务于这样一类新手：
+这篇教程解决的不是“如何手写一条 Flow”，而是更贴近真实落地的问题：
 
-- 不想先学完整 Flow 语法
-- 不想自己找 selector
-- 更习惯直接告诉 AI“我想做什么”
-- 希望把“所思即所想，所想即实现”尽量落成稳定的自动化流程
+- 用户不想先学 Flow 语法
+- 用户不想自己找 selector
+- 用户更习惯对大模型说“我想做什么”
+- 团队又希望最终沉淀成可审阅、可复用、可修复的自动化资产
 
-核心思路不是让用户手写 Flow，而是让 AI 通过 TSPlay MCP 工具链把用户意图逐步收敛成可运行、可校验、可修复的 Flow。
+TSPlay 的价值就在这里：让大模型不要直接硬写浏览器脚本，而是通过 MCP 工具链把用户意图逐步收敛成稳定 Flow。
 
-## 这条路线解决什么问题
+## 适合谁
 
-传统入门路径通常是：
+- 业务用户：想先把事情做成，再慢慢理解底层
+- 测试 / 运营 / 实施同学：希望通过自然语言驱动浏览器自动化
+- AI / 平台工程师：要把 Codex、OpenClaw 或其他支持 MCP 的模型接入 TSPlay
+- 交付团队：希望把“大模型帮我做一次”变成“仓库里保留一条可维护 Flow”
 
-1. 学 CLI 动作
-2. 学 selector
-3. 学 Flow 结构
-4. 学 MCP 工具
+## 一句话理解整体链路
 
-对新手来说，这条路径没有错，但门槛偏高。
+用户不是直接驱动浏览器，而是通过大模型驱动 TSPlay 的 MCP 工具。
 
-如果目标是“先让用户把事做成”，更适合先走 AI 路线：
+```mermaid
+flowchart LR
+    U["用户意图"] --> M["大模型<br/>Codex / OpenClaw / 其他 MCP Agent"]
+    M --> O["observe_page / draft_flow"]
+    O --> V["validate_flow"]
+    V --> R["run_flow"]
+    R --> F["repair_flow_context / repair_flow"]
+    F --> A["可审阅、可复用的 Flow 资产"]
+```
 
-1. 用户只描述业务意图
-2. Codex 调 `draft_flow` 或 `observe_page`
-3. AI 自动做一轮 `validate_flow`
-4. AI 帮用户执行 `run_flow`
-5. 如果失败，再进入 `repair_flow_context` / `repair_flow`
+推荐闭环是：
 
-这样用户先获得结果，再逐步理解 Flow。
+`observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow`
 
-## 新手最少只需要提供什么
+## 用户最少需要提供什么
 
-理想情况下，用户只需要告诉 Codex 4 件事：
+理想情况下，用户只需要告诉模型 4 件事：
 
 - 页面在哪：URL
 - 想做什么：例如“搜索订单并导出”“上传文件并提交”
 - 输入是什么：关键词、文件、筛选条件、账号角色
-- 是否可信可授权：例如是否允许文件访问、登录态复用
+- 授权边界：是否允许文件访问、登录态复用、HTTP、数据库
 
-如果这 4 件事说清楚，用户通常不需要自己提供：
+通常不需要用户自己提供：
 
 - selector
 - Flow 骨架
+- 页面 DOM
 - 校验命令
 - 失败修复策略
 
-## 准备条件
+## 两种接入方式
 
-开始前建议确认这几项：
+### 方式 A：模型直接连 TSPlay MCP
 
-- 已能启动 TSPlay MCP Server：`go run . -action srv -flow-root script -artifact-root artifacts`
-- Codex 已连接到 TSPlay MCP 工具
-- 本地或内网页面可访问
-- 如果要练习仓库内 demo，确保能访问 `demo/` 下页面
+这是最推荐的方式。模型能直接调用 TSPlay 工具，体验最顺滑。
 
-建议新手优先使用这些稳定素材：
+适合：
+
+- Codex
+- OpenClaw
+- 任何支持 MCP tool calling 的 Agent 框架
+
+### 方式 B：人工中转
+
+如果当前平台还没接 MCP，也可以先让人手动中转：
+
+1. 用户把目标告诉大模型
+2. 大模型输出建议的 TSPlay MCP 调用参数
+3. 你手动执行或封装执行
+4. 再把结果贴回给模型继续推进
+
+这种方式不如直接连 MCP 顺畅，但仍然适合验证流程设计和提示词。
+
+## 5 分钟跑通
+
+### 1. 启动 TSPlay MCP
+
+本地推荐优先用 `stdio`：
+
+```bash
+go run . -action mcp-stdio -flow-root script -artifact-root artifacts
+```
+
+如果你要用 sidecar 或远端方式，也可以用 HTTP：
+
+```bash
+go run . -action srv -addr :8081 -flow-root script -artifact-root artifacts
+```
+
+说明：
+
+- `flow_path` 默认只允许读取 `script/`
+- 文件读写默认只允许在 `artifact-root` 下进行
+- 浏览器类工具会把运行记录写进 `artifacts/`
+
+### 2. 如果要练仓库里的 demo 页面
+
+用任意静态文件服务把 `demo/` 目录跑起来，例如：
+
+```bash
+python3 -m http.server 8000
+```
+
+然后可以访问：
 
 - [../../demo/demo.html](../../demo/demo.html)
 - [../../demo/tables.html](../../demo/tables.html)
 - [../../demo/upload.html](../../demo/upload.html)
 - [../../demo/multi_upfile.html](../../demo/multi_upfile.html)
 
-如果需要先补项目背景，可先看 [../../ReadMe.md](../../ReadMe.md) 的 MCP 章节。
+如果你是用本地静态服务器，模型里更适合引用这类 URL：
 
-## Codex 的标准工作流
+- `http://127.0.0.1:8000/demo/demo.html`
+- `http://127.0.0.1:8000/demo/tables.html`
+- `http://127.0.0.1:8000/demo/upload.html`
 
-当用户只说意图时，Codex 最好按这条顺序工作：
+### 3. 给模型一段固定工作指令
 
-1. 先用 `tsplay.flow_schema` 和 `tsplay.flow_examples` 建立约束，不靠猜
-2. 如果用户给了明确 URL，优先尝试 `tsplay.draft_flow`
-3. 如果页面复杂、元素不明显或草稿不稳，再补 `tsplay.observe_page`
-4. 查看 `draft_flow` 返回的 `validation`、`unresolved`、`warnings`、`repair_hints`
-5. 需要单独确认结构时，再显式调 `tsplay.validate_flow`
-6. 校验通过后再调 `tsplay.run_flow`
-7. 执行失败时，用 `tsplay.repair_flow_context` / `tsplay.repair_flow` 收敛修复
-8. 如果流程依赖登录态，再用 `tsplay.save_session` 沉淀会话
-
-这套顺序的好处是：
-
-- 用户不必自己找 selector
-- `draft_flow` 已经会自动做一轮校验和 selector 修正
-- 修复时不会把整页 HTML 原样塞给模型
-- 最终产物仍然是可审阅的 Flow，而不是一次性对话产物
-
-## 给 Codex 的推荐提示词
-
-下面这段话可以作为 Codex 的工作指令，帮助它更稳定地把用户意图收敛成 Flow：
+推荐把下面这段话配置成模型的 system prompt 或工作提示词：
 
 ```text
 你现在是 TSPlay Flow 助手，目标是让用户只通过自然语言描述任务，而不是手写 selector 或 Flow。
 
 工作原则：
-1. 先使用 tsplay.flow_schema 和 tsplay.flow_examples 获取约束。
-2. 用户给了 URL 且目标清晰时，优先使用 tsplay.draft_flow。
-3. 当页面复杂、selector 不确定、或 draft 结果有 unresolved/warnings 时，再使用 tsplay.observe_page。
-4. 始终检查 validation、repair_hints、unresolved，不要把草稿直接当成最终答案。
+1. 先使用 tsplay.flow_schema 和 tsplay.flow_examples 获取约束，不要靠猜。
+2. 用户给了明确 URL 且目标清晰时，优先使用 tsplay.draft_flow。
+3. 页面复杂、selector 不确定、或 draft 返回 unresolved/warnings 时，再使用 tsplay.observe_page。
+4. 永远检查 validation、repair_hints、warnings、unresolved，不要把草稿直接当成最终答案。
 5. 成功前按 validate -> run -> repair 的顺序推进。
-6. 只有在用户场景明确需要时，才申请 allow_file_access、allow_browser_state、allow_http、allow_database 等高风险授权。
-7. 如果场景依赖登录态，优先建议使用 tsplay.save_session，并在 Flow 顶层使用 browser.use_session。
-8. 对用户输出时优先讲“你现在可以做什么”和“还缺什么输入”，不要要求用户理解底层 selector 细节。
+6. 只在确实需要时申请 security_preset 或 allow_* 授权，默认采用最小授权。
+7. 如果场景依赖登录态，优先建议 tsplay.save_session，并在 Flow 顶层使用 browser.use_session。
+8. 对用户输出时，优先说明“现在能做什么”“还缺什么输入/授权”“下一步要执行什么”，不要要求用户理解 selector 细节。
+9. 最终尽量沉淀成可审阅 Flow，而不是停留在一次性对话结果。
 ```
 
-## 新手操作模板
-
-新手和 Codex 对话时，建议使用这种表达方式：
+### 4. 用户可以直接这样提需求
 
 ```text
 帮我在 <URL> 上完成下面的任务：
@@ -124,126 +156,368 @@
 - 授权说明：只允许普通页面读取，不允许文件写入
 ```
 
-## 三个最适合新手的演示场景
+## 模型应该如何推进
 
-### 场景 1：选择下拉项并验证
+当用户只给出“意图 + URL + 输入 + 授权边界”时，模型推荐按这个顺序工作：
 
-用户只需要说：
+1. 调 `tsplay.flow_schema`
+2. 调 `tsplay.flow_examples`
+3. 如果 URL 明确，优先调 `tsplay.draft_flow`
+4. 如果页面复杂或草稿不稳，再调 `tsplay.observe_page`
+5. 看 `draft.validation`、`repair_hints`、`warnings`、`unresolved`
+6. 需要单独确认时再调 `tsplay.validate_flow`
+7. 确认后调 `tsplay.run_flow`
+8. 失败时调 `tsplay.repair_flow_context`
+9. 再调 `tsplay.repair_flow`
+10. 产出更新后的 Flow，再次 `validate_flow` / `run_flow`
 
-```text
-帮我在 demo 页面里选择“选项 5”，并确认它已经被选中。
+这条顺序的价值是：
+
+- 用户不必自己找 selector
+- `draft_flow` 已经会自动做一轮校验和 selector 修正
+- 修复上下文不会把整页 HTML 原样丢给模型
+- 最终留下的是 Flow 资产，不是一次性的对话产物
+
+## 一条最小闭环的 MCP 调用样例
+
+下面这组参数很适合平台接入、联调或教学演示时参考。
+
+### 1. 草拟 Flow
+
+```json
+{
+  "intent": "提取页面里的表格数据",
+  "url": "http://127.0.0.1:8000/demo/tables.html",
+  "security_preset": "readonly"
+}
 ```
 
-Codex 的理想动作：
+期待模型关注：
 
-1. 用 `tsplay.draft_flow` 根据页面和意图生成草稿
-2. 检查是否出现 `select_option` 与 `is_selected`
-3. 如有需要，再用 `tsplay.observe_page` 修正 selector
-4. 通过后执行 `tsplay.run_flow`
+- `draft.flow_yaml`
+- `draft.validation`
+- `summary`
+- `next_action`
 
-这个场景适合让用户建立一个直觉：
-用户描述的是“业务目标”，不是“动作细节”。
+### 2. 单独校验
 
-### 场景 2：提取表格
-
-用户只需要说：
-
-```text
-帮我把页面里的表格提取成结构化结果。
+```json
+{
+  "flow": "schema_version: \"1\"\nname: extract_table\nsteps:\n  - action: navigate\n    url: http://127.0.0.1:8000/demo/tables.html\n  - action: capture_table\n    selector: \"table\"\n    save_as: table_data\n",
+  "format": "yaml",
+  "security_preset": "readonly"
+}
 ```
 
-Codex 的理想动作：
+期待模型关注：
 
-1. 观察页面或直接草拟 Flow
-2. 优先选择 `capture_table` 这类结构化动作
-3. 生成带 `save_as` 的 Flow
-4. 执行一次并把结果摘要解释给用户
+- `valid`
+- `error`
+- `security`
+- `next_action`
 
-这个场景适合让新手理解：
-AI 不是模拟“复制网页源码”，而是在挑更适合自动化的动作。
+### 3. 执行 Flow
 
-### 场景 3：上传文件并提交
-
-用户只需要说：
-
-```text
-帮我上传这个文件并提交。
+```json
+{
+  "flow": "schema_version: \"1\"\nname: extract_table\nsteps:\n  - action: navigate\n    url: http://127.0.0.1:8000/demo/tables.html\n  - action: capture_table\n    selector: \"table\"\n    save_as: table_data\n",
+  "format": "yaml",
+  "headless": true,
+  "security_preset": "readonly"
+}
 ```
 
-Codex 这时要额外做一件事：
+期待模型关注：
 
-- 主动说明该 Flow 需要 `allow_file_access=true`
+- `result.trace`
+- `result.vars`
+- `run`
+- `artifacts`
 
-推荐动作顺序：
+### 4. 失败后构建修复上下文
 
-1. `tsplay.draft_flow`
-2. 看 `repair_hints` 是否已经提示文件授权
-3. 明确授权后再 `validate_flow` / `run_flow`
+```json
+{
+  "flow": "schema_version: \"1\"\nname: broken_flow\nsteps:\n  - action: navigate\n    url: http://127.0.0.1:8000/demo/demo.html\n  - action: click\n    selector: \"#missing-button\"\n",
+  "format": "yaml",
+  "run_result": "<直接传入 tsplay.run_flow 的返回 JSON>"
+}
+```
 
-这个场景适合教新手理解：
-“无感”不等于“无边界”，高风险能力仍然要显式授权。
+期待模型关注：
 
-## 授权原则
+- `context.failed_step`
+- `context.failure_category`
+- `context.repair_hints`
+- `context.artifacts`
 
-为了让体验足够顺滑，又不失控，建议按最小授权原则处理：
+### 5. 让模型生成修复提示
 
-| 授权 | 什么时候开 |
+```json
+{
+  "flow": "schema_version: \"1\"\nname: broken_flow\nsteps:\n  - action: navigate\n    url: http://127.0.0.1:8000/demo/demo.html\n  - action: click\n    selector: \"#missing-button\"\n",
+  "format": "yaml",
+  "repair_context": "<直接传入 tsplay.repair_flow_context 返回的 context JSON>"
+}
+```
+
+期待模型关注：
+
+- `repair.prompt`
+- `repair.target_steps`
+- `next_action`
+
+## TSPlay 的几个关键输出，模型必须会看
+
+### `draft_flow`
+
+重点看：
+
+- `draft.flow_yaml`
+- `draft.validation`
+- `draft.repair_hints`
+- `draft.warnings`
+- `draft.unresolved`
+- `summary`
+- `next_action`
+
+### `validate_flow`
+
+重点看：
+
+- `valid`
+- `error`
+- `security`
+- `next_action`
+
+### `run_flow`
+
+重点看：
+
+- `result.trace`
+- `result.vars`
+- `run`
+- `artifacts`
+- `next_action`
+
+### `repair_flow_context`
+
+重点看：
+
+- `context.failed_step`
+- `context.failure_category`
+- `context.repair_hints`
+- `context.artifacts`
+- `next_action`
+
+## 授权怎么讲给用户听
+
+“让用户通过大模型驱动”不代表把权限全开。
+
+推荐优先用 `security_preset`，而不是一上来堆满 `allow_*`：
+
+| 方式 | 适合场景 |
 | --- | --- |
-| `allow_file_access` | 上传、下载、截图、保存 HTML、读写 CSV/Excel 时 |
-| `allow_browser_state` | 读写 Cookie、Storage、保存登录态时 |
-| `allow_http` | Flow 里要主动请求外部 API 时 |
-| `allow_database` | 有 `db_*` 写入动作时 |
+| `readonly` | 页面观察、文本提取、普通校验 |
+| `browser_write` | 上传、下载、截图、HTML 保存、Storage State 复用 |
+| `full_automation` | HTTP、Redis、数据库、Lua、JavaScript 等全能力场景 |
 
-对新手最重要的一句话是：
+如果需要更细粒度控制，再额外叠加：
 
-不要一开始就把所有授权全开，而是让 Codex 根据 Flow 里的动作按需申请。
+- `allow_file_access`
+- `allow_browser_state`
+- `allow_http`
+- `allow_redis`
+- `allow_database`
+- `allow_lua`
+- `allow_javascript`
+
+给用户的解释建议尽量业务化，不要只说技术名词。比如：
+
+- 不说：“需要 `allow_file_access`”
+- 更适合说：“这一步要上传文件，所以需要允许模型在受控目录内读取文件”
+
+## 三条完整实战链路
+
+### 场景 1：提取表格
+
+用户输入：
+
+```text
+帮我在 http://127.0.0.1:8000/demo/tables.html 上提取表格数据。
+- 目标：抓取表头和所有行
+- 输入：无
+- 结果要求：给我一条可运行 Flow，并执行一次
+- 授权说明：readonly
+```
+
+模型理想动作：
+
+1. `flow_schema`
+2. `flow_examples`
+3. `draft_flow`
+4. 读取 `draft.validation`
+5. `run_flow`
+
+模型对用户的理想输出：
+
+- 已生成一条 Flow
+- 已执行一次
+- 共抓取多少行
+- 如果你愿意，可以把这条 Flow 继续沉淀成回归脚本
+
+### 场景 2：上传文件并提交
+
+用户输入：
+
+```text
+帮我在 http://127.0.0.1:8000/demo/upload.html 上上传一个文件并提交。
+- 输入：/absolute/path/to/file.csv
+- 结果要求：给我一条 Flow，并在我确认授权后执行
+- 授权说明：先不要默认开高风险权限
+```
+
+模型理想动作：
+
+1. `draft_flow`
+2. 从 `draft.validation` 或 `repair_hints` 识别出需要文件权限
+3. 向用户说明需要 `browser_write` 或 `allow_file_access`
+4. 用户确认后再 `validate_flow`
+5. 再 `run_flow`
+
+模型对用户的理想输出：
+
+- 草稿已经生成
+- 当前阻塞点是文件授权，不是 Flow 结构问题
+- 一旦确认授权即可继续执行
+
+### 场景 3：带登录态的业务流程
+
+用户输入：
+
+```text
+帮我登录后台后搜索订单并导出，后面这个流程还会重复执行。
+```
+
+模型理想动作：
+
+1. 先问清登录方式和可否保存登录态
+2. 首次执行后用 `tsplay.save_session` 保存会话
+3. 后续 Flow 顶层使用 `browser.use_session`
+4. 再进行 `draft -> validate -> run`
+
+这个场景的关键不是“第一次跑通”，而是把登录态沉淀成可复用资产。
+
+## 用户与模型的推荐对话模板
+
+### 模板 1：最短可用
+
+```text
+帮我在 <URL> 上做 <目标>。
+输入是：<输入>
+我希望最终拿到：<结果>
+你先用 TSPlay MCP 草拟并校验，必要时再执行。
+```
+
+### 模板 2：带授权边界
+
+```text
+帮我在 <URL> 上完成 <目标>。
+输入是：<输入>
+结果要求：<结果>
+授权边界：
+- 文件访问：允许 / 不允许
+- 登录态复用：允许 / 不允许
+- HTTP：允许 / 不允许
+- 数据库：允许 / 不允许
+请按 TSPlay 的 observe -> draft -> validate -> run -> repair 流程推进。
+```
+
+### 模板 3：要求模型更像“助手”而不是“解释器”
+
+```text
+你不用先给我讲底层原理，先帮我把事情做成。
+如果缺输入或授权，只告诉我最关键的一项。
+如果失败，先自己用 TSPlay 的 repair 工具链收敛一轮，再告诉我需要我补什么。
+```
 
 ## 失败时怎么保持“无感”
 
-无感体验不是“永不失败”，而是失败时用户也不用自己排底层细节。
+好的“无感体验”不是永不失败，而是失败时用户也不用自己排底层细节。
 
-推荐让 Codex 按这个顺序处理：
+模型在失败后应这样处理：
 
-1. 先向用户解释失败发生在哪一步
-2. 再调用 `tsplay.repair_flow_context`
+1. 用一句话告诉用户失败在哪一步
+2. 调 `tsplay.repair_flow_context`
 3. 根据 `repair_hints` 调 `tsplay.repair_flow`
-4. 修复后重新 `validate_flow`
-5. 必要时再重新 `run_flow`
+4. 更新 Flow
+5. 重新 `validate_flow`
+6. 必要时重新 `run_flow`
 
-对用户的输出重点应是：
+模型对用户的输出重点应是：
 
 - 哪一步失败了
-- AI 准备如何修
-- 是否需要用户补充输入或授权
+- AI 准备怎么修
+- 现在缺的是输入、授权，还是页面变化
 
-而不是直接把一大段 trace 或 HTML 扔给用户。
+而不是直接把整段 trace 或 HTML 扔给用户。
 
-## 让体验更像“所想即实现”的落地建议
+## 给平台 / Agent 集成同学的建议
 
-如果你希望这套教程继续往产品化方向走，建议优先做这几件事：
+如果你是在做产品或平台集成，建议优先把这些能力固定下来：
 
-- 固定一条默认提示词，让 Codex 永远优先走 `draft -> validate -> run -> repair`
-- 把常见页面先沉淀成稳定的 demo 或业务模板
-- 把登录场景沉淀成 `save_session + use_session`
-- 对用户界面只暴露“意图、输入、结果、授权确认”四类信息
-- 保留最终 Flow 作为审阅资产，而不是只保留对话记录
+- 默认工作流：`draft -> validate -> run -> repair`
+- 默认安全策略：从 `readonly` 起步，按需升级到 `browser_write`
+- 默认展示字段：`summary`, `warnings`, `next_action`, `run`
+- 默认沉淀资产：保留 `flow_yaml`、运行 trace、artifacts、会话信息
 
-这样做的价值是：
+最理想的用户界面，不需要让用户理解太多底层概念，只暴露这些信息：
 
-- 新手能先把事情做成
-- 交付团队仍然有可审查的 Flow 资产
-- AI 输出不是黑盒，而是能沉淀、复用、修复的自动化流程
+- 我想做什么
+- 我给什么输入
+- 是否同意某类授权
+- 当前结果如何
+- 下一步建议是什么
+
+## 常见误区
+
+### 误区 1：让模型直接手写 selector
+
+更好的做法是优先让它调 `draft_flow` 或 `observe_page`。
+
+### 误区 2：一开始就把所有权限全开
+
+更好的做法是默认 `readonly`，按需提升到 `browser_write` 或 `full_automation`。
+
+### 误区 3：只保留对话，不保留 Flow
+
+更好的做法是把最终 Flow 存下来，作为团队资产。
+
+### 误区 4：失败后立刻让用户自己看 DOM
+
+更好的做法是先走 `repair_flow_context` / `repair_flow` 闭环，再决定要不要向用户追问。
+
+## 一份适合产品化落地的最小清单
+
+如果你想把“用户通过大模型驱动 TSPlay”做成一个稳定能力，建议至少具备这些配置：
+
+- 一个可用的 TSPlay MCP Server
+- 一段固定的 system prompt
+- 一套统一的用户输入模板
+- 一个默认安全策略
+- 一条固定的失败修复闭环
+- 一个保存最终 Flow 和 artifacts 的地方
 
 ## 推荐阅读顺序
 
-如果你要按这条 AI 路线学习，建议顺序如下：
+建议按这个顺序看：
 
 1. [../../ReadMe.md](../../ReadMe.md) 的 MCP 章节
 2. 本文
-3. [labs.md](labs.md) 的 Lab 6
-4. [capstone-briefs.md](capstone-briefs.md) 中的 MCP 场景
+3. [labs.md](labs.md) 里的 Lab 6
+4. [capstone-briefs.md](capstone-briefs.md) 里的 MCP 场景
 
-如果之后需要补底层理解，再回看：
+如果之后需要补底层理解，再继续看：
 
 - [learning-path.md](learning-path.md)
 - [trainer-playbook.md](trainer-playbook.md)
