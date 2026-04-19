@@ -21,6 +21,7 @@
 | 模块 | 用途 | 入口 |
 | --- | --- | --- |
 | 学习路径 | 定义等级、能力边界、出入门标准 | [learning-path.md](learning-path.md) |
+| AI 无感入门 | 面向 Codex 等 Agent，把“用户意图 -> Flow -> 执行修复”串成新手入口 | [ai-intent-to-flow.md](ai-intent-to-flow.md) |
 | Bootcamp 课程表 | 帮你把培训排成可执行课程 | [bootcamp-plan.md](bootcamp-plan.md) |
 | Labs | 提供基于仓库现有素材的实验任务 | [labs.md](labs.md) |
 | Capstone | 提供结业项目场景和交付要求 | [capstone-briefs.md](capstone-briefs.md) |
@@ -29,6 +30,14 @@
 | 模板 | 学员提交和讲师评审的统一模板 | [templates/](templates/) |
 
 ## 建议的交付模式
+
+### 模式 0：AI 无感入门
+
+适合希望“先做成，再理解底层细节”的业务用户、测试同学或产品同学。
+
+- 目标：让用户只描述意图，由 Codex 等 Agent 帮他草拟、校验、执行和修复 Flow
+- 时间：1-2 小时
+- 输出：1 条 AI 草拟并执行过的 Flow、1 次失败修复记录
 
 ### 模式 A：半天入门
 
@@ -73,4 +82,6 @@
 - Flow 示例：`script/demo_baidu.flow.yaml`
 - MCP 能力：见根目录 [../../ReadMe.md](../../ReadMe.md) 的 MCP 章节
 
-建议先阅读 [learning-path.md](learning-path.md)，再按 [bootcamp-plan.md](bootcamp-plan.md) 和 [labs.md](labs.md) 执行。
+如果希望优先走 AI 路线，建议先阅读 [ai-intent-to-flow.md](ai-intent-to-flow.md)。
+
+如果希望系统学习，再按 [learning-path.md](learning-path.md)、[bootcamp-plan.md](bootcamp-plan.md) 和 [labs.md](labs.md) 执行。
