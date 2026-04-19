@@ -347,3 +347,92 @@ func TestRunFlowRedisNamedConnection(t *testing.T) {
 		t.Fatalf("cookie_header = %#v", got)
 	}
 }
+
+func TestRunFlowLuaRedisHelpersHonorAllowRedis(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_redis_policy",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code:   `return redis_get("sessions:admin")`,
+			},
+		},
+	}
+
+	_, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowLua: true},
+	})
+	if err == nil {
+		t.Fatalf("expected allow_redis runtime error")
+	}
+	if !strings.Contains(err.Error(), "allow_redis") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFlowLuaRedisHelpers(t *testing.T) {
+	server := newRedisTestServer(t)
+	defer server.Close()
+
+	t.Setenv("TSPLAY_REDIS_ADDR", server.Addr())
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_redis_round_trip",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				SaveAs: "redis_result",
+				Code: `local stored = redis_set("sessions:admin_cookie", "SESSION=lua", 3600)
+local value = redis_get("sessions:admin_cookie")
+local counter = redis_incr("orders:counter", 2)
+local deleted = redis_del("sessions:admin_cookie")
+local missing = redis_get("sessions:admin_cookie")
+return {
+  stored = stored,
+  value = value,
+  counter = counter,
+  deleted = deleted,
+  missing = missing,
+}`,
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowLua:   true,
+			AllowRedis: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	redisResult, ok := result.Vars["redis_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("redis_result = %#v", result.Vars["redis_result"])
+	}
+	if got := redisResult["value"]; got != "SESSION=lua" {
+		t.Fatalf("value = %#v", got)
+	}
+	if got := redisResult["counter"]; got != float64(2) {
+		t.Fatalf("counter = %#v", got)
+	}
+	if got := redisResult["deleted"]; got != float64(1) {
+		t.Fatalf("deleted = %#v", got)
+	}
+	if got, exists := redisResult["missing"]; exists && got != nil {
+		t.Fatalf("missing = %#v", got)
+	}
+	stored, ok := redisResult["stored"].(map[string]any)
+	if !ok || stored["key"] != "sessions:admin_cookie" {
+		t.Fatalf("stored = %#v", redisResult["stored"])
+	}
+}

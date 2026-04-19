@@ -50,11 +50,11 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 应保持同步 |
 | 文件与表格 I/O | `screenshot`、`save_html`、`read_csv`、`read_excel`、`write_json`、`write_csv` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
 | HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_http`、`allow_file_access` 和文件根目录 |
-| Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_redis` 约束 |
-| 数据库操作 | `db_insert`、`db_upsert`、`db_query`、`db_execute` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_database` 约束 |
+| Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_redis` |
+| 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_database`，`db_transaction` 会自动提交或回滚 |
 | 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_browser_state` 约束 |
 | Flow 便捷动作 | `extract_text`、`assert_visible`、`assert_text`、`set_var`、`append_var` | 是 | 部分 | 是 | 可以 Flow 优先，Lua 可按需补糖 |
-| Flow 控制流 | `retry`、`if`、`foreach`、`on_error`、`wait_until`、`db_transaction` | 是 | 否 | 是 | 不要求同步到 Lua |
+| Flow 控制流 | `retry`、`if`、`foreach`、`on_error`、`wait_until` | 是 | 否 | 是 | 不要求同步到 Lua |
 | Lua 回调型能力 | `intercept_request` | 否 | 是 | 否 | 保持 Lua 专属更自然 |
 
 推荐的判断原则：
@@ -370,6 +370,7 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 
 - 文件类动作即使被授权，也只能在 artifact root 范围内读写
 - Flow 顶层 `browser` 里的相对路径也会解析到 artifact root 下
+- Lua 里的 `http_request`、`redis_*`、`db_*` 在 Flow / MCP 安全上下文里也会继承对应的 `allow_*` 约束
 - 本地命令行运行 `go run . -flow ...` 仍保持更灵活的本地使用方式
 
 ## 外部系统集成
@@ -428,6 +429,9 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 
 说明：
 
+- `Flow` 和 `Lua` 两边都支持 `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction`
+- 当 `Lua db_*` 或 `Lua db_transaction` 运行在 `Flow` / MCP 安全上下文中时，也会遵守 `allow_database=true`
+- `db_transaction` 会在同一个事务作用域里执行内部数据库操作，成功时自动 commit，失败时自动 rollback
 - `db_*` 动作在 MCP 模式下需要 `allow_database=true`
 - SQL Server / Oracle 需要带对应 build tags 构建带驱动的二进制
 
