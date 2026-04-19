@@ -1,0 +1,41 @@
+schema_version: "1"
+name: lesson_11_select_another_option_flow
+description: Open the local demo page, choose another option, verify it, and write the result to JSON.
+vars:
+  demo_url: http://127.0.0.1:8000/demo/demo.html
+  target_value: "7"
+steps:
+  - action: navigate
+    url: "{{demo_url}}"
+
+  - action: wait_for_selector
+    selector: "#options"
+    timeout: 5000
+
+  - action: select_option
+    selector: "#options"
+    value: "{{target_value}}"
+
+  - action: is_selected
+    selector: "#options option[value='{{target_value}}']"
+    save_as: selected_ok
+
+  - action: extract_text
+    selector: "#options option:checked"
+    timeout: 5000
+    save_as: selected_label
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "11"
+        mode: flow
+        demo_url: "{{demo_url}}"
+        target_value: "{{target_value}}"
+        selected_ok: "{{selected_ok}}"
+        selected_label: "{{selected_label}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/11-select-another-option-flow.json
+    value: "{{payload}}"

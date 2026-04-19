@@ -1,0 +1,83 @@
+schema_version: "1"
+name: lesson_23_on_error_import_recovery_flow
+description: Import CSV rows, recover locally on failures, and write a JSON and CSV result ledger.
+vars:
+  page_url: http://127.0.0.1:8000/demo/import_workflow.html
+  input_file: demo/data/import_users_with_error.csv
+  import_results: []
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: on_error
+        steps:
+          - action: type_text
+            selector: "#name"
+            text: "{{row.name}}"
+          - action: type_text
+            selector: "#phone"
+            text: "{{row.phone}}"
+          - action: click
+            selector: "#submit"
+          - action: assert_text
+            selector: "#submit-status"
+            text: "Imported"
+            timeout: 1000
+          - action: append_var
+            save_as: import_results
+            with:
+              value:
+                source_row: "{{row.source_row}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: success
+                error: ""
+          - action: click
+            selector: "#clear-form"
+        on_error:
+          - action: append_var
+            save_as: import_results
+            with:
+              value:
+                source_row: "{{row.source_row}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: failed
+                error: "{{last_error}}"
+          - action: click
+            selector: "#clear-form"
+
+  - action: write_json
+    file_path: artifacts/tutorials/23-on-error-import-recovery-flow.json
+    with:
+      value:
+        lesson: "23"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        results: "{{import_results}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/23-on-error-import-recovery-flow.csv
+    with:
+      value: "{{import_results}}"
+      headers:
+        - source_row
+        - name
+        - phone
+        - status
+        - error

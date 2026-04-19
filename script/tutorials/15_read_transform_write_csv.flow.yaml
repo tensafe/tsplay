@@ -1,0 +1,59 @@
+schema_version: "1"
+name: lesson_15_read_transform_write_csv_flow
+description: Read selected CSV rows, transform them into a new ledger, and write the result to CSV.
+vars:
+  input_file: demo/data/tutorial_contacts.csv
+steps:
+  - action: set_var
+    save_as: transformed_rows
+    with:
+      value: []
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      start_row: 3
+      limit: 2
+      row_number_field: source_row
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: append_var
+        save_as: transformed_rows
+        with:
+          value:
+            source_row: "{{row.source_row}}"
+            name: "{{row.name}}"
+            city: "{{row.city}}"
+            status: "{{row.status}}"
+            review_note: needs_follow_up
+
+  - action: write_csv
+    file_path: artifacts/tutorials/15-transformed-contacts-flow.csv
+    with:
+      value: "{{transformed_rows}}"
+      headers:
+        - source_row
+        - name
+        - city
+        - status
+        - review_note
+    save_as: write_result
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "15"
+        mode: flow
+        input_file: "{{input_file}}"
+        output_file: artifacts/tutorials/15-transformed-contacts-flow.csv
+        write_result: "{{write_result}}"
+        rows: "{{transformed_rows}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/15-read-transform-write-csv-flow.json
+    value: "{{payload}}"

@@ -1,0 +1,65 @@
+schema_version: "1"
+name: lesson_21_if_optional_login_flow
+description: Branch on an optional login dialog, then enter the import form and write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/import_workflow.html?login=1
+  login_path: unknown
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#page-title"
+    timeout: 5000
+
+  - action: if
+    condition:
+      action: is_visible
+      selector: ".login-dialog"
+    then:
+      - action: type_text
+        selector: "#username"
+        text: demo-user
+      - action: click
+        selector: "#login"
+      - action: set_var
+        save_as: login_path
+        with:
+          value: login_required
+    else:
+      - action: wait_for_selector
+        selector: "#import-form"
+        timeout: 5000
+      - action: set_var
+        save_as: login_path
+        with:
+          value: direct_entry
+
+  - action: assert_visible
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#workflow-mode"
+    timeout: 5000
+    save_as: workflow_mode
+
+  - action: extract_text
+    selector: "#submit-status"
+    timeout: 5000
+    save_as: submit_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "21"
+        mode: flow
+        page_url: "{{page_url}}"
+        login_path: "{{login_path}}"
+        workflow_mode: "{{workflow_mode}}"
+        submit_status: "{{submit_status}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/21-if-optional-login-flow.json
+    value: "{{payload}}"

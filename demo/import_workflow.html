@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import Workflow Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 32px;
+      line-height: 1.6;
+      background: #f7f9fc;
+      color: #1f2328;
+    }
+    .panel {
+      max-width: 760px;
+      margin-bottom: 24px;
+      padding: 20px 24px;
+      border: 1px solid #d0d7de;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(31, 35, 40, 0.06);
+    }
+    .hidden {
+      display: none;
+    }
+    .field-row {
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      max-width: 360px;
+      padding: 10px 12px;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      background: #0969da;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #57606a;
+    }
+    .status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #f6f8fa;
+      border: 1px solid #d8dee4;
+    }
+    .error-banner {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      color: #8a1c1c;
+      background: #fff1f0;
+      border: 1px solid #ffccc7;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      border: 1px solid #d0d7de;
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th {
+      background: #f6f8fa;
+    }
+  </style>
+</head>
+<body>
+  <section class="panel">
+    <h1 id="page-title">Import Workflow Demo</h1>
+    <p id="workflow-mode">Direct import mode</p>
+    <div id="import-count-wrapper">Imported count: <strong id="import-count">0</strong></div>
+  </section>
+
+  <section class="panel login-dialog hidden" id="login-dialog">
+    <h2>Login Required</h2>
+    <div class="field-row">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" placeholder="demo-user">
+    </div>
+    <button id="login" type="button">Login</button>
+  </section>
+
+  <section class="panel hidden" id="import-panel">
+    <h2>Import Form</h2>
+    <form id="import-form">
+      <div class="field-row">
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" placeholder="Alice">
+      </div>
+      <div class="field-row">
+        <label for="phone">Phone</label>
+        <input id="phone" name="phone" type="text" placeholder="13800000001">
+      </div>
+      <button id="submit" type="submit">Submit Row</button>
+      <button class="secondary" id="clear-form" type="button">Clear Form</button>
+    </form>
+
+    <div class="status" id="submit-status">Ready to import</div>
+    <div class="error-banner hidden" id="error-banner">Validation failed</div>
+  </section>
+
+  <section class="panel">
+    <h2>Imported Rows</h2>
+    <table id="import-results">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="import-results-body"></tbody>
+    </table>
+  </section>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const loginRequired = params.get('login') === '1';
+
+    const workflowMode = document.getElementById('workflow-mode');
+    const loginDialog = document.getElementById('login-dialog');
+    const importPanel = document.getElementById('import-panel');
+    const importForm = document.getElementById('import-form');
+    const submitStatus = document.getElementById('submit-status');
+    const errorBanner = document.getElementById('error-banner');
+    const importCount = document.getElementById('import-count');
+    const resultsBody = document.getElementById('import-results-body');
+    const usernameInput = document.getElementById('username');
+    const nameInput = document.getElementById('name');
+    const phoneInput = document.getElementById('phone');
+
+    function openImportPanel() {
+      importPanel.classList.remove('hidden');
+      nameInput.focus();
+    }
+
+    function clearTransientState(message) {
+      nameInput.value = '';
+      phoneInput.value = '';
+      errorBanner.classList.add('hidden');
+      errorBanner.textContent = 'Validation failed';
+      submitStatus.textContent = message || 'Form cleared';
+    }
+
+    function importedRowCount() {
+      return resultsBody.querySelectorAll('tr').length;
+    }
+
+    function addImportedRow(name, phone) {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${name}</td><td>${phone}</td><td>Imported</td>`;
+      resultsBody.appendChild(row);
+      importCount.textContent = String(importedRowCount());
+    }
+
+    function validateRow(name, phone) {
+      if (!name || !phone) {
+        return 'Validation failed: missing name or phone';
+      }
+      if (name.toLowerCase().startsWith('fail') || phone.includes('999')) {
+        return 'Validation failed: simulated bad row';
+      }
+      return '';
+    }
+
+    if (loginRequired) {
+      workflowMode.textContent = 'Login required before import';
+      loginDialog.classList.remove('hidden');
+    } else {
+      workflowMode.textContent = 'Direct import mode';
+      openImportPanel();
+    }
+
+    document.getElementById('login').addEventListener('click', function() {
+      const username = usernameInput.value.trim();
+      if (!username) {
+        submitStatus.textContent = 'Username required';
+        errorBanner.textContent = 'Please enter a username before continuing';
+        errorBanner.classList.remove('hidden');
+        return;
+      }
+
+      loginDialog.classList.add('hidden');
+      errorBanner.classList.add('hidden');
+      openImportPanel();
+      submitStatus.textContent = `Logged in as ${username}`;
+    });
+
+    document.getElementById('clear-form').addEventListener('click', function() {
+      clearTransientState('Form cleared');
+    });
+
+    importForm.addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      const name = nameInput.value.trim();
+      const phone = phoneInput.value.trim();
+      const error = validateRow(name, phone);
+
+      if (error) {
+        submitStatus.textContent = 'Validation failed';
+        errorBanner.textContent = error;
+        errorBanner.classList.remove('hidden');
+        return;
+      }
+
+      addImportedRow(name, phone);
+      submitStatus.textContent = `Imported ${name}`;
+      errorBanner.classList.add('hidden');
+    });
+  </script>
+</body>
+</html>
