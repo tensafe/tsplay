@@ -110,6 +110,9 @@ var GlobalPlayWrightFunc = []LuaFunction{
 
 	// StateStorage 管理 / State Storage Management
 	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},
+	{"save_storage_state", save_storage_state, "将当前页面的存储状态保存到文件", "Save the current browser storage state to a file. Example: save_storage_state('states/admin.json'). Parameters: path (string) - The file path to save the browser storage state."},
+	{"load_storage_state", load_storage_state, "从文件加载浏览器存储状态", "Load browser storage state from a file into a fresh browser context. Example: load_storage_state('states/admin.json'). Parameters: path (string) - The file path of the saved browser storage state."},
+	{"use_session", use_session, "复用已保存的命名浏览器会话", "Reuse a named saved browser session backed by a storage state file. Example: use_session('admin'). Parameters: name (string) - The saved session name registered under the artifact root."},
 	{"get_cookies_string", get_cookies_string, "获取当前页面的 Cookie 字符串", "Get cookies as a string. Example: get_cookies_string(). No parameters."},
 }
 
@@ -230,6 +233,20 @@ func flowBrowserContextFromState(L *lua.LState) (playwright.BrowserContext, bool
 		return nil, false
 	}
 	return contexts[0], true
+}
+
+func luaArtifactRootFromState(L *lua.LState) string {
+	if L == nil {
+		return DefaultFlowArtifactRoot
+	}
+	value := L.GetGlobal("artifact_root")
+	if asString, ok := value.(lua.LString); ok {
+		trimmed := strings.TrimSpace(string(asString))
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return DefaultFlowArtifactRoot
 }
 
 func flowBrowserContextsFromState(L *lua.LState) []playwright.BrowserContext {
@@ -1952,43 +1969,134 @@ func get_storage_state(L *lua.LState) int {
 	return 1
 }
 
-//	func set_storage_state(L *lua.LState) int {
-//		// 获取浏览器对象
-//		browser := safe_browser(L)
-//		if browser == nil {
-//			L.RaiseError("Failed to get browser object")
-//			return 0
-//		}
-//
-//		// 获取上下文索引（从 Lua 参数中获取，默认为第一个上下文）
-//		contextIndex := L.OptInt(1, 1) - 1 // Lua 索引从 1 开始，Go 数组索引从 0 开始
-//		contexts := browser.Contexts()
-//
-//		// 检查上下文索引是否合法
-//		if contextIndex < 0 || contextIndex >= len(contexts) {
-//			L.RaiseError("Invalid context index: %d", contextIndex+1)
-//			return 0
-//		}
-//
-//		// 获取指定的上下文
-//		context := contexts[contextIndex]
-//
-//		// 获取传入的存储状态 JSON 字符串
-//		storageStateJSON := L.CheckString(2)
-//
-//		// 设置存储状态到指定的上下文
-//		err := context.SetStorageState(playwright.BrowserContextSetStorageStateOptions{
-//			StorageState: playwright.String(storageStateJSON),
-//		})
-//		if err != nil {
-//			L.RaiseError("Failed to set storage state: %v", err)
-//			return 0
-//		}
-//
-//		// 返回成功状态
-//		L.Push(lua.LBool(true))
-//		return 1
-//	}
+func save_storage_state(L *lua.LState) int {
+	context := safe_context(L)
+	if context == nil {
+		return 0
+	}
+
+	path := L.CheckString(1)
+	if strings.TrimSpace(path) == "" {
+		L.RaiseError("Path cannot be empty")
+		return 0
+	}
+
+	if _, err := context.StorageState(path); err != nil {
+		L.RaiseError("Failed to save storage state to '%s': %v", path, err)
+		return 0
+	}
+
+	fmt.Printf("Storage state saved to: %s\n", path)
+	L.Push(lua.LString(path))
+	return 1
+}
+
+func load_storage_state(L *lua.LState) int {
+	browser := safe_browser(L)
+	if browser == nil {
+		return 0
+	}
+
+	path := L.CheckString(1)
+	if strings.TrimSpace(path) == "" {
+		L.RaiseError("Path cannot be empty")
+		return 0
+	}
+
+	oldContext, _ := flowBrowserContextFromState(L)
+	newContext, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		StorageStatePath: playwright.String(path),
+	})
+	if err != nil {
+		L.RaiseError("Failed to load storage state from '%s': %v", path, err)
+		return 0
+	}
+
+	page, err := newContext.NewPage()
+	if err != nil {
+		_ = newContext.Close()
+		L.RaiseError("Failed to create page with storage state '%s': %v", path, err)
+		return 0
+	}
+
+	setFlowBrowserGlobals(L, browser, newContext, page)
+	if oldContext != nil {
+		_ = oldContext.Close()
+	}
+
+	fmt.Printf("Storage state loaded from: %s\n", path)
+	L.Push(lua.LString(path))
+	return 1
+}
+
+func use_session(L *lua.LState) int {
+	name := L.CheckString(1)
+	if strings.TrimSpace(name) == "" {
+		L.RaiseError("Session name cannot be empty")
+		return 0
+	}
+
+	artifactRoot := luaArtifactRootFromState(L)
+	config, err := ResolveFlowSavedSessionBrowserConfig(name, artifactRoot)
+	if err != nil {
+		L.RaiseError("Failed to resolve saved session '%s': %v", name, err)
+		return 0
+	}
+	if config == nil {
+		L.RaiseError("Saved session '%s' returned no browser config", name)
+		return 0
+	}
+	if config.Persistent {
+		L.RaiseError("Saved session '%s' uses a persistent profile, which is not supported by Lua use_session()", name)
+		return 0
+	}
+
+	loadPath, err := config.runtimeLoadStorageStatePath(&FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileInputRoot:     artifactRoot,
+		FileOutputRoot:    artifactRoot,
+	})
+	if err != nil {
+		L.RaiseError("Failed to resolve storage state for session '%s': %v", name, err)
+		return 0
+	}
+	if strings.TrimSpace(loadPath) == "" {
+		L.RaiseError("Saved session '%s' does not contain a storage_state file", name)
+		return 0
+	}
+
+	browser := safe_browser(L)
+	if browser == nil {
+		return 0
+	}
+
+	oldContext, _ := flowBrowserContextFromState(L)
+	newContext, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		StorageStatePath: playwright.String(loadPath),
+	})
+	if err != nil {
+		L.RaiseError("Failed to load saved session '%s': %v", name, err)
+		return 0
+	}
+
+	page, err := newContext.NewPage()
+	if err != nil {
+		_ = newContext.Close()
+		L.RaiseError("Failed to create page for saved session '%s': %v", name, err)
+		return 0
+	}
+
+	setFlowBrowserGlobals(L, browser, newContext, page)
+	if oldContext != nil {
+		_ = oldContext.Close()
+	}
+	_, _ = MarkFlowSavedSessionUsed(name, artifactRoot)
+
+	fmt.Printf("Saved session loaded: %s\n", name)
+	L.Push(lua.LString(name))
+	return 1
+}
+
 func get_cookies_string(L *lua.LState) int {
 	// 获取上下文索引（默认为第一个上下文）
 	contextIndex := L.OptInt(1, 1) - 1

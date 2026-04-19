@@ -65,6 +65,12 @@ func main() {
 	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
 	serveRoot := flag.String("serve-root", "", "optional local root directory for built-in static file server; when omitted tsplay serves bundled assets from the binary")
 	extractRoot := flag.String("extract-root", "tsplay-assets", "target directory for extracting bundled docs/demo/script assets")
+	sessionName := flag.String("session-name", "", "saved session name for session management actions")
+	storageStatePath := flag.String("storage-state-path", "", "storage state path for save-session actions")
+	storageStateJSON := flag.String("storage-state-json", "", "inline storage state JSON for save-session actions")
+	profileName := flag.String("profile-name", "", "persistent profile name for save-session actions")
+	profileSession := flag.String("profile-session", "", "persistent profile session name for save-session actions")
+	sessionFormat := flag.String("session-format", "all", "snippet format for export-session action")
 	isheadless := flag.Bool("headless", false, "is hide browser")
 
 	// 解析命令行参数
@@ -121,8 +127,76 @@ func main() {
 				log.Fatal(err)
 			}
 			fmt.Printf("Extracted %d bundled assets to %s\n", count, *extractRoot)
+		case "save-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action save-session")
+			}
+			session, err := tsplay_core.SaveFlowSavedSession(tsplay_core.FlowSavedSessionSaveOptions{
+				Name:             *sessionName,
+				ArtifactRoot:     *artifactRoot,
+				StorageStateJSON: *storageStateJSON,
+				StorageStatePath: *storageStatePath,
+				Profile:          *profileName,
+				Session:          *profileSession,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(tsplay_core.BuildFlowSavedSessionDetail(*session, *artifactRoot))
+		case "list-sessions":
+			sessions, err := tsplay_core.ListFlowSavedSessions(*artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			items := make([]map[string]any, 0, len(sessions))
+			for _, session := range sessions {
+				items = append(items, tsplay_core.BuildFlowSavedSessionView(session, *artifactRoot))
+			}
+			printJSON(map[string]any{
+				"artifact_root": *artifactRoot,
+				"sessions":      items,
+			})
+		case "get-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action get-session")
+			}
+			session, err := tsplay_core.LoadFlowSavedSession(*sessionName, *artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(tsplay_core.BuildFlowSavedSessionDetail(*session, *artifactRoot))
+		case "export-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action export-session")
+			}
+			session, err := tsplay_core.LoadFlowSavedSession(*sessionName, *artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			exported, err := tsplay_core.ExportFlowSavedSessionFlowSnippet(*session, *artifactRoot, *sessionFormat)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(exported)
+		case "delete-session":
+			if strings.TrimSpace(*sessionName) == "" {
+				log.Fatal("-session-name is required for -action delete-session")
+			}
+			deleted, err := tsplay_core.DeleteFlowSavedSession(*sessionName, *artifactRoot)
+			if err != nil {
+				log.Fatal(err)
+			}
+			printJSON(deleted)
 		}
 	}
+}
+
+func printJSON(value any) {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(encoded))
 }
 
 func run_flow(flow *tsplay_core.Flow) {
@@ -163,6 +237,7 @@ func cli_mode() {
 	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
+	L.SetGlobal("artifact_root", lua.LString(g_artifactRoot))
 
 	var pw *playwright.Playwright
 	var browser playwright.Browser
@@ -362,6 +437,7 @@ func run_script(script string) {
 	for _, fn := range tsplay_core.GlobalPlayWrightFunc {
 		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
 	}
+	L.SetGlobal("artifact_root", lua.LString(g_artifactRoot))
 
 	usage := tsplay_core.AnalyzeLuaScriptPlaywrightUsage(script)
 	var pw *playwright.Playwright
@@ -416,7 +492,7 @@ func run_script(script string) {
 		}
 		var err error
 		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			Headless: playwright.Bool(false),
+			Headless: playwright.Bool(g_headless),
 		})
 		if err != nil {
 			log.Fatalf("could not launch browser: %v", err)
@@ -434,6 +510,10 @@ func run_script(script string) {
 	}
 
 	if !usage.NeedsBrowser() {
+		return
+	}
+
+	if g_headless {
 		return
 	}
 
