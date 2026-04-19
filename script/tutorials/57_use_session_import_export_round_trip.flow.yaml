@@ -1,0 +1,91 @@
+schema_version: "1"
+name: lesson_57_use_session_import_export_round_trip_flow
+description: Reuse a named session, import Excel rows on the protected page, export the current table, and save the full round-trip package.
+browser:
+  use_session: session_import_demo
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  input_file: demo/data/import_users.xlsx
+  session_name: session_import_demo
+  save_path: artifacts/tutorials/57-use-session-import-export-round-trip-flow.csv
+steps:
+  - action: read_excel
+    file_path: "{{input_file}}"
+    sheet: Users
+    with:
+      row_number_field: source_row
+    save_as: rows
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#import-form"
+    timeout: 5000
+
+  - action: assert_text
+    selector: "#auth-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    steps:
+      - action: type_text
+        selector: "#name"
+        text: "{{row.name}}"
+      - action: type_text
+        selector: "#phone"
+        text: "{{row.phone}}"
+      - action: click
+        selector: "#submit"
+      - action: assert_text
+        selector: "#submit-status"
+        text: "Imported"
+        timeout: 5000
+      - action: click
+        selector: "#clear-form"
+
+  - action: capture_table
+    selector: "#import-results"
+    save_as: page_rows
+
+  - action: download_file
+    selector: "#download-import-report"
+    save_path: "{{save_path}}"
+
+  - action: read_csv
+    file_path: "{{save_path}}"
+    save_as: downloaded_rows
+
+  - action: extract_text
+    selector: "#auth-status"
+    timeout: 5000
+    save_as: auth_status
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: extract_text
+    selector: "#export-status"
+    timeout: 5000
+    save_as: export_status
+
+  - action: write_json
+    file_path: artifacts/tutorials/57-use-session-import-export-round-trip-flow.json
+    with:
+      value:
+        lesson: "57"
+        mode: flow
+        page_url: "{{page_url}}"
+        input_file: "{{input_file}}"
+        session_name: "{{session_name}}"
+        save_path: "{{save_path}}"
+        auth_status: "{{auth_status}}"
+        import_count: "{{import_count}}"
+        export_status: "{{export_status}}"
+        page_rows: "{{page_rows}}"
+        downloaded_rows: "{{downloaded_rows}}"

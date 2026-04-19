@@ -45,6 +45,50 @@
 - [Lesson 25: 读取 Excel 指定区域并显式声明表头](25-read-excel-range-headers.md)
 - [Lesson 26: 用 Excel 驱动批量导入](26-foreach-batch-import-excel.md)
 - [Lesson 27: Excel 批量导入、局部恢复与结果回写](27-on-error-import-excel-writeback.md)
+- [Lesson 28: 读取当前浏览器的 Storage State](28-inspect-storage-state.md)
+- [Lesson 29: 读取当前浏览器的 Cookie 字符串](29-read-cookies-string.md)
+- [Lesson 30: 生成一份浏览器状态快照](30-browser-state-snapshot-pack.md)
+- [Lesson 31: 截一张完整页面截图](31-full-page-screenshot.md)
+- [Lesson 32: 截一张元素级截图](32-element-screenshot.md)
+- [Lesson 33: 保存当前页面的 HTML](33-save-html-basics.md)
+- [Lesson 34: 生成一份调试产物包](34-debug-artifact-pack.md)
+- [Lesson 35: 在失败分支里保存错误现场](35-error-evidence-pack.md)
+- [Lesson 36: 把当前浏览器状态保存到文件](36-save-storage-state.md)
+- [Lesson 37: 从保存好的状态文件直接复用登录态](37-load-saved-storage-state.md)
+- [Lesson 38: 验证加载后的状态到底是不是你想要的](38-verify-loaded-storage-state.md)
+- [Lesson 39: 把“保存状态”和“复用状态”连成一次完整 round trip](39-storage-state-round-trip.md)
+- [Lesson 40: 把状态文件注册成命名会话](40-save-named-session.md)
+- [Lesson 41: 查看和导出命名会话信息](41-inspect-named-session.md)
+- [Lesson 42: 用命名会话直接复用登录态](42-use-named-session.md)
+- [Lesson 43: 删除一个已经不用的命名会话](43-delete-named-session.md)
+- [Lesson 44: 登录受会话保护的导入页并完成一条导入](44-session-import-with-login.md)
+- [Lesson 45: 用状态文件直接跳过登录进入受保护导入页](45-storage-state-auth-import.md)
+- [Lesson 46: 把状态文件注册成导入专用命名会话](46-save-import-session.md)
+- [Lesson 47: 用命名会话直接进入受保护导入页](47-use-session-import-single.md)
+- [Lesson 48: 用命名会话驱动 CSV 批量导入](48-use-session-batch-import-csv.md)
+- [Lesson 49: 用命名会话做带恢复的 CSV 批量导入](49-use-session-import-recovery-csv.md)
+- [Lesson 50: 用命名会话驱动 Excel 批量导入](50-use-session-batch-import-excel.md)
+- [Lesson 51: 用命名会话做带恢复的 Excel 批量导入](51-use-session-import-recovery-excel.md)
+- [Lesson 52: 抓取认证导入页上的结果表](52-use-session-capture-import-table.md)
+- [Lesson 53: 把认证导入页上的结果表写成本地 CSV](53-use-session-capture-import-table-to-csv.md)
+- [Lesson 54: 下载认证导入页当前导出的 CSV](54-use-session-download-import-report.md)
+- [Lesson 55: 把认证导出 CSV 下载后再读回来](55-use-session-download-import-report-readback.md)
+- [Lesson 56: 把认证页面结果表和下载文件放在一起比对](56-use-session-compare-table-and-download.md)
+- [Lesson 57: 跑通认证导入到导出的完整 round trip](57-use-session-import-export-round-trip.md)
+- [Lesson 58: 把认证导出 CSV 的摘要写入 Redis](58-sync-import-report-summary-to-redis.md)
+- [Lesson 59: 给认证导出结果分配 Redis 批次 key](59-save-import-batch-key-to-redis.md)
+- [Lesson 60: 把最新 Redis 批次重新读回本地](60-read-latest-import-batch-from-redis.md)
+- [Lesson 61: 把认证导出结果写成一条 Postgres 批次摘要](61-db-insert-import-batch-summary.md)
+- [Lesson 62: 查询多条 Postgres 批次摘要](62-db-query-import-batch-summaries.md)
+- [Lesson 63: 用 `db_upsert` 更新 Postgres 批次摘要](63-db-upsert-import-batch-summary.md)
+- [Lesson 64: 在一个事务里写入批次摘要和明细行](64-db-transaction-import-batch-and-rows.md)
+- [Lesson 65: 把最新 Redis 批次摘要同步到 Postgres](65-sync-latest-redis-batch-to-postgres-summary.md)
+- [Lesson 66: 一次读回 Redis 和 Postgres 的共享批次摘要](66-query-shared-batch-summary-from-redis-and-postgres.md)
+- [Lesson 67: 用共享批次号把明细行写入 Postgres](67-transaction-store-shared-batch-rows.md)
+- [Lesson 68: 读回共享批次的 Postgres 明细行](68-query-shared-batch-detail-rows.md)
+- [Lesson 69: 把源 CSV 和 DB 明细行放到一起比](69-compare-source-csv-and-db-rows.md)
+- [Lesson 70: 生成一份 CSV、Redis、Postgres 三边对账包](70-build-reconciliation-pack-from-csv-redis-db.md)
+- [Lesson 71: 跑通一次完整的外部系统 round trip](71-external-system-round-trip.md)
 - [Lesson 06: Redis 基础读写和计数](06-redis-round-trip.md)
 - [Lesson 07: Postgres 基础查询与写入](07-db-postgres-basics.md)
 
@@ -56,7 +100,17 @@
 3. `Lesson 18-20` 再把上传 / 下载动作接上
 4. `Lesson 21-23` 再把 `if` / `foreach` / `on_error` 串成小流程
 5. `Lesson 24-27` 再把 Excel 导入链路打通
-6. `Lesson 06-07` 最后接 Redis / Postgres
+6. `Lesson 28-30` 再把浏览器状态观察吃透
+7. `Lesson 31-35` 再把截图 / HTML / 错误现场保留接上
+8. `Lesson 36-39` 再把状态文件保存和复用串起来
+9. `Lesson 40-43` 再把命名会话和 `use_session` 打通
+10. `Lesson 44-50` 再把命名会话真正接到受保护业务流程里
+11. `Lesson 51-57` 再把认证导入结果做成页面表格、导出文件和回读闭环
+12. `Lesson 06-07` 先把 Redis / Postgres 的最小动作跑顺
+13. `Lesson 58-60` 再把认证导出结果接进 Redis 摘要和批次 key
+14. `Lesson 61-64` 最后把同一份导出结果接进 Postgres 摘要、查询、upsert 和事务写入
+15. `Lesson 65-70` 再把 Redis 批次和 Postgres 摘要/明细真正接成一次三边对账链
+16. `Lesson 71` 最后重新跑一遍完整的外部系统 round trip
 
 ## 初级阶段必须形成的能力
 
@@ -95,10 +149,15 @@
 ## 初级阶段的退出标准
 
 - 能写出一个 5 到 10 步的小 Flow
-- 能独立使用 `save_as`、`set_var`、`assert_*`、`read_csv`、`write_csv`、`read_excel`
+- 能独立使用 `save_as`、`set_var`、`assert_*`、`read_csv`、`write_csv`、`read_excel`、`get_storage_state`、`get_cookies_string`、`save_storage_state`、`load_storage_state`
+- 能独立使用 `use_session` 把已保存的浏览器状态接进一个真实的批量导入流程
+- 能把认证页面里的“页面表格结果”和“导出文件结果”同时保存下来做复盘
+- 能把认证导出的 CSV 继续接进 Redis 和 Postgres，理解“浏览器结果 -> 外部系统摘要/持久化”的递进关系
+- 能说明“共享 batch id”为什么重要，并能把同一个批次从 Redis 一路接到 Postgres 摘要、Postgres 明细和本地对账包
 - 能解释为什么某一步放在 `Lua`，某一步放在 `Flow`
 - 能至少接通一个外部系统
-- 能说明一个流程失败后应该看哪里
+- 能说明一个流程失败后应该看哪里，并知道什么时候要留截图 / HTML / JSON 证据
+- 能解释“直接写状态文件路径”和“使用命名会话”之间的差别，并知道什么时候该把登录态提升成业务专用会话名
 
 ## 学完之后去哪里
 

@@ -1,0 +1,49 @@
+schema_version: "1"
+name: lesson_33_save_html_basics_flow
+description: Save the HTML of the local debug artifacts page.
+vars:
+  page_url: http://127.0.0.1:8000/demo/debug_artifacts.html
+  result_path: artifacts/tutorials/33-save-html-basics-flow.json
+  html_path: artifacts/tutorials/33-debug-artifacts-page-flow.html
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "33"
+        mode: flow
+        status: starting
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#artifact-note"
+    timeout: 5000
+
+  - action: save_html
+    path: "{{html_path}}"
+
+  - action: extract_text
+    selector: "#artifact-note"
+    timeout: 5000
+    save_as: artifact_note
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "33"
+        mode: flow
+        page_url: "{{page_url}}"
+        artifact_note: "{{artifact_note}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"

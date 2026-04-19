@@ -1,0 +1,164 @@
+schema_version: "1"
+name: lesson_74_recover_external_sync_with_anomaly_ledger_flow
+description: Validate a mixed-quality CSV row by row, keep the valid rows flowing into Postgres, and write an anomaly ledger for the failures.
+vars:
+  input_file: demo/data/import_report_with_issue.csv
+  batch_id: lesson-74-anomaly-batch
+  last_operator: demo-user
+  results: []
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: rows
+
+  - action: db_execute
+    connection: reporting
+    save_as: delete_rows_result
+    with:
+      sql: DELETE FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_execute
+    connection: reporting
+    save_as: delete_batch_result
+    with:
+      sql: DELETE FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_insert
+    connection: reporting
+    save_as: seed_batch_result
+    with:
+      table: public.tutorial_import_batches
+      columns:
+        - batch_id
+        - report_file
+        - source_lesson
+        - row_count
+        - operator_name
+      row:
+        batch_id: "{{batch_id}}"
+        report_file: "{{input_file}}"
+        source_lesson: "74"
+        row_count: 0
+        operator_name: "{{last_operator}}"
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: validation_scan
+    steps:
+      - action: on_error
+        steps:
+          - action: lua
+            code: |
+              if row.phone == nil or tostring(row.phone) == "" then
+                error("phone is required")
+              end
+              if row.status == nil or tostring(row.status) ~= "Imported" then
+                error("status must be Imported")
+              end
+              return true
+          - action: set_var
+            save_as: last_operator
+            with:
+              value: "{{row.operator}}"
+          - action: db_insert
+            connection: reporting
+            save_as: insert_row_result
+            with:
+              table: public.tutorial_import_rows
+              columns:
+                - batch_id
+                - line_no
+                - name
+                - phone
+                - status
+                - operator_name
+              row:
+                batch_id: "{{batch_id}}"
+                line_no: "{{row.line_no}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: "{{row.status}}"
+                operator_name: "{{row.operator}}"
+          - action: append_var
+            save_as: results
+            with:
+              value:
+                line_no: "{{row.line_no}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: success
+                error: ""
+        on_error:
+          - action: append_var
+            save_as: results
+            with:
+              value:
+                line_no: "{{row.line_no}}"
+                name: "{{row.name}}"
+                phone: "{{row.phone}}"
+                status: failed
+                error: "{{last_error}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: stored_success_count
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_upsert
+    connection: reporting
+    save_as: summary_upsert_result
+    with:
+      table: public.tutorial_import_batches
+      columns:
+        - batch_id
+        - report_file
+        - source_lesson
+        - row_count
+        - operator_name
+      key_columns:
+        - batch_id
+      update_columns:
+        - report_file
+        - source_lesson
+        - row_count
+        - operator_name
+      row:
+        batch_id: "{{batch_id}}"
+        report_file: "{{input_file}}"
+        source_lesson: "74"
+        row_count: "{{stored_success_count.row_count}}"
+        operator_name: "{{last_operator}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/74-recover-external-sync-with-anomaly-ledger-flow.csv
+    with:
+      value: "{{results}}"
+      headers:
+        - line_no
+        - name
+        - phone
+        - status
+        - error
+
+  - action: write_json
+    file_path: artifacts/tutorials/74-recover-external-sync-with-anomaly-ledger-flow.json
+    with:
+      value:
+        lesson: "74"
+        mode: flow
+        input_file: "{{input_file}}"
+        batch_id: "{{batch_id}}"
+        stored_success_count: "{{stored_success_count}}"
+        summary_upsert_result: "{{summary_upsert_result}}"
+        results: "{{results}}"

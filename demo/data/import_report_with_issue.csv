@@ -1,0 +1,4 @@
+name,phone,status,operator
+Alice,13800000001,Imported,demo-user
+Broken,,Imported,demo-user
+Carol,13800000003,Imported,demo-user

@@ -1,0 +1,68 @@
+schema_version: "1"
+name: lesson_66_query_shared_batch_summary_from_redis_and_postgres_flow
+description: Read the shared batch from Redis, look up the same batch in Postgres, and save both sides into one checkpoint JSON.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_prefix}}{{latest_batch_id}}"
+    save_as: payload_text
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.input_file"
+    save_as: input_file
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.row_count"
+    save_as: redis_row_count
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.latest_operator"
+    save_as: redis_operator
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: source_rows
+
+  - action: foreach
+    items: "{{source_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: source_scan
+    steps:
+      - action: set_var
+        save_as: last_row_name
+        with:
+          value: "{{row.name}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: summary_row
+    with:
+      sql: SELECT batch_id, report_file, source_lesson, row_count, operator_name FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/66-query-shared-batch-summary-from-redis-and-postgres-flow.json
+    with:
+      value:
+        lesson: "66"
+        mode: flow
+        latest_batch_id: "{{latest_batch_id}}"
+        payload_key: "{{payload_prefix}}{{latest_batch_id}}"
+        input_file: "{{input_file}}"
+        redis_row_count: "{{redis_row_count}}"
+        csv_row_count: "{{source_scan.iterations}}"
+        redis_operator: "{{redis_operator}}"
+        summary_row: "{{summary_row}}"

@@ -1,0 +1,94 @@
+schema_version: "1"
+name: lesson_59_save_import_batch_key_to_redis_flow
+description: Read the Lesson 57 export CSV, allocate a Redis batch id, and save a namespaced payload.
+vars:
+  input_file: artifacts/tutorials/57-use-session-import-export-round-trip-flow.csv
+  counter_key: tutorial:session_import:batch_counter
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+  latest_name: ""
+  latest_operator: ""
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: summary_scan
+    steps:
+      - action: set_var
+        save_as: latest_name
+        with:
+          value: "{{row.name}}"
+      - action: set_var
+        save_as: latest_operator
+        with:
+          value: "{{row.operator}}"
+
+  - action: redis_incr
+    key: "{{counter_key}}"
+    save_as: batch_number
+
+  - action: set_var
+    save_as: batch_id
+    with:
+      value: "session-import-batch-{{batch_number}}"
+
+  - action: set_var
+    save_as: payload_key
+    with:
+      value: "{{payload_prefix}}{{batch_id}}"
+
+  - action: redis_set
+    key: "{{payload_key}}"
+    ttl_seconds: 3600
+    with:
+      value:
+        lesson: "59"
+        batch_id: "{{batch_id}}"
+        input_file: "{{input_file}}"
+        row_count: "{{summary_scan.iterations}}"
+        latest_name: "{{latest_name}}"
+        latest_operator: "{{latest_operator}}"
+
+  - action: redis_set
+    key: "{{latest_key}}"
+    value: "{{batch_id}}"
+    ttl_seconds: 3600
+
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_key}}"
+    save_as: batch_payload_text
+
+  - action: json_extract
+    from: "{{batch_payload_text}}"
+    path: "$.batch_id"
+    save_as: stored_batch_id
+
+  - action: json_extract
+    from: "{{batch_payload_text}}"
+    path: "$.row_count"
+    save_as: stored_row_count
+
+  - action: write_json
+    file_path: artifacts/tutorials/59-save-import-batch-key-to-redis-flow.json
+    with:
+      value:
+        lesson: "59"
+        mode: flow
+        input_file: "{{input_file}}"
+        counter_key: "{{counter_key}}"
+        latest_key: "{{latest_key}}"
+        payload_key: "{{payload_key}}"
+        batch_id: "{{batch_id}}"
+        latest_batch_id: "{{latest_batch_id}}"
+        stored_batch_id: "{{stored_batch_id}}"
+        stored_row_count: "{{stored_row_count}}"
+        batch_payload_text: "{{batch_payload_text}}"

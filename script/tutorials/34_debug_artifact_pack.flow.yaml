@@ -1,0 +1,68 @@
+schema_version: "1"
+name: lesson_34_debug_artifact_pack_flow
+description: Capture a full-page screenshot, an element screenshot, and the page HTML in one manifest.
+vars:
+  page_url: http://127.0.0.1:8000/demo/debug_artifacts.html
+  result_path: artifacts/tutorials/34-debug-artifact-pack-flow.json
+  full_page_path: artifacts/tutorials/34-debug-artifacts-pack-page-flow.png
+  card_path: artifacts/tutorials/34-debug-artifacts-pack-card-flow.png
+  html_path: artifacts/tutorials/34-debug-artifacts-pack-flow.html
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "34"
+        mode: flow
+        status: starting
+        full_page_path: "{{full_page_path}}"
+        card_path: "{{card_path}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
+
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#artifact-card"
+    timeout: 5000
+
+  - action: screenshot
+    path: "{{full_page_path}}"
+
+  - action: screenshot_element
+    selector: "#artifact-card"
+    path: "{{card_path}}"
+
+  - action: save_html
+    path: "{{html_path}}"
+
+  - action: extract_text
+    selector: "#artifact-title"
+    timeout: 5000
+    save_as: artifact_title
+
+  - action: extract_text
+    selector: "#artifact-note"
+    timeout: 5000
+    save_as: artifact_note
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "34"
+        mode: flow
+        page_url: "{{page_url}}"
+        artifact_title: "{{artifact_title}}"
+        artifact_note: "{{artifact_note}}"
+        full_page_path: "{{full_page_path}}"
+        card_path: "{{card_path}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"

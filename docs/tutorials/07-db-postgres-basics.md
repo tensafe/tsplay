@@ -99,7 +99,16 @@ go run . -flow script/tutorials/07_db_postgres_basics.flow.yaml
 
 ## 接下来可以继续补的章节
 
-- `db_query` 多行查询
-- `db_upsert`
-- `db_transaction`
-- 读 CSV 后批量入库
+这一节之后，最自然的下一段不是凭空再讲数据库动作，而是把认证导出结果真正接进数据库：
+
+- [Lesson 61: 把认证导出结果写成一条 Postgres 批次摘要](61-db-insert-import-batch-summary.md)
+- [Lesson 62: 查询多条 Postgres 批次摘要](62-db-query-import-batch-summaries.md)
+- [Lesson 63: 用 `db_upsert` 更新 Postgres 批次摘要](63-db-upsert-import-batch-summary.md)
+- [Lesson 64: 在一个事务里写入批次摘要和明细行](64-db-transaction-import-batch-and-rows.md)
+- [Lesson 65: 把最新 Redis 批次摘要同步到 Postgres](65-sync-latest-redis-batch-to-postgres-summary.md)
+- [Lesson 66: 一次读回 Redis 和 Postgres 的共享批次摘要](66-query-shared-batch-summary-from-redis-and-postgres.md)
+- [Lesson 67: 用共享批次号把明细行写入 Postgres](67-transaction-store-shared-batch-rows.md)
+- [Lesson 68: 读回共享批次的 Postgres 明细行](68-query-shared-batch-detail-rows.md)
+- [Lesson 69: 把源 CSV 和 DB 明细行放到一起比](69-compare-source-csv-and-db-rows.md)
+- [Lesson 70: 生成一份 CSV、Redis、Postgres 三边对账包](70-build-reconciliation-pack-from-csv-redis-db.md)
+- [Lesson 71: 跑通一次完整的外部系统 round trip](71-external-system-round-trip.md)

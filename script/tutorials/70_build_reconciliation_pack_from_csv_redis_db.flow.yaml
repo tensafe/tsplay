@@ -1,0 +1,105 @@
+schema_version: "1"
+name: lesson_70_build_reconciliation_pack_from_csv_redis_db_flow
+description: Collect the source CSV, Redis summary, and Postgres summary/detail counts into one reconciliation package.
+vars:
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+  reconcile_rows: []
+steps:
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: redis_get
+    key: "{{payload_prefix}}{{latest_batch_id}}"
+    save_as: payload_text
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.input_file"
+    save_as: input_file
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.row_count"
+    save_as: redis_row_count
+
+  - action: json_extract
+    from: "{{payload_text}}"
+    path: "$.latest_operator"
+    save_as: redis_operator
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: source_rows
+
+  - action: foreach
+    items: "{{source_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: source_scan
+    steps:
+      - action: set_var
+        save_as: last_source_name
+        with:
+          value: "{{row.name}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: summary_row
+    with:
+      sql: SELECT batch_id, report_file, source_lesson, row_count, operator_name FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: detail_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{latest_batch_id}}"
+
+  - action: append_var
+    save_as: reconcile_rows
+    with:
+      value:
+        batch_id: "{{latest_batch_id}}"
+        input_file: "{{input_file}}"
+        source_row_count: "{{source_scan.iterations}}"
+        redis_row_count: "{{redis_row_count}}"
+        db_summary_row_count: "{{summary_row.row_count}}"
+        db_detail_row_count: "{{detail_count_row.row_count}}"
+        operator_name: "{{redis_operator}}"
+        status: ready_for_review
+
+  - action: write_csv
+    file_path: artifacts/tutorials/70-build-reconciliation-pack-from-csv-redis-db-flow.csv
+    with:
+      value: "{{reconcile_rows}}"
+      headers:
+        - batch_id
+        - input_file
+        - source_row_count
+        - redis_row_count
+        - db_summary_row_count
+        - db_detail_row_count
+        - operator_name
+        - status
+
+  - action: write_json
+    file_path: artifacts/tutorials/70-build-reconciliation-pack-from-csv-redis-db-flow.json
+    with:
+      value:
+        lesson: "70"
+        mode: flow
+        latest_batch_id: "{{latest_batch_id}}"
+        payload_key: "{{payload_prefix}}{{latest_batch_id}}"
+        input_file: "{{input_file}}"
+        redis_row_count: "{{redis_row_count}}"
+        source_row_count: "{{source_scan.iterations}}"
+        summary_row: "{{summary_row}}"
+        detail_count_row: "{{detail_count_row}}"
+        reconcile_rows: "{{reconcile_rows}}"

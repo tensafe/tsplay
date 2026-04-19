@@ -13,8 +13,10 @@ else
 end
 
 wait_for_selector("#import-form", 5000)
-submit_status = extract_text("#submit-status", 5000)
-workflow_mode = extract_text("#workflow-mode", 5000)
+wait_for_selector("#submit-status", 5000)
+wait_for_selector("#workflow-mode", 5000)
+submit_status = get_text("#submit-status")
+workflow_mode = get_text("#workflow-mode")
 
 write_json("artifacts/tutorials/21-if-optional-login-lua.json", {
     lesson = "21",

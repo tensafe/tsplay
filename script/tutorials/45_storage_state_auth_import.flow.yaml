@@ -1,0 +1,69 @@
+schema_version: "1"
+name: lesson_45_storage_state_auth_import_flow
+description: Load a saved storage state, skip the login panel, and submit a single protected import row.
+browser:
+  storage_state: tutorials/36-session-lab-flow-state.json
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_import_workflow.html
+  loaded_state_path: artifacts/tutorials/36-session-lab-flow-state.json
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: assert_text
+    selector: "#auth-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: type_text
+    selector: "#name"
+    text: Alice
+
+  - action: type_text
+    selector: "#phone"
+    text: "13800000001"
+
+  - action: click
+    selector: "#submit"
+
+  - action: assert_text
+    selector: "#submit-status"
+    text: "Imported"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#auth-status"
+    timeout: 5000
+    save_as: auth_status
+
+  - action: extract_text
+    selector: "#submit-status"
+    timeout: 5000
+    save_as: submit_status
+
+  - action: extract_text
+    selector: "#session-preview"
+    timeout: 5000
+    save_as: session_preview
+
+  - action: extract_text
+    selector: "#import-count"
+    timeout: 5000
+    save_as: import_count
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "45"
+        mode: flow
+        page_url: "{{page_url}}"
+        loaded_state_path: "{{loaded_state_path}}"
+        auth_status: "{{auth_status}}"
+        submit_status: "{{submit_status}}"
+        session_preview: "{{session_preview}}"
+        import_count: "{{import_count}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/45-storage-state-auth-import-flow.json
+    value: "{{payload}}"

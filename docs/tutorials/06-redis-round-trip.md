@@ -87,3 +87,9 @@ go run . -flow script/tutorials/06_redis_round_trip.flow.yaml
 
 下一节继续往外部系统走，改成 Postgres：
 [Lesson 07](07-db-postgres-basics.md)
+
+如果你已经跑完了认证导入主线，也可以直接把 Lesson 57 的导出结果继续接到 Redis：
+
+- [Lesson 58](58-sync-import-report-summary-to-redis.md)
+- [Lesson 59](59-save-import-batch-key-to-redis.md)
+- [Lesson 60](60-read-latest-import-batch-from-redis.md)

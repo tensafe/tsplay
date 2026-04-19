@@ -1,0 +1,74 @@
+schema_version: "1"
+name: lesson_79_verify_external_batch_cleanup_flow
+description: Verify the cleaned batch is gone from Redis and Postgres while its audit rows still remain.
+vars:
+  cleanup_file: artifacts/tutorials/78-cleanup-latest-external-batch-flow.csv
+  latest_key: tutorial:session_import:latest_batch
+  batch_id: ""
+  payload_key: ""
+steps:
+  - action: read_csv
+    file_path: "{{cleanup_file}}"
+    save_as: cleanup_rows
+
+  - action: foreach
+    items: "{{cleanup_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: cleanup_scan
+    steps:
+      - action: set_var
+        save_as: batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: payload_key
+        with:
+          value: "{{row.payload_key}}"
+
+  - action: redis_get
+    key: "{{payload_key}}"
+    save_as: payload_after
+
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_after
+
+  - action: db_query_one
+    connection: reporting
+    save_as: summary_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: detail_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_query
+    connection: reporting
+    save_as: audit_rows
+    with:
+      sql: SELECT audit_id, batch_id, event_type, status, detail, success_count, failure_count, source_lesson FROM public.tutorial_import_audits WHERE batch_id = $1 ORDER BY audit_id
+      args:
+        - "{{batch_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/79-verify-external-batch-cleanup-flow.json
+    with:
+      value:
+        lesson: "79"
+        mode: flow
+        cleanup_file: "{{cleanup_file}}"
+        batch_id: "{{batch_id}}"
+        payload_key: "{{payload_key}}"
+        payload_after: "{{payload_after}}"
+        latest_after: "{{latest_after}}"
+        summary_count_row: "{{summary_count_row}}"
+        detail_count_row: "{{detail_count_row}}"
+        audit_rows: "{{audit_rows}}"

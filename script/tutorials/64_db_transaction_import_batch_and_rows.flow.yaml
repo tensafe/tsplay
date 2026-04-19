@@ -1,0 +1,118 @@
+schema_version: "1"
+name: lesson_64_db_transaction_import_batch_and_rows_flow
+description: Build row detail records from the Lesson 57 export CSV and store the summary plus rows inside one Postgres transaction.
+vars:
+  input_file: artifacts/tutorials/57-use-session-import-export-round-trip-flow.csv
+  batch_id: lesson-64-import-batch
+  operator_name: unknown
+  detail_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: detail_scan
+    steps:
+      - action: set_var
+        save_as: operator_name
+        with:
+          value: "{{row.operator}}"
+      - action: append_var
+        save_as: detail_rows
+        with:
+          value:
+            batch_id: "{{batch_id}}"
+            line_no: "{{row.line_no}}"
+            name: "{{row.name}}"
+            phone: "{{row.phone}}"
+            status: "{{row.status}}"
+            operator_name: "{{row.operator}}"
+
+  - action: db_execute
+    connection: reporting
+    save_as: cleanup_rows
+    with:
+      sql: DELETE FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_execute
+    connection: reporting
+    save_as: cleanup_batch
+    with:
+      sql: DELETE FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_transaction
+    save_as: transaction_result
+    steps:
+      - action: db_insert
+        connection: reporting
+        save_as: summary_insert_result
+        with:
+          table: public.tutorial_import_batches
+          columns:
+            - batch_id
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          row:
+            batch_id: "{{batch_id}}"
+            report_file: "{{input_file}}"
+            source_lesson: "64"
+            row_count: "{{detail_scan.iterations}}"
+            operator_name: "{{operator_name}}"
+
+      - action: db_insert_many
+        connection: reporting
+        save_as: detail_insert_result
+        with:
+          table: public.tutorial_import_rows
+          columns:
+            - batch_id
+            - line_no
+            - name
+            - phone
+            - status
+            - operator_name
+          rows: "{{detail_rows}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: summary_row
+    with:
+      sql: SELECT batch_id, report_file, source_lesson, row_count, operator_name FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{batch_id}}"
+
+  - action: db_query
+    connection: reporting
+    save_as: stored_rows
+    with:
+      sql: SELECT line_no, name, phone, status, operator_name FROM public.tutorial_import_rows WHERE batch_id = $1 ORDER BY line_no
+      args:
+        - "{{batch_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/64-db-transaction-import-batch-and-rows-flow.json
+    with:
+      value:
+        lesson: "64"
+        mode: flow
+        input_file: "{{input_file}}"
+        batch_id: "{{batch_id}}"
+        cleanup_rows: "{{cleanup_rows}}"
+        cleanup_batch: "{{cleanup_batch}}"
+        transaction_result: "{{transaction_result}}"
+        summary_insert_result: "{{summary_insert_result}}"
+        detail_insert_result: "{{detail_insert_result}}"
+        summary_row: "{{summary_row}}"
+        stored_rows: "{{stored_rows}}"

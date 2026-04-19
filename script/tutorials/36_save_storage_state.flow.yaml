@@ -1,0 +1,51 @@
+schema_version: "1"
+name: lesson_36_save_storage_state_flow
+description: Save the current browser state from the session lab page to a reusable storage-state file.
+browser:
+  save_storage_state: tutorials/36-session-lab-flow-state.json
+vars:
+  page_url: http://127.0.0.1:8000/demo/session_lab.html
+  username: demo-user
+  saved_state_path: artifacts/tutorials/36-session-lab-flow-state.json
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#page-title"
+    timeout: 5000
+
+  - action: click
+    selector: "#clear-state"
+
+  - action: type_text
+    selector: "#username"
+    text: "{{username}}"
+
+  - action: click
+    selector: "#login"
+
+  - action: assert_text
+    selector: "#session-status"
+    text: "Logged in as"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#session-status"
+    timeout: 5000
+    save_as: session_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "36"
+        mode: flow
+        page_url: "{{page_url}}"
+        username: "{{username}}"
+        session_status: "{{session_status}}"
+        saved_state_path: "{{saved_state_path}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/36-save-storage-state-flow.json
+    value: "{{payload}}"

@@ -1,0 +1,71 @@
+schema_version: "1"
+name: lesson_58_sync_import_report_summary_to_redis_flow
+description: Read the Lesson 57 export CSV, summarize it, and cache the summary in Redis.
+vars:
+  input_file: artifacts/tutorials/57-use-session-import-export-round-trip-flow.csv
+  summary_key: tutorial:session_import:latest_summary
+  latest_name: ""
+  latest_operator: ""
+steps:
+  - action: read_csv
+    file_path: "{{input_file}}"
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: summary_scan
+    steps:
+      - action: set_var
+        save_as: latest_name
+        with:
+          value: "{{row.name}}"
+      - action: set_var
+        save_as: latest_operator
+        with:
+          value: "{{row.operator}}"
+
+  - action: redis_del
+    key: "{{summary_key}}"
+
+  - action: redis_set
+    key: "{{summary_key}}"
+    ttl_seconds: 3600
+    with:
+      value:
+        lesson: "58"
+        source_lesson: "57"
+        input_file: "{{input_file}}"
+        row_count: "{{summary_scan.iterations}}"
+        latest_name: "{{latest_name}}"
+        latest_operator: "{{latest_operator}}"
+
+  - action: redis_get
+    key: "{{summary_key}}"
+    save_as: summary_text
+
+  - action: json_extract
+    from: "{{summary_text}}"
+    path: "$.row_count"
+    save_as: stored_row_count
+
+  - action: json_extract
+    from: "{{summary_text}}"
+    path: "$.latest_operator"
+    save_as: stored_operator
+
+  - action: write_json
+    file_path: artifacts/tutorials/58-sync-import-report-summary-to-redis-flow.json
+    with:
+      value:
+        lesson: "58"
+        mode: flow
+        input_file: "{{input_file}}"
+        summary_key: "{{summary_key}}"
+        row_count: "{{summary_scan.iterations}}"
+        latest_name: "{{latest_name}}"
+        latest_operator: "{{latest_operator}}"
+        stored_row_count: "{{stored_row_count}}"
+        stored_operator: "{{stored_operator}}"
+        summary_text: "{{summary_text}}"
