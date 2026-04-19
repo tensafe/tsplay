@@ -368,7 +368,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	), handleFlowExamplesTool)
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.draft_flow",
-		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation, then auto-validate it and do one selector repair pass when a better observed selector exists. If observation is omitted, the tool will open the page first."),
+		mcp.WithDescription("Draft a TSPlay Flow from user intent plus page observation, then auto-validate it and do one selector repair pass when a better observed selector exists. Recommended workflow: observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow."),
 		mcp.WithString("intent",
 			mcp.Description("User intent in natural language, for example 搜索订单并导出 or upload a file and submit."),
 			mcp.Required(),
@@ -393,6 +393,10 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithNumber("max_elements",
 			mcp.Description("Maximum interactive elements to observe when url is provided. Defaults to 100."),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
 		),
 		mcp.WithBoolean("allow_lua",
 			mcp.Description("Allow lua during the auto validation pass."),
@@ -508,7 +512,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.validate_flow",
-		mcp.WithDescription("Validate a TSPlay Flow YAML or JSON document without launching a browser."),
+		mcp.WithDescription("Validate a TSPlay Flow YAML or JSON document without launching a browser. Recommended workflow: observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow."),
 		mcp.WithString("flow",
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
@@ -518,6 +522,10 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithString("format",
 			mcp.Description("Optional format hint: yaml or json."),
 			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
 		),
 		mcp.WithBoolean("allow_lua",
 			mcp.Description("Allow lua steps for this request. Defaults to false."),
@@ -546,7 +554,7 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 	})
 
 	mcpServer.AddTool(mcp.NewTool("tsplay.run_flow",
-		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace. Prefer browser config in the flow itself; the headless argument is only an override."),
+		mcp.WithDescription("Run a TSPlay Flow YAML or JSON document in Playwright and return the execution trace. Prefer browser config in the flow itself; the headless argument is only an override. Recommended workflow: observe_page -> draft_flow -> validate_flow -> run_flow -> repair_flow_context -> repair_flow."),
 		mcp.WithString("flow",
 			mcp.Description("Flow content as YAML or JSON. Use this or flow_path."),
 		),
@@ -556,6 +564,10 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithString("format",
 			mcp.Description("Optional format hint: yaml or json."),
 			mcp.Enum("yaml", "json"),
+		),
+		mcp.WithString("security_preset",
+			mcp.Description("Optional permission preset. Supported values: readonly, browser_write, full_automation. Explicit allow_* arguments override the preset."),
+			mcp.Enum(tsplaySecurityPresetReadOnly, tsplaySecurityPresetBrowserWrite, tsplaySecurityPresetFullAutomation),
 		),
 		mcp.WithBoolean("headless",
 			mcp.Description("Run browser in headless mode. Defaults to true."),
@@ -594,7 +606,7 @@ func handleFlowListActionsTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.list_actions", map[string]any{
 		"actions": buildFlowActionManifest(),
 	})
 }
@@ -613,7 +625,7 @@ func handleListSessionsToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	sessions, err := ListFlowSavedSessions(options.ArtifactRoot)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.list_sessions", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -626,7 +638,7 @@ func handleListSessionsToolWithOptions(
 		}
 		items = append(items, BuildFlowSavedSessionViewForActor(session, options.ArtifactRoot, actor))
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.list_sessions", map[string]any{
 		"ok":       true,
 		"sessions": items,
 	})
@@ -646,19 +658,19 @@ func handleGetSessionToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	session, err := LoadFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.get_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 	actor := flowSavedSessionAccessFromContext(ctx)
 	if err := validateFlowSavedSessionAccess(session, actor, "viewed"); err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.get_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.get_session", map[string]any{
 		"ok":      true,
 		"session": BuildFlowSavedSessionDetailForActor(*session, options.ArtifactRoot, actor),
 	})
@@ -678,21 +690,21 @@ func handleExportSessionFlowSnippetToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	session, err := LoadFlowSavedSession(request.GetString("name", ""), options.ArtifactRoot)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.export_session_flow_snippet", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 	actor := flowSavedSessionAccessFromContext(ctx)
 	if err := validateFlowSavedSessionAccess(session, actor, "exported"); err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.export_session_flow_snippet", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 	exported, err := ExportFlowSavedSessionFlowSnippetForActor(*session, options.ArtifactRoot, request.GetString("format", ""), actor)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.export_session_flow_snippet", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -708,7 +720,7 @@ func handleExportSessionFlowSnippetToolWithOptions(
 	if snippet, ok := exported["snippet"]; ok {
 		result["snippet"] = snippet
 	}
-	return newJSONToolResult(result)
+	return newTSPlayToolResult("tsplay.export_session_flow_snippet", result)
 }
 
 func handleDeleteSessionTool(
@@ -729,12 +741,12 @@ func handleDeleteSessionToolWithOptions(
 		flowSavedSessionAccessFromContext(ctx),
 	)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.delete_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.delete_session", map[string]any{
 		"ok":      true,
 		"deleted": deleted,
 	})
@@ -765,12 +777,12 @@ func handleSaveSessionToolWithOptions(
 		OwnerClientVersion: actor.ClientVersion,
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.save_session", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.save_session", map[string]any{
 		"ok":      true,
 		"session": BuildFlowSavedSessionViewForActor(*session, options.ArtifactRoot, actor),
 	})
@@ -780,7 +792,7 @@ func handleFlowSchemaTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.flow_schema", map[string]any{
 		"schema":              BuildFlowJSONSchema(),
 		"action_manifest":     buildFlowActionManifest(),
 		"generation_rules":    flowSchemaGenerationRules(),
@@ -794,7 +806,7 @@ func handleFlowExamplesTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.flow_examples", map[string]any{
 		"examples":                BuildFlowExamples(),
 		"example_selection_hints": flowExampleSelectionHints(),
 	})
@@ -814,7 +826,7 @@ func handleDraftFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	intent := strings.TrimSpace(request.GetString("intent", ""))
 	if intent == "" {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
 			"ok":    false,
 			"error": "intent is required",
 		})
@@ -822,28 +834,36 @@ func handleDraftFlowToolWithOptions(
 
 	observation, err := ParseObservationForDraft(request.GetString("observation", ""))
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 
 	url := strings.TrimSpace(request.GetString("url", ""))
-	security := flowSecurityPolicyFromToolRequest(request, options)
+	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	security := securityResolution.Policy
 	var runHandle *tsplayBrowserRunHandle
 	if observation == nil {
 		if url == "" {
-			return newJSONToolResult(map[string]any{
+			return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
 				"ok":    false,
 				"error": "url or observation is required",
 			})
 		}
 		runHandle, ctx, err = beginTSPlayBrowserRun(ctx, request, "tsplay.draft_flow", options, &security)
 		if err != nil {
-			return newJSONToolResult(map[string]any{
-				"ok":    false,
-				"error": err.Error(),
-				"run":   runHandle.snapshot(),
+			return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+				"ok":       false,
+				"error":    err.Error(),
+				"run":      runHandle.snapshot(),
+				"security": securityResolution,
 			})
 		}
 		observation, err = ObservePage(PageObservationOptions{
@@ -860,10 +880,11 @@ func handleDraftFlowToolWithOptions(
 			run := runHandle.finish(err, map[string]any{
 				"url": url,
 			})
-			return newJSONToolResult(map[string]any{
-				"ok":    false,
-				"error": err.Error(),
-				"run":   run,
+			return newTSPlayToolResult("tsplay.draft_flow", map[string]any{
+				"ok":       false,
+				"error":    err.Error(),
+				"run":      run,
+				"security": securityResolution,
 			})
 		}
 	}
@@ -878,25 +899,23 @@ func handleDraftFlowToolWithOptions(
 	})
 	if err != nil {
 		payload := map[string]any{
-			"ok":    false,
-			"error": err.Error(),
+			"ok":       false,
+			"error":    err.Error(),
+			"security": securityResolution,
 		}
 		if runHandle != nil {
 			payload["run"] = runHandle.finish(err, map[string]any{
 				"url": url,
 			})
 		}
-		return newJSONToolResult(map[string]any{
-			"ok":    payload["ok"],
-			"error": payload["error"],
-			"run":   payload["run"],
-		})
+		return newTSPlayToolResult("tsplay.draft_flow", payload)
 	}
 
 	result := map[string]any{
 		"ok":          true,
 		"observation": observation,
 		"draft":       draft,
+		"security":    securityResolution,
 	}
 	if runHandle != nil {
 		result["run"] = runHandle.finish(nil, map[string]any{
@@ -906,7 +925,7 @@ func handleDraftFlowToolWithOptions(
 			"selector_repairs": len(draft.SelectorRepairs),
 		})
 	}
-	return newJSONToolResult(result)
+	return newTSPlayToolResult("tsplay.draft_flow", result)
 }
 
 func handleRepairFlowContextTool(
@@ -923,7 +942,7 @@ func handleRepairFlowContextToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -934,7 +953,7 @@ func handleRepairFlowContextToolWithOptions(
 		request.GetString("trace", ""),
 	)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -948,12 +967,12 @@ func handleRepairFlowContextToolWithOptions(
 		MaxArtifactExcerpt: request.GetInt("max_artifact_excerpt", defaultFlowRepairArtifactExcerpt),
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.repair_flow_context", map[string]any{
 		"ok":      true,
 		"context": context,
 	})
@@ -973,7 +992,7 @@ func handleRepairFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -981,7 +1000,7 @@ func handleRepairFlowToolWithOptions(
 
 	repairHints, err := ParseFlowRepairHintsInput(request.GetString("repair_hints", ""))
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -989,7 +1008,7 @@ func handleRepairFlowToolWithOptions(
 
 	repairContext, err := ParseFlowRepairContextInput(request.GetString("repair_context", ""))
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
@@ -1001,7 +1020,7 @@ func handleRepairFlowToolWithOptions(
 			request.GetString("trace", ""),
 		)
 		if parseErr != nil {
-			return newJSONToolResult(map[string]any{
+			return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 				"ok":    false,
 				"error": parseErr.Error(),
 			})
@@ -1014,7 +1033,7 @@ func handleRepairFlowToolWithOptions(
 			MaxArtifactExcerpt: request.GetInt("max_artifact_excerpt", defaultFlowRepairArtifactExcerpt),
 		})
 		if err != nil {
-			return newJSONToolResult(map[string]any{
+			return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 				"ok":    false,
 				"error": err.Error(),
 			})
@@ -1027,13 +1046,13 @@ func handleRepairFlowToolWithOptions(
 		Context:     repairContext,
 	})
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.repair_flow", map[string]any{
 		"ok":     true,
 		"repair": repair,
 	})
@@ -1053,7 +1072,7 @@ func handleObservePageToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	runHandle, runCtx, err := beginTSPlayBrowserRun(ctx, request, "tsplay.observe_page", options, nil)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.observe_page", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 			"run":   runHandle.snapshot(),
@@ -1073,13 +1092,13 @@ func handleObservePageToolWithOptions(
 		run := runHandle.finish(err, map[string]any{
 			"url": request.GetString("url", ""),
 		})
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.observe_page", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 			"run":   run,
 		})
 	}
-	return newJSONToolResult(map[string]any{
+	return newTSPlayToolResult("tsplay.observe_page", map[string]any{
 		"ok":          true,
 		"observation": observation,
 		"run": runHandle.finish(nil, map[string]any{
@@ -1103,30 +1122,40 @@ func handleValidateFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
 			"valid": false,
 			"error": err.Error(),
 		})
 	}
-	security := flowSecurityPolicyFromToolRequest(request, options)
-	if err := ValidateFlow(flow); err != nil {
-		return newJSONToolResult(map[string]any{
+	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
 			"valid": false,
-			"name":  flow.Name,
 			"error": err.Error(),
+		})
+	}
+	security := securityResolution.Policy
+	if err := ValidateFlow(flow); err != nil {
+		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+			"valid":    false,
+			"name":     flow.Name,
+			"error":    err.Error(),
+			"security": securityResolution,
 		})
 	}
 	if err := ValidateFlowSecurity(flow, security); err != nil {
-		return newJSONToolResult(map[string]any{
-			"valid": false,
-			"name":  flow.Name,
-			"error": err.Error(),
+		return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+			"valid":    false,
+			"name":     flow.Name,
+			"error":    err.Error(),
+			"security": securityResolution,
 		})
 	}
-	return newJSONToolResult(map[string]any{
-		"valid": true,
-		"name":  flow.Name,
-		"steps": len(flow.Steps),
+	return newTSPlayToolResult("tsplay.validate_flow", map[string]any{
+		"valid":    true,
+		"name":     flow.Name,
+		"steps":    len(flow.Steps),
+		"security": securityResolution,
 	})
 }
 
@@ -1144,13 +1173,20 @@ func handleRunFlowToolWithOptions(
 ) (*mcp.CallToolResult, error) {
 	flow, err := flowFromToolRequestWithOptions(request, options)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 	}
 
-	security := flowSecurityPolicyFromToolRequest(request, options)
+	securityResolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+	}
+	security := securityResolution.Policy
 	if _, ok := request.GetArguments()["headless"]; ok {
 		headless := request.GetBool("headless", true)
 		if flow.Browser == nil {
@@ -1166,10 +1202,11 @@ func handleRunFlowToolWithOptions(
 	}
 	runHandle, runCtx, err := beginTSPlayBrowserRun(ctx, request, "tsplay.run_flow", options, &security)
 	if err != nil {
-		return newJSONToolResult(map[string]any{
-			"ok":    false,
-			"error": err.Error(),
-			"run":   runHandle.snapshot(),
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+			"ok":       false,
+			"error":    err.Error(),
+			"run":      runHandle.snapshot(),
+			"security": securityResolution,
 		})
 	}
 	result, err := RunFlow(flow, FlowRunOptions{
@@ -1189,16 +1226,18 @@ func handleRunFlowToolWithOptions(
 		if flow.Browser != nil && strings.TrimSpace(flow.Browser.UseSession) != "" {
 			runDetails["requested_saved_session"] = flow.Browser.UseSession
 		}
-		return newJSONToolResult(map[string]any{
-			"ok":     false,
-			"error":  err.Error(),
-			"result": flowResultForTool(result),
-			"run":    runHandle.finish(err, runDetails),
+		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+			"ok":       false,
+			"error":    err.Error(),
+			"result":   flowResultForTool(result),
+			"run":      runHandle.finish(err, runDetails),
+			"security": securityResolution,
 		})
 	}
-	return newJSONToolResult(map[string]any{
-		"ok":     true,
-		"result": flowResultForTool(result),
+	return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+		"ok":       true,
+		"result":   flowResultForTool(result),
+		"security": securityResolution,
 		"run": runHandle.finish(nil, map[string]any{
 			"flow_name": flow.Name,
 			"trace_len": len(result.Trace),
@@ -1241,17 +1280,14 @@ func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayM
 }
 
 func flowSecurityPolicyFromToolRequest(request mcp.CallToolRequest, options TSPlayMCPServerOptions) FlowSecurityPolicy {
-	return FlowSecurityPolicy{
-		AllowLua:          request.GetBool("allow_lua", false),
-		AllowJavaScript:   request.GetBool("allow_javascript", false),
-		AllowFileAccess:   request.GetBool("allow_file_access", false),
-		AllowBrowserState: request.GetBool("allow_browser_state", false),
-		AllowHTTP:         request.GetBool("allow_http", false),
-		AllowRedis:        request.GetBool("allow_redis", false),
-		AllowDatabase:     request.GetBool("allow_database", false),
-		FileInputRoot:     options.ArtifactRoot,
-		FileOutputRoot:    options.ArtifactRoot,
+	resolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		policy, _ := flowSecurityPolicyPreset("")
+		policy.FileInputRoot = options.ArtifactRoot
+		policy.FileOutputRoot = options.ArtifactRoot
+		return policy
 	}
+	return resolution.Policy
 }
 
 func resolveMCPFlowPath(flowPath string, flowRoot string) (string, error) {
@@ -1902,6 +1938,18 @@ func McpServerMCP(addr string, options ...TSPlayMCPServerOptions) {
 	log.Printf("MCP flow_path root: %s", normalizedOptions.FlowPathRoot)
 	log.Printf("MCP artifact root: %s", normalizedOptions.ArtifactRoot)
 	if err := httpServer.Start(addr); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}
+
+func McpServerStdio(options ...TSPlayMCPServerOptions) {
+	normalizedOptions := normalizeTSPlayMCPServerOptions(options)
+	mcpServer := NewTSPlayMCPServer(normalizedOptions)
+
+	log.Printf("TSPlay MCP stdio server starting")
+	log.Printf("MCP flow_path root: %s", normalizedOptions.FlowPathRoot)
+	log.Printf("MCP artifact root: %s", normalizedOptions.ArtifactRoot)
+	if err := server.ServeStdio(mcpServer); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

@@ -58,7 +58,7 @@ var g_headless = false
 var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
@@ -98,6 +98,11 @@ func main() {
 		case "srv":
 			fmt.Println("Start As Web.")
 			tsplay_core.McpServerMCP(*addr, tsplay_core.TSPlayMCPServerOptions{
+				FlowPathRoot: *flowRoot,
+				ArtifactRoot: *artifactRoot,
+			})
+		case "mcp-stdio":
+			tsplay_core.McpServerStdio(tsplay_core.TSPlayMCPServerOptions{
 				FlowPathRoot: *flowRoot,
 				ArtifactRoot: *artifactRoot,
 			})

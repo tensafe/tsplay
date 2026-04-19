@@ -686,6 +686,27 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	if !ok || validation["valid"] != true {
 		t.Fatalf("expected validation.valid=true, got %#v", draft["validation"])
 	}
+	if payload["tool"] != "tsplay.draft_flow" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	if _, ok := payload["summary"].(string); !ok {
+		t.Fatalf("expected summary string, got %#v", payload["summary"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+	run, ok := payload["run"].(map[string]any)
+	if !ok || run["status"] != "not_started" {
+		t.Fatalf("expected synthetic run metadata for observation-only draft, got %#v", payload["run"])
+	}
+	security, ok := payload["security"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected security metadata, got %#v", payload["security"])
+	}
+	if preset, ok := security["preset"].(string); !ok || preset != "" {
+		t.Fatalf("expected empty preset by default, got %#v", security["preset"])
+	}
 }
 
 func TestHandleDraftFlowToolAutoRepairsSelectors(t *testing.T) {
@@ -1289,6 +1310,29 @@ func TestHandleObservePageToolMissingURL(t *testing.T) {
 	if !strings.Contains(payload["error"].(string), "url") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
 	}
+	if payload["tool"] != "tsplay.observe_page" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	if _, ok := payload["summary"].(string); !ok {
+		t.Fatalf("expected summary string, got %#v", payload["summary"])
+	}
+	warnings, ok := payload["warnings"].([]any)
+	if !ok || len(warnings) != 0 {
+		t.Fatalf("expected warnings array, got %#v", payload["warnings"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.observe_page" {
+		t.Fatalf("expected retry next_action, got %#v", payload["next_action"])
+	}
+	run, ok := payload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected run metadata, got %#v", payload["run"])
+	}
+	for _, key := range []string{"id", "status", "queue_wait_ms", "duration_ms", "timeout_ms", "audit_path", "run_root"} {
+		if _, ok := run[key]; !ok {
+			t.Fatalf("expected run metadata key %q in %#v", key, run)
+		}
+	}
 }
 
 func TestHandleValidateFlowTool(t *testing.T) {
@@ -1320,6 +1364,21 @@ steps:
 	if payload["name"] != "validate_from_mcp" {
 		t.Fatalf("unexpected flow name: %#v", payload["name"])
 	}
+	if payload["tool"] != "tsplay.validate_flow" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+	security, ok := payload["security"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected security metadata, got %#v", payload["security"])
+	}
+	policy, ok := security["policy"].(map[string]any)
+	if !ok || policy["allow_lua"] != true {
+		t.Fatalf("expected allow_lua in security policy, got %#v", payload["security"])
+	}
 }
 
 func TestHandleValidateFlowToolRejectsLuaWithoutAllow(t *testing.T) {
@@ -1349,6 +1408,72 @@ steps:
 	}
 	if !strings.Contains(payload["error"].(string), "allow_lua") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.validate_flow" {
+		t.Fatalf("expected validate retry next_action, got %#v", payload["next_action"])
+	}
+}
+
+func TestFlowSecurityPolicyResolutionFromToolRequestSupportsPresetOverrides(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"security_preset": "full_automation",
+				"allow_http":      false,
+			},
+		},
+	}
+
+	resolution, err := flowSecurityPolicyResolutionFromToolRequest(request, options)
+	if err != nil {
+		t.Fatalf("resolve security preset: %v", err)
+	}
+	if resolution.Preset != "full_automation" {
+		t.Fatalf("unexpected preset: %#v", resolution.Preset)
+	}
+	if resolution.Policy.AllowLua != true || resolution.Policy.AllowJavaScript != true || resolution.Policy.AllowDatabase != true {
+		t.Fatalf("expected full automation grants, got %#v", resolution.Policy)
+	}
+	if resolution.Policy.AllowHTTP != false {
+		t.Fatalf("expected explicit allow_http override to win, got %#v", resolution.Policy)
+	}
+	if resolution.Policy.FileInputRoot != options.ArtifactRoot || resolution.Policy.FileOutputRoot != options.ArtifactRoot {
+		t.Fatalf("expected artifact roots in security policy, got %#v", resolution.Policy)
+	}
+}
+
+func TestHandleValidateFlowToolSupportsSecurityPreset(t *testing.T) {
+	options := TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: validate_browser_write
+steps:
+  - action: screenshot
+    path: capture.png
+`,
+				"security_preset": "browser_write",
+			},
+		},
+	}
+
+	result, err := handleValidateFlowToolWithOptions(context.Background(), request, options)
+	if err != nil {
+		t.Fatalf("validate flow with browser_write: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != true {
+		t.Fatalf("expected valid flow with browser_write preset, got %#v", payload)
+	}
+	security, ok := payload["security"].(map[string]any)
+	if !ok || security["preset"] != "browser_write" {
+		t.Fatalf("expected browser_write preset metadata, got %#v", payload["security"])
 	}
 }
 
@@ -1571,6 +1696,13 @@ func TestHandleRunFlowToolMissingFlow(t *testing.T) {
 	}
 	if !strings.Contains(payload["error"].(string), "flow") {
 		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if payload["tool"] != "tsplay.run_flow" {
+		t.Fatalf("expected tool metadata, got %#v", payload["tool"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.repair_flow_context" {
+		t.Fatalf("expected repair_flow_context next_action, got %#v", payload["next_action"])
 	}
 }
 
