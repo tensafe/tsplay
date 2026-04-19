@@ -910,6 +910,8 @@ func handleFinalizeFlowToolWithOptions(
 	if draft.Validation != nil && draft.Validation.Issue != nil {
 		payload["issue"] = draft.Validation.Issue
 	}
+	AttachRecommendedExamples(payload, draft.Intent, draft, draft.Validation.Issue, 3)
+	AttachRepairExample(payload, draft.Validation.Issue)
 	if blockingReason != "" {
 		payload["blocking_reason"] = blockingReason
 	}
@@ -1024,6 +1026,7 @@ func draftFlowPayloadWithOptions(
 	if draft.Validation != nil && draft.Validation.Issue != nil {
 		result["issue"] = draft.Validation.Issue
 	}
+	AttachRecommendedExamples(result, intent, draft, draft.Validation.Issue, 3)
 	if runHandle != nil {
 		result["run"] = runHandle.finish(nil, map[string]any{
 			"url":              firstNonEmpty(url, observation.URL),
@@ -1299,6 +1302,7 @@ func handleValidateFlowToolWithOptions(
 		}
 		if issue := ExtractFlowIssue(err, nil); issue != nil {
 			payload["issue"] = issue
+			AttachRepairExample(payload, issue)
 		}
 		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
@@ -1319,6 +1323,7 @@ func handleValidateFlowToolWithOptions(
 		}
 		if issue := ExtractFlowIssue(err, flow); issue != nil {
 			payload["issue"] = issue
+			AttachRepairExample(payload, issue)
 		}
 		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}
@@ -1331,6 +1336,7 @@ func handleValidateFlowToolWithOptions(
 		}
 		if issue := ExtractFlowIssue(err, flow); issue != nil {
 			payload["issue"] = issue
+			AttachRepairExample(payload, issue)
 		}
 		return newTSPlayToolResult("tsplay.validate_flow", payload)
 	}

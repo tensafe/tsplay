@@ -443,7 +443,7 @@ func flowParamJSONSchema(name string) map[string]any {
 }
 
 func BuildFlowExamples() []map[string]any {
-	return []map[string]any{
+	examples := []map[string]any{
 		{
 			"name":          "import_rows_from_csv",
 			"description":   "Load local CSV rows and iterate through them to fill repeated form fields.",
@@ -855,6 +855,23 @@ steps:
 `,
 		},
 	}
+	for _, example := range BuiltinFlowRecommendedExamples() {
+		examples = append(examples, map[string]any{
+			"name":             example.ID,
+			"title":            example.Title,
+			"intent":           example.Intent,
+			"description":      example.Description,
+			"why_this_matches": example.WhyThisMatches,
+			"when_to_use":      example.WhenToUse,
+			"focus_actions":    example.FocusActions,
+			"requires_allow":   example.RequiresAllow,
+			"tags":             example.Tags,
+			"input_vars":       example.InputVars,
+			"common_pitfalls":  example.CommonPitfalls,
+			"flow":             example.FlowYAML,
+		})
+	}
+	return examples
 }
 
 func flowSchemaGenerationRules() []string {

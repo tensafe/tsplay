@@ -760,6 +760,71 @@ func TestHandleDraftFlowToolExposesTopLevelIssue(t *testing.T) {
 	}
 }
 
+func TestHandleDraftFlowToolIncludesRecommendedExamples(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "搜索订单并导出 CSV",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	recommended, ok := payload["recommended_examples"].([]any)
+	if !ok || len(recommended) == 0 {
+		t.Fatalf("expected recommended_examples, got %#v", payload["recommended_examples"])
+	}
+	first, ok := recommended[0].(map[string]any)
+	if !ok || first["id"] != "search_results_to_csv" {
+		t.Fatalf("expected search_results_to_csv first, got %#v", payload["recommended_examples"])
+	}
+	flowYAML, ok := first["flow_yaml"].(string)
+	if !ok || strings.TrimSpace(flowYAML) == "" {
+		t.Fatalf("expected flow_yaml in recommended example, got %#v", first["flow_yaml"])
+	}
+	flow, err := ParseFlow([]byte(flowYAML), "yaml")
+	if err != nil {
+		t.Fatalf("parse recommended example: %v", err)
+	}
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate recommended example: %v", err)
+	}
+}
+
 func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
 	observation := `{
   "url": "https://example.com/orders",
@@ -813,6 +878,14 @@ func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
 	nextAction, ok := payload["next_action"].(map[string]any)
 	if !ok || nextAction["tool"] != "tsplay.run_flow" {
 		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+	recommended, ok := payload["recommended_examples"].([]any)
+	if !ok || len(recommended) == 0 {
+		t.Fatalf("expected recommended_examples, got %#v", payload["recommended_examples"])
+	}
+	first, ok := recommended[0].(map[string]any)
+	if !ok || first["id"] != "search_results_to_csv" {
+		t.Fatalf("expected search_results_to_csv first, got %#v", payload["recommended_examples"])
 	}
 }
 
@@ -916,6 +989,14 @@ func TestHandleFinalizeFlowToolWithObservationNeedsPermission(t *testing.T) {
 	issue, ok := payload["issue"].(map[string]any)
 	if !ok || issue["code"] != "security_policy" {
 		t.Fatalf("expected security issue, got %#v", payload["issue"])
+	}
+	recommended, ok := payload["recommended_examples"].([]any)
+	if !ok || len(recommended) == 0 {
+		t.Fatalf("expected recommended_examples, got %#v", payload["recommended_examples"])
+	}
+	first, ok := recommended[0].(map[string]any)
+	if !ok || first["id"] != "upload_file_then_submit" {
+		t.Fatalf("expected upload_file_then_submit first, got %#v", payload["recommended_examples"])
 	}
 	nextAction, ok := payload["next_action"].(map[string]any)
 	if !ok || nextAction["tool"] != "tsplay.finalize_flow" {
@@ -1707,6 +1788,41 @@ steps:
 	if issue["code"] != "unsupported_action" || issue["did_you_mean"] != "type_text" {
 		t.Fatalf("unexpected issue payload: %#v", issue)
 	}
+	repairExample, ok := payload["repair_example"].(map[string]any)
+	if !ok || repairExample["id"] != "repair_fill_to_type_text" {
+		t.Fatalf("expected fill repair example, got %#v", payload["repair_example"])
+	}
+}
+
+func TestHandleValidateFlowToolReturnsRepairExampleForUnknownFieldAlias(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: bad_result_var
+steps:
+  - action: evaluate
+    selector: "body"
+    script: |
+      return []
+    result_var: rows
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	repairExample, ok := payload["repair_example"].(map[string]any)
+	if !ok || repairExample["id"] != "repair_result_var_to_save_as" {
+		t.Fatalf("expected result_var repair example, got %#v", payload["repair_example"])
+	}
 }
 
 func TestHandleValidateFlowToolReturnsIssueForUnexpectedParameter(t *testing.T) {
@@ -1741,6 +1857,10 @@ steps:
 	}
 	if suggestion, _ := issue["suggestion"].(string); !strings.Contains(suggestion, "browser.timeout") {
 		t.Fatalf("expected browser.timeout hint, got %#v", issue)
+	}
+	repairExample, ok := payload["repair_example"].(map[string]any)
+	if !ok || repairExample["id"] != "repair_navigate_timeout_to_browser_timeout" {
+		t.Fatalf("expected navigate timeout repair example, got %#v", payload["repair_example"])
 	}
 }
 
