@@ -30,6 +30,7 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	// 行为类 / Actions
 	{"type_text", type_text, "在指定元素中输入文本", "Type text into a specified element. Example: type_text('#input-id', 'Hello World'). Parameters: selector (string) - The selector of the input element; text (string) - The text to type."},
 	{"get_text", get_text, "获取指定元素的文本内容", "Get the text content of a specified element. Example: get_text('#element-id'). Parameters: selector (string) - The selector of the element to retrieve text from."},
+	{"extract_text", extract_text, "提取元素文本，可选正则匹配", "Extract text from a selector, optionally waiting first and applying a regex. Example: extract_text('#status', 5000, 'Status: (.*)'). Parameters: selector (string) - The selector to read from; timeout (int, optional) - Wait timeout in milliseconds; pattern (string, optional) - Regex used to extract the first match. Returns: string or string[]."},
 	{"set_value", set_value, "设置指定元素的值", "Set the value of a specified element. Example: set_value('#input-id', 'new value'). Parameters: selector (string) - The selector of the input element; value (string) - The value to set."},
 	{"select_option", select_option, "选择下拉框中的选项", "Select an option in a dropdown. Example: select_option('#dropdown-id', 'option-value'). Parameters: selector (string) - The selector of the dropdown; value (string) - The value of the option to select."},
 	{"hover", hover, "将鼠标悬停在指定元素上", "Hover the mouse over a specified element. Example: hover('#element-id'). Parameters: selector (string) - The selector of the element to hover over."},
@@ -39,6 +40,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"wait_for_network_idle", wait_for_network_idle, "等待网络空闲", "Wait for the network to be idle. Example: wait_for_network_idle(). No parameters."},
 	{"wait_for_selector", wait_for_selector, "等待指定选择器匹配的元素出现", "Wait for an element matching the specified selector to appear. Example: wait_for_selector('#element-id', 5000). Parameters: selector (string) - The selector to wait for; timeout (int, optional) - Timeout in milliseconds (default is 30000)."},
 	{"wait_for_text", wait_for_text, "等待指定文本出现在页面中", "Wait for specified text to appear on the page. Example: wait_for_text('#element-id', 'Hello World', 5000). Parameters: selector (string) - The selector of the element; text (string) - The expected text; timeout (int, optional) - Timeout in milliseconds (default is 30000)."},
+	{"assert_visible", assert_visible, "断言元素可见", "Assert that a selector is visible. Example: assert_visible('#ready', 5000). Parameters: selector (string) - The selector to check; timeout (int, optional) - Wait timeout in milliseconds. Returns: true when visible."},
+	{"assert_text", assert_text, "断言元素文本包含指定内容", "Assert that a selector text contains the expected text. Example: assert_text('#ready', 'complete', 5000). Parameters: selector (string) - The selector to check; text (string) - Expected text fragment; timeout (int, optional) - Wait timeout in milliseconds. Returns: assertion details."},
 	{"sleep", sleep, "暂停执行指定的时间", "Pause execution for a specified duration. Example: sleep(2). Parameters: seconds (number) - The duration to sleep in seconds."},
 
 	// 页面截图 / Screenshots
@@ -101,6 +104,7 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"db_query", db_query, "查询数据库返回多行", "Run a SELECT-style SQL query using database/sql. Example: db_query({sql='SELECT keyword FROM crawl_results WHERE rank >= $1', args={1}, connection='reporting', driver='pgsql'}). Parameters: sql (string) - Query SQL; args (list|object, optional) - Positional or named arguments; connection (string, optional) - Named database connection; driver (string, optional) - mysql, pgsql, sqlserver, or oracle."},
 	{"db_query_one", db_query_one, "查询数据库返回单行", "Run a SELECT-style SQL query and return the first row. Example: db_query_one({sql='SELECT keyword FROM crawl_results WHERE id = $1', args={42}, connection='reporting', driver='pgsql'}). Parameters: sql (string) - Query SQL; args (list|object, optional) - Positional or named arguments; connection (string, optional) - Named database connection; driver (string, optional) - mysql, pgsql, sqlserver, or oracle."},
 	{"db_execute", db_execute, "执行数据库 SQL", "Run a non-query SQL statement using database/sql. Example: db_execute({sql='DELETE FROM crawl_results WHERE created_at < $1', args={'2025-01-01'}, connection='reporting', driver='pgsql'}). Parameters: sql (string) - SQL statement; args (list|object, optional) - Positional or named arguments; connection (string, optional) - Named database connection; driver (string, optional) - mysql, pgsql, sqlserver, or oracle."},
+	{"db_transaction", db_transaction, "在事务中执行一组数据库操作", "Run a Lua callback inside a database transaction scope. Example: db_transaction(function() return db_insert({table='crawl_results', row={keyword='山东大学'}, connection='reporting', driver='pgsql'}) end, 5000). Parameters: callback (function) - The Lua callback to execute; timeout_ms (int, optional) - Transaction timeout in milliseconds. Returns: the callback return values, or true when the callback returns nothing."},
 
 	// StateStorage 管理 / State Storage Management
 	{"get_storage_state", get_storage_state, "获取当前页面的存储状态", "Get the current browser storage state. Example: get_storage_state(). No parameters."},
@@ -487,6 +491,41 @@ func get_text(L *lua.LState) int {
 	return 1
 }
 
+func extract_text(L *lua.LState) int {
+	selector := L.CheckString(1)
+	step := FlowStep{
+		Action:   "extract_text",
+		Selector: selector,
+	}
+
+	if L.GetTop() >= 2 && L.Get(2) != lua.LNil {
+		switch value := L.Get(2).(type) {
+		case lua.LNumber:
+			step.Timeout = int(value)
+		case lua.LString:
+			step.Pattern = string(value)
+		default:
+			L.RaiseError("extract_text second argument must be a timeout number or pattern string")
+			return 0
+		}
+	}
+	if L.GetTop() >= 3 && L.Get(3) != lua.LNil {
+		if step.Pattern != "" {
+			L.RaiseError("extract_text third argument can only be used when the second argument is timeout")
+			return 0
+		}
+		step.Pattern = L.CheckString(3)
+	}
+
+	result, err := runFlowExtractTextStep(L, flowContextFromState(L), step)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
 func set_value(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {
@@ -667,6 +706,39 @@ func wait_for_text(L *lua.LState) int {
 
 	fmt.Printf("Successfully waited for text '%s' in selector: %s\n", expectedText, selector)
 	return 0
+}
+
+func assert_visible(L *lua.LState) int {
+	step := FlowStep{
+		Action:   "assert_visible",
+		Selector: L.CheckString(1),
+		Timeout:  L.OptInt(2, 0),
+	}
+
+	result, err := runFlowAssertVisibleStep(L, flowContextFromState(L), step)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
+func assert_text(L *lua.LState) int {
+	step := FlowStep{
+		Action:   "assert_text",
+		Selector: L.CheckString(1),
+		Text:     L.CheckString(2),
+		Timeout:  L.OptInt(3, 0),
+	}
+
+	result, err := runFlowAssertTextStep(L, flowContextFromState(L), step)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
 }
 
 func sleep(L *lua.LState) int {

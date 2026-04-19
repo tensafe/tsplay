@@ -49,7 +49,7 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | --- | --- | --- | --- | --- | --- |
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 应保持同步 |
 | 文件与表格 I/O | `screenshot`、`save_html`、`read_csv`、`read_excel`、`write_json`、`write_csv` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
-| HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 应保持同步 |
+| HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_http`、`allow_file_access` 和文件根目录 |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_redis` 约束 |
 | 数据库操作 | `db_insert`、`db_upsert`、`db_query`、`db_execute` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_database` 约束 |
 | 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_browser_state` 约束 |
@@ -383,6 +383,13 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 - OCR 验证码识别
 - 内部查单 / 补数接口
 - webhook / 通知接口
+
+补充说明：
+
+- `Flow` 和 `Lua` 两边都支持 `http_request`
+- 当 `Lua http_request` 运行在 `Flow` / MCP 安全上下文中时，也会遵守 `allow_http`
+- 如果 `http_request` 使用了 `save_path` 或 `multipart_files`，Lua 侧也会和 Flow 一样遵守 `allow_file_access`
+- 在受限运行模式下，`save_path` 和 `multipart_files` 的相对路径会解析到配置的文件根目录下
 
 ### Redis
 

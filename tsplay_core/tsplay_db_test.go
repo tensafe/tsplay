@@ -669,6 +669,133 @@ func TestRunFlowDBTransactionCommitAndRollback(t *testing.T) {
 	})
 }
 
+func TestRunFlowLuaDatabaseHelpersHonorAllowDatabase(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_db_policy",
+		Steps: []FlowStep{
+			{
+				Action: "lua",
+				Code: `return db_query({
+  sql = "SELECT 1",
+  connection = "reporting",
+  driver = "pgsql"
+})`,
+			},
+		},
+	}
+
+	_, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{AllowLua: true},
+	})
+	if err == nil {
+		t.Fatalf("expected allow_database runtime error")
+	}
+	if !strings.Contains(err.Error(), "allow_database") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFlowLuaDBTransactionCommitAndRollback(t *testing.T) {
+	t.Run("commit", func(t *testing.T) {
+		fakeDB := &fakeFlowDatabase{rowsAffected: 1}
+		withFakeOpenFlowDatabase(t, fakeDB)
+		t.Setenv("TSPLAY_DB_REPORTING_DRIVER", "pgsql")
+		t.Setenv("TSPLAY_DB_REPORTING_DSN", "postgres://collector:secret@127.0.0.1:5432/analytics?sslmode=disable")
+
+		L := lua.NewState()
+		defer L.Close()
+
+		flow := &Flow{
+			SchemaVersion: "1",
+			Name:          "lua_db_transaction_commit",
+			Steps: []FlowStep{
+				{
+					Action: "lua",
+					SaveAs: "tx_result",
+					Code: `return db_transaction(function()
+  return db_insert({
+    table = "public.crawl_results",
+    connection = "reporting",
+    row = {
+      keyword = "山东大学"
+    }
+  })
+end, 5000)`,
+				},
+			},
+		}
+
+		result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+			Security: &FlowSecurityPolicy{
+				AllowLua:      true,
+				AllowDatabase: true,
+			},
+		})
+		if err != nil {
+			t.Fatalf("run flow: %v", err)
+		}
+		if fakeDB.beginTxCount != 1 {
+			t.Fatalf("beginTxCount = %d", fakeDB.beginTxCount)
+		}
+		if fakeDB.tx == nil || !fakeDB.tx.committed {
+			t.Fatalf("expected committed transaction")
+		}
+		txResult, ok := result.Vars["tx_result"].(map[string]any)
+		if !ok || fmt.Sprint(txResult["rows_affected"]) != "1" {
+			t.Fatalf("tx_result = %#v", result.Vars["tx_result"])
+		}
+	})
+
+	t.Run("rollback", func(t *testing.T) {
+		fakeDB := &fakeFlowDatabase{rowsAffected: 1}
+		withFakeOpenFlowDatabase(t, fakeDB)
+		t.Setenv("TSPLAY_DB_REPORTING_DRIVER", "pgsql")
+		t.Setenv("TSPLAY_DB_REPORTING_DSN", "postgres://collector:secret@127.0.0.1:5432/analytics?sslmode=disable")
+
+		L := lua.NewState()
+		defer L.Close()
+
+		flow := &Flow{
+			SchemaVersion: "1",
+			Name:          "lua_db_transaction_rollback",
+			Steps: []FlowStep{
+				{
+					Action: "lua",
+					Code: `return db_transaction(function()
+  db_insert({
+    table = "public.crawl_results",
+    connection = "reporting",
+    row = {
+      keyword = "山东大学"
+    }
+  })
+  error("boom")
+end)`,
+				},
+			},
+		}
+
+		if _, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+			Security: &FlowSecurityPolicy{
+				AllowLua:      true,
+				AllowDatabase: true,
+			},
+		}); err == nil {
+			t.Fatalf("expected transaction failure")
+		}
+		if fakeDB.beginTxCount != 1 {
+			t.Fatalf("beginTxCount = %d", fakeDB.beginTxCount)
+		}
+		if fakeDB.tx == nil || !fakeDB.tx.rolledBack {
+			t.Fatalf("expected rolled back transaction")
+		}
+	})
+}
+
 func TestResolveDBRuntimeSettings(t *testing.T) {
 	t.Setenv("TSPLAY_DB_REPORTING_MAX_OPEN_CONNS", "8")
 	t.Setenv("TSPLAY_DB_REPORTING_MAX_IDLE_CONNS", "4")

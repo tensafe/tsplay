@@ -1210,6 +1210,52 @@ func TestRunFlowAssertVisibleAndText(t *testing.T) {
 	}
 }
 
+func TestRunFlowLuaExtractAndAssertHelpers(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_extract_and_assert",
+		Steps: []FlowStep{
+			{
+				Action: "navigate",
+				URL:    `data:text/html,<html><body><div id="ready">Order complete</div><div id="status">Status: shipped</div></body></html>`,
+			},
+			{
+				Action: "lua",
+				Code:   `return extract_text("#status", "Status: (.*)")`,
+				SaveAs: "status_text",
+			},
+			{
+				Action: "lua",
+				Code:   `return assert_visible("#ready", 1000)`,
+				SaveAs: "visible_ok",
+			},
+			{
+				Action: "lua",
+				Code:   `return assert_text("#ready", "complete", 1000)`,
+				SaveAs: "text_assert",
+			},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{Headless: true})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["status_text"]; got != "shipped" {
+		t.Fatalf("status_text = %#v", got)
+	}
+	if got := result.Vars["visible_ok"]; got != true {
+		t.Fatalf("visible_ok = %#v", got)
+	}
+	assertResult, ok := result.Vars["text_assert"].(map[string]any)
+	if !ok {
+		t.Fatalf("text_assert = %#v", result.Vars["text_assert"])
+	}
+	if got := assertResult["text"]; got != "complete" {
+		t.Fatalf("assert text = %#v", got)
+	}
+}
+
 func TestRunFlowHTTPRequestAndJSONExtract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("q"); got != "山东" {
