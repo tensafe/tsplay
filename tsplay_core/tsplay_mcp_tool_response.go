@@ -213,8 +213,9 @@ func buildTSPlayToolSummary(tool string, payload map[string]any) string {
 	case "tsplay.observe_page":
 		if observation, ok := payload["observation"].(*PageObservation); ok && observation != nil {
 			return fmt.Sprintf(
-				"Observed %d interactive elements on %s.",
+				"Observed %d interactive elements and %d content elements on %s.",
 				len(observation.Elements),
+				len(observation.ContentElements),
 				firstNonEmpty(observation.URL, "the page"),
 			)
 		}
@@ -321,25 +322,28 @@ func extractTSPlayToolArtifacts(tool string, payload map[string]any) any {
 	case "tsplay.observe_page":
 		if observation, ok := payload["observation"].(*PageObservation); ok && observation != nil {
 			return map[string]any{
-				"artifact_root":     observation.ArtifactRoot,
-				"screenshot_path":   observation.ScreenshotPath,
-				"dom_snapshot_path": observation.DOMSnapshotPath,
+				"artifact_root":        observation.ArtifactRoot,
+				"screenshot_path":      observation.ScreenshotPath,
+				"dom_snapshot_path":    observation.DOMSnapshotPath,
+				"dom_snapshot_excerpt": observation.DOMSnapshotExcerpt,
 			}
 		}
 	case "tsplay.draft_flow":
 		if observation, ok := payload["observation"].(*PageObservation); ok && observation != nil {
 			return map[string]any{
-				"artifact_root":     observation.ArtifactRoot,
-				"screenshot_path":   observation.ScreenshotPath,
-				"dom_snapshot_path": observation.DOMSnapshotPath,
+				"artifact_root":        observation.ArtifactRoot,
+				"screenshot_path":      observation.ScreenshotPath,
+				"dom_snapshot_path":    observation.DOMSnapshotPath,
+				"dom_snapshot_excerpt": observation.DOMSnapshotExcerpt,
 			}
 		}
 	case "tsplay.finalize_flow":
 		if observation, ok := payload["observation"].(*PageObservation); ok && observation != nil {
 			return map[string]any{
-				"artifact_root":     observation.ArtifactRoot,
-				"screenshot_path":   observation.ScreenshotPath,
-				"dom_snapshot_path": observation.DOMSnapshotPath,
+				"artifact_root":        observation.ArtifactRoot,
+				"screenshot_path":      observation.ScreenshotPath,
+				"dom_snapshot_path":    observation.DOMSnapshotPath,
+				"dom_snapshot_excerpt": observation.DOMSnapshotExcerpt,
 			}
 		}
 	case "tsplay.run_flow":

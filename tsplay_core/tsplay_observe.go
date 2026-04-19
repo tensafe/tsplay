@@ -26,13 +26,16 @@ type PageObservationOptions struct {
 }
 
 type PageObservation struct {
-	URL             string                   `json:"url"`
-	Title           string                   `json:"title,omitempty"`
-	ArtifactRoot    string                   `json:"artifact_root,omitempty"`
-	ScreenshotPath  string                   `json:"screenshot_path,omitempty"`
-	DOMSnapshotPath string                   `json:"dom_snapshot_path,omitempty"`
-	Elements        []PageObservationElement `json:"elements"`
-	Errors          []string                 `json:"errors,omitempty"`
+	URL                string                          `json:"url"`
+	Title              string                          `json:"title,omitempty"`
+	ArtifactRoot       string                          `json:"artifact_root,omitempty"`
+	PageSummary        string                          `json:"page_summary,omitempty"`
+	ScreenshotPath     string                          `json:"screenshot_path,omitempty"`
+	DOMSnapshotPath    string                          `json:"dom_snapshot_path,omitempty"`
+	DOMSnapshotExcerpt string                          `json:"dom_snapshot_excerpt,omitempty"`
+	ContentElements    []PageObservationContentElement `json:"content_elements,omitempty"`
+	Elements           []PageObservationElement        `json:"elements"`
+	Errors             []string                        `json:"errors,omitempty"`
 }
 
 type PageObservationElement struct {
@@ -65,6 +68,35 @@ type PageObservationBox struct {
 	Width  float64 `json:"width"`
 	Height float64 `json:"height"`
 }
+
+type PageObservationContentElement struct {
+	Index    int    `json:"index,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Tag      string `json:"tag,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Href     string `json:"href,omitempty"`
+	XPath    string `json:"xpath,omitempty"`
+	Selector string `json:"selector,omitempty"`
+}
+
+type observationSnapshotNode struct {
+	Tag      string                    `json:"tag"`
+	XPath    string                    `json:"xpath"`
+	Text     string                    `json:"text"`
+	Href     string                    `json:"href,omitempty"`
+	Children []observationSnapshotNode `json:"children"`
+}
+
+type scoredObservationContentElement struct {
+	Element PageObservationContentElement
+	Score   int
+	Order   int
+}
+
+const (
+	defaultObservationContentLimit = 20
+	defaultObservationExcerptLimit = 1200
+)
 
 func ObservePage(options PageObservationOptions) (*PageObservation, error) {
 	if strings.TrimSpace(options.URL) == "" {
@@ -163,17 +195,23 @@ func ObserveLoadedPage(page playwright.Page, options PageObservationOptions) (*P
 	}
 
 	domSnapshotPath := filepath.Join(dir, "dom_snapshot.json")
-	if snapshot, err := ExtractSimplifiedElementWithXPathResult(page); err != nil {
+	snapshot, err := ExtractSimplifiedElementWithXPathResult(page)
+	if err != nil {
 		observation.Errors = append(observation.Errors, fmt.Sprintf("dom snapshot: %v", err))
-	} else if err := os.WriteFile(domSnapshotPath, []byte(snapshot), 0644); err != nil {
-		observation.Errors = append(observation.Errors, fmt.Sprintf("dom snapshot write: %v", err))
 	} else {
-		observation.DOMSnapshotPath = domSnapshotPath
+		observation.DOMSnapshotExcerpt = buildObservationDOMSnapshotExcerpt(snapshot, defaultObservationExcerptLimit)
+		observation.ContentElements = extractObservationContentElements(snapshot, defaultObservationContentLimit)
+		if err := os.WriteFile(domSnapshotPath, []byte(snapshot), 0644); err != nil {
+			observation.Errors = append(observation.Errors, fmt.Sprintf("dom snapshot write: %v", err))
+		} else {
+			observation.DOMSnapshotPath = domSnapshotPath
+		}
 	}
 
 	elements, err := observeInteractiveElements(page)
 	if err != nil {
 		observation.Errors = append(observation.Errors, fmt.Sprintf("elements: %v", err))
+		observation.PageSummary = buildObservationPageSummary(observation)
 		return observation, nil
 	}
 	maxElements := options.MaxElements
@@ -187,7 +225,190 @@ func ObserveLoadedPage(page playwright.Page, options PageObservationOptions) (*P
 		elements[i].Index = i + 1
 	}
 	observation.Elements = elements
+	observation.PageSummary = buildObservationPageSummary(observation)
 	return observation, nil
+}
+
+func buildObservationPageSummary(observation *PageObservation) string {
+	if observation == nil {
+		return ""
+	}
+	title := firstNonEmpty(strings.TrimSpace(observation.Title), strings.TrimSpace(observation.URL), "the page")
+	summary := fmt.Sprintf(
+		"Observed %q with %d interactive elements and %d content elements.",
+		title,
+		len(observation.Elements),
+		len(observation.ContentElements),
+	)
+	topTexts := []string{}
+	for _, item := range observation.ContentElements {
+		text := strings.TrimSpace(item.Text)
+		if text == "" {
+			continue
+		}
+		topTexts = append(topTexts, text)
+		if len(topTexts) == 3 {
+			break
+		}
+	}
+	if len(topTexts) > 0 {
+		summary += " Top content: " + strings.Join(topTexts, "; ") + "."
+	}
+	return summary
+}
+
+func buildObservationDOMSnapshotExcerpt(snapshot string, limit int) string {
+	root, err := parseObservationSnapshot(snapshot)
+	if err != nil {
+		return truncateObservationText(snapshot, limit)
+	}
+	lines := []string{}
+	collectObservationExcerptLines(root, &lines, 12)
+	if len(lines) == 0 {
+		return truncateObservationText(snapshot, limit)
+	}
+	return truncateObservationText(strings.Join(lines, "\n"), limit)
+}
+
+func collectObservationExcerptLines(node observationSnapshotNode, lines *[]string, maxLines int) {
+	if len(*lines) >= maxLines {
+		return
+	}
+	text := cleanObservationText(node.Text, 120)
+	tag := strings.ToLower(strings.TrimSpace(node.Tag))
+	if tag != "" && text != "" {
+		line := tag + ": " + text
+		if href := strings.TrimSpace(node.Href); href != "" {
+			line += " -> " + href
+		}
+		*lines = append(*lines, line)
+	}
+	for _, child := range node.Children {
+		if len(*lines) >= maxLines {
+			return
+		}
+		collectObservationExcerptLines(child, lines, maxLines)
+	}
+}
+
+func extractObservationContentElements(snapshot string, limit int) []PageObservationContentElement {
+	root, err := parseObservationSnapshot(snapshot)
+	if err != nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = defaultObservationContentLimit
+	}
+	scored := []scoredObservationContentElement{}
+	seen := map[string]struct{}{}
+	order := 0
+	collectObservationContent(root, &scored, seen, &order)
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].Score == scored[j].Score {
+			return scored[i].Order < scored[j].Order
+		}
+		return scored[i].Score > scored[j].Score
+	})
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+	items := make([]PageObservationContentElement, 0, len(scored))
+	for index, item := range scored {
+		element := item.Element
+		element.Index = index + 1
+		items = append(items, element)
+	}
+	return items
+}
+
+func collectObservationContent(
+	node observationSnapshotNode,
+	scored *[]scoredObservationContentElement,
+	seen map[string]struct{},
+	order *int,
+) {
+	tag := strings.ToLower(strings.TrimSpace(node.Tag))
+	text := cleanObservationText(node.Text, 180)
+	href := strings.TrimSpace(node.Href)
+	if kind, score := observationContentKind(tag, text, href); kind != "" {
+		key := kind + "|" + strings.ToLower(text) + "|" + href
+		if _, exists := seen[key]; !exists {
+			seen[key] = struct{}{}
+			*scored = append(*scored, scoredObservationContentElement{
+				Element: PageObservationContentElement{
+					Kind:     kind,
+					Tag:      tag,
+					Text:     text,
+					Href:     href,
+					XPath:    strings.TrimSpace(node.XPath),
+					Selector: selectorFromDraftXPath(node.XPath),
+				},
+				Score: score,
+				Order: *order,
+			})
+			*order = *order + 1
+		}
+	}
+	for _, child := range node.Children {
+		collectObservationContent(child, scored, seen, order)
+	}
+}
+
+func observationContentKind(tag string, text string, href string) (string, int) {
+	if tag == "" || text == "" {
+		return "", 0
+	}
+	switch tag {
+	case "h1":
+		return "headline", 100
+	case "h2":
+		return "headline", 95
+	case "h3":
+		return "headline", 90
+	case "h4", "h5", "h6":
+		return "headline", 85
+	case "a":
+		if href != "" {
+			return "article_link", 80
+		}
+	case "p":
+		if len([]rune(text)) >= 24 {
+			return "summary_text", 55
+		}
+	case "li":
+		if len([]rune(text)) >= 6 {
+			return "list_item", 45
+		}
+	}
+	return "", 0
+}
+
+func parseObservationSnapshot(snapshot string) (observationSnapshotNode, error) {
+	var root observationSnapshotNode
+	if err := json.Unmarshal([]byte(snapshot), &root); err != nil {
+		return observationSnapshotNode{}, err
+	}
+	return root, nil
+}
+
+func cleanObservationText(value string, limit int) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if limit > 0 && len([]rune(value)) > limit {
+		runes := []rune(value)
+		value = string(runes[:limit]) + "..."
+	}
+	return value
+}
+
+func truncateObservationText(value string, limit int) string {
+	if limit <= 0 {
+		limit = defaultObservationExcerptLimit
+	}
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit]) + "..."
 }
 
 func observeInteractiveElements(page playwright.Page) ([]PageObservationElement, error) {

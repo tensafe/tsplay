@@ -88,6 +88,12 @@ type flattenedDraftNode struct {
 	Text  string
 }
 
+type scoredDraftContentElement struct {
+	Element PageObservationContentElement
+	Score   int
+	Reason  string
+}
+
 type flowDraftBuilder struct {
 	intent            string
 	intentLower       string
@@ -204,17 +210,30 @@ func ParseObservationForDraft(observationText string) (*PageObservation, error) 
 	}
 
 	var observation PageObservation
-	if err := json.Unmarshal([]byte(observationText), &observation); err == nil && observation.URL != "" {
+	if err := json.Unmarshal([]byte(observationText), &observation); err == nil && hasMeaningfulDraftObservation(&observation) {
 		return &observation, nil
 	}
 
 	var wrapper struct {
 		Observation *PageObservation `json:"observation"`
 	}
-	if err := json.Unmarshal([]byte(observationText), &wrapper); err == nil && wrapper.Observation != nil && wrapper.Observation.URL != "" {
+	if err := json.Unmarshal([]byte(observationText), &wrapper); err == nil && hasMeaningfulDraftObservation(wrapper.Observation) {
 		return wrapper.Observation, nil
 	}
 	return nil, fmt.Errorf("observation must be a JSON PageObservation or a wrapper with an observation field")
+}
+
+func hasMeaningfulDraftObservation(observation *PageObservation) bool {
+	if observation == nil {
+		return false
+	}
+	return strings.TrimSpace(observation.URL) != "" ||
+		strings.TrimSpace(observation.Title) != "" ||
+		strings.TrimSpace(observation.PageSummary) != "" ||
+		strings.TrimSpace(observation.DOMSnapshotExcerpt) != "" ||
+		strings.TrimSpace(observation.DOMSnapshotPath) != "" ||
+		len(observation.Elements) > 0 ||
+		len(observation.ContentElements) > 0
 }
 
 func (b *flowDraftBuilder) bootstrapNavigateStep() {
@@ -250,6 +269,10 @@ func (b *flowDraftBuilder) buildIntentSteps() {
 			continue
 		}
 		switch action.Kind {
+		case "view_content":
+			if !b.addContentViewSteps() {
+				b.draft.Unresolved = append(b.draft.Unresolved, action.Kind)
+			}
 		case "login":
 			if !b.addLoginSteps() {
 				b.draft.Unresolved = append(b.draft.Unresolved, action.Kind)
@@ -296,6 +319,7 @@ func detectDraftIntentActions(intentLower string) []draftIntentAction {
 		keywords []string
 	}
 	keywordSets := []actionKeywords{
+		{kind: "view_content", keywords: []string{"news", "headline", "article", "content", "story", "read", "要闻", "新闻", "文章", "内容", "正文", "详情", "资讯"}},
 		{kind: "login", keywords: []string{"login", "log in", "sign in", "登录"}},
 		{kind: "search", keywords: []string{"search", "query", "find", "lookup", "filter", "搜索", "查询", "检索", "查找", "筛选"}},
 		{kind: "select", keywords: []string{"select", "choose", "pick", "选择", "选中"}},
@@ -737,6 +761,140 @@ func (b *flowDraftBuilder) addCaptureTableStep() bool {
 	return true
 }
 
+func (b *flowDraftBuilder) addContentViewSteps() bool {
+	if b.observation == nil || len(b.observation.ContentElements) == 0 {
+		b.draft.Assumptions = append(b.draft.Assumptions, "The intent mentions viewing article or news content, but no content elements were observed.")
+		return false
+	}
+
+	articleLinks := draftContentElementsByKind(b.observation.ContentElements, "article_link")
+	if len(articleLinks) >= 2 {
+		if b.addContentListSteps(articleLinks) {
+			b.draft.PlannedActions = append(b.draft.PlannedActions, "view_content")
+			return true
+		}
+	}
+	if b.addArticleContentStepsFromContentElements() {
+		b.draft.PlannedActions = append(b.draft.PlannedActions, "view_content")
+		return true
+	}
+
+	b.draft.Assumptions = append(b.draft.Assumptions, "Content elements were observed, but no stable content area or article body could be inferred.")
+	return false
+}
+
+func (b *flowDraftBuilder) addContentListSteps(articleLinks []PageObservationContentElement) bool {
+	heading, headingReason := findBestObservedContentElement(b.observation.ContentElements, func(element PageObservationContentElement) (int, string) {
+		if !strings.EqualFold(element.Kind, "headline") {
+			return -1, ""
+		}
+		textLower := strings.ToLower(strings.TrimSpace(element.Text))
+		score := 20 + scoreDraftKeywords(textLower, []string{"news", "headline", "article", "story", "要闻", "新闻", "文章", "资讯", "内容"})
+		score += scoreDraftIntentContentText(b.intentLower, textLower)
+		if score <= 20 {
+			return -1, ""
+		}
+		return score, "matched a content headline whose text overlaps with the requested section"
+	})
+
+	relatedLinks := relatedDraftContentLinks(heading, articleLinks)
+	if len(relatedLinks) == 0 {
+		relatedLinks = limitDraftContentElements(articleLinks, 3)
+	}
+	firstLink := relatedLinks[0]
+	firstLinkSelector := strings.TrimSpace(firstLink.Selector)
+	if firstLinkSelector == "" && strings.TrimSpace(firstLink.XPath) != "" {
+		firstLinkSelector = selectorFromDraftXPath(firstLink.XPath)
+	}
+	if firstLinkSelector == "" {
+		b.draft.Assumptions = append(b.draft.Assumptions, "Content links were observed, but they do not have stable selectors.")
+		return false
+	}
+
+	if heading != nil {
+		headingSelector := strings.TrimSpace(heading.Selector)
+		if headingSelector == "" && strings.TrimSpace(heading.XPath) != "" {
+			headingSelector = selectorFromDraftXPath(heading.XPath)
+		}
+		if headingSelector != "" {
+			b.flow.Steps = append(b.flow.Steps,
+				FlowStep{Name: "wait for content section heading", Action: "wait_for_selector", Selector: headingSelector, Timeout: 10000},
+				FlowStep{Name: "extract content section title", Action: "extract_text", Selector: headingSelector, SaveAs: "content_section_title"},
+			)
+			b.noteContentElementMatch("content_section", *heading, headingSelector, headingReason)
+		}
+	}
+
+	containerXPath := deriveDraftContentContainerXPath(relatedLinks)
+	containerSelector := selectorFromDraftXPath(containerXPath)
+	if containerSelector == "" {
+		containerSelector = draftParentSelectorFromXPath(firstLink.XPath)
+	}
+	if containerSelector == "" {
+		containerSelector = firstLinkSelector
+	}
+
+	b.flow.Steps = append(b.flow.Steps,
+		FlowStep{Name: "wait for content links", Action: "wait_for_selector", Selector: firstLinkSelector, Timeout: 10000},
+		FlowStep{Name: "collect content links", Action: "get_all_links", Selector: containerSelector, SaveAs: "content_links"},
+	)
+	b.noteContentElementMatch("content_link", firstLink, firstLinkSelector, "matched a top-ranked article/news link from the observed content area")
+	b.draft.Assumptions = append(b.draft.Assumptions, `Review "content_links" to choose which article to open or extract next.`)
+	return true
+}
+
+func (b *flowDraftBuilder) addArticleContentStepsFromContentElements() bool {
+	headline, headlineReason := findBestObservedContentElement(b.observation.ContentElements, func(element PageObservationContentElement) (int, string) {
+		if !strings.EqualFold(element.Kind, "headline") {
+			return -1, ""
+		}
+		score := 40 + scoreDraftIntentContentText(b.intentLower, strings.ToLower(strings.TrimSpace(element.Text)))
+		return score, "matched a top headline from the observed article content"
+	})
+	summary, summaryReason := findBestObservedContentElement(b.observation.ContentElements, func(element PageObservationContentElement) (int, string) {
+		if !strings.EqualFold(element.Kind, "summary_text") {
+			return -1, ""
+		}
+		score := 35 + minDraftInt(len([]rune(strings.TrimSpace(element.Text))), 120)
+		return score, "matched a visible article summary or body paragraph"
+	})
+
+	added := false
+	if headline != nil {
+		headlineSelector := strings.TrimSpace(headline.Selector)
+		if headlineSelector == "" && strings.TrimSpace(headline.XPath) != "" {
+			headlineSelector = selectorFromDraftXPath(headline.XPath)
+		}
+		if headlineSelector != "" {
+			b.flow.Steps = append(b.flow.Steps,
+				FlowStep{Name: "wait for article headline", Action: "wait_for_selector", Selector: headlineSelector, Timeout: 10000},
+				FlowStep{Name: "extract article headline", Action: "extract_text", Selector: headlineSelector, SaveAs: "article_title"},
+			)
+			b.noteContentElementMatch("article_title", *headline, headlineSelector, headlineReason)
+			added = true
+		}
+	}
+	if summary != nil {
+		summarySelector := strings.TrimSpace(summary.Selector)
+		if summarySelector == "" && strings.TrimSpace(summary.XPath) != "" {
+			summarySelector = selectorFromDraftXPath(summary.XPath)
+		}
+		if summarySelector != "" {
+			if !added {
+				b.flow.Steps = append(b.flow.Steps,
+					FlowStep{Name: "wait for article content", Action: "wait_for_selector", Selector: summarySelector, Timeout: 10000},
+				)
+			}
+			b.flow.Steps = append(b.flow.Steps,
+				FlowStep{Name: "extract article summary", Action: "extract_text", Selector: summarySelector, SaveAs: "article_summary"},
+			)
+			b.noteContentElementMatch("article_summary", *summary, summarySelector, summaryReason)
+			added = true
+		}
+	}
+	return added
+}
+
 func (b *flowDraftBuilder) loadDOMNodes() {
 	if b.observation == nil || strings.TrimSpace(b.observation.DOMSnapshotPath) == "" {
 		return
@@ -833,6 +991,24 @@ func findBestObservedElement(elements []PageObservationElement, score func(PageO
 	return &elements[bestIndex], bestReason
 }
 
+func findBestObservedContentElement(elements []PageObservationContentElement, score func(PageObservationContentElement) (int, string)) (*PageObservationContentElement, string) {
+	bestIndex := -1
+	bestScore := -1
+	bestReason := ""
+	for index := range elements {
+		currentScore, reason := score(elements[index])
+		if currentScore > bestScore {
+			bestIndex = index
+			bestScore = currentScore
+			bestReason = reason
+		}
+	}
+	if bestIndex < 0 || bestScore < 0 {
+		return nil, ""
+	}
+	return &elements[bestIndex], bestReason
+}
+
 func findBestDraftNode(nodes []flattenedDraftNode, score func(flattenedDraftNode) (int, string)) (*flattenedDraftNode, string) {
 	bestIndex := -1
 	bestScore := -1
@@ -906,6 +1082,17 @@ func observedElementMetadata(element PageObservationElement) string {
 	return strings.ToLower(strings.Join(parts, " "))
 }
 
+func observedContentElementMetadata(element PageObservationContentElement) string {
+	parts := []string{
+		element.Kind,
+		element.Tag,
+		element.Text,
+		element.Href,
+		element.XPath,
+	}
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
 func scoreDraftKeywords(haystack string, keywords []string) int {
 	score := 0
 	for _, keyword := range keywords {
@@ -939,6 +1126,209 @@ func selectorFromDraftXPath(xpath string) string {
 	return "xpath=" + xpath
 }
 
+func draftParentSelectorFromXPath(xpath string) string {
+	parent := draftParentXPath(xpath)
+	if parent == "" {
+		return ""
+	}
+	return selectorFromDraftXPath(parent)
+}
+
+func draftParentXPath(xpath string) string {
+	segments, leadingDoubleSlash := splitDraftXPath(xpath)
+	if len(segments) <= 1 {
+		return ""
+	}
+	return joinDraftXPathSegments(segments[:len(segments)-1], leadingDoubleSlash)
+}
+
+func splitDraftXPath(xpath string) ([]string, bool) {
+	xpath = strings.TrimSpace(xpath)
+	if xpath == "" {
+		return nil, false
+	}
+	leadingDoubleSlash := strings.HasPrefix(xpath, "//")
+	trimmed := strings.TrimPrefix(xpath, "//")
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	rawSegments := strings.Split(trimmed, "/")
+	segments := make([]string, 0, len(rawSegments))
+	for _, segment := range rawSegments {
+		segment = strings.TrimSpace(segment)
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	return segments, leadingDoubleSlash
+}
+
+func joinDraftXPathSegments(segments []string, leadingDoubleSlash bool) string {
+	if len(segments) == 0 {
+		return ""
+	}
+	prefix := "/"
+	if leadingDoubleSlash {
+		prefix = "//"
+	}
+	return prefix + strings.Join(segments, "/")
+}
+
+func draftSharedXPathDepth(a string, b string) int {
+	aSegments, _ := splitDraftXPath(a)
+	bSegments, _ := splitDraftXPath(b)
+	depth := 0
+	for depth < len(aSegments) && depth < len(bSegments) {
+		if aSegments[depth] != bSegments[depth] {
+			break
+		}
+		depth++
+	}
+	return depth
+}
+
+func deriveDraftContentContainerXPath(elements []PageObservationContentElement) string {
+	if len(elements) == 0 {
+		return ""
+	}
+	segments, leadingDoubleSlash := splitDraftXPath(elements[0].XPath)
+	if len(segments) == 0 {
+		return ""
+	}
+	common := append([]string{}, segments...)
+	for _, element := range elements[1:] {
+		nextSegments, _ := splitDraftXPath(element.XPath)
+		depth := 0
+		for depth < len(common) && depth < len(nextSegments) && common[depth] == nextSegments[depth] {
+			depth++
+		}
+		common = common[:depth]
+		if len(common) == 0 {
+			break
+		}
+	}
+	if len(common) >= 3 || draftXPathSegmentsContainID(common) {
+		return joinDraftXPathSegments(common, leadingDoubleSlash)
+	}
+	return draftParentXPath(elements[0].XPath)
+}
+
+func draftXPathSegmentsContainID(segments []string) bool {
+	for _, segment := range segments {
+		if strings.Contains(segment, "@id=") {
+			return true
+		}
+	}
+	return false
+}
+
+func draftContentElementsByKind(elements []PageObservationContentElement, kinds ...string) []PageObservationContentElement {
+	allowed := map[string]struct{}{}
+	for _, kind := range kinds {
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if kind != "" {
+			allowed[kind] = struct{}{}
+		}
+	}
+	filtered := make([]PageObservationContentElement, 0, len(elements))
+	for _, element := range elements {
+		if _, ok := allowed[strings.ToLower(strings.TrimSpace(element.Kind))]; ok {
+			filtered = append(filtered, element)
+		}
+	}
+	return filtered
+}
+
+func relatedDraftContentLinks(heading *PageObservationContentElement, links []PageObservationContentElement) []PageObservationContentElement {
+	if len(links) == 0 {
+		return nil
+	}
+	if heading == nil {
+		return limitDraftContentElements(links, 3)
+	}
+	scored := make([]scoredDraftContentElement, 0, len(links))
+	for _, link := range links {
+		depth := draftSharedXPathDepth(heading.XPath, link.XPath)
+		score := depth * 10
+		if score <= 0 {
+			continue
+		}
+		scored = append(scored, scoredDraftContentElement{
+			Element: link,
+			Score:   score,
+		})
+	}
+	if len(scored) == 0 {
+		return limitDraftContentElements(links, 3)
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
+	result := make([]PageObservationContentElement, 0, minDraftInt(len(scored), 3))
+	for _, item := range scored {
+		result = append(result, item.Element)
+		if len(result) == 3 {
+			break
+		}
+	}
+	return result
+}
+
+func limitDraftContentElements(elements []PageObservationContentElement, limit int) []PageObservationContentElement {
+	if limit <= 0 || len(elements) <= limit {
+		return append([]PageObservationContentElement{}, elements...)
+	}
+	return append([]PageObservationContentElement{}, elements[:limit]...)
+}
+
+func scoreDraftIntentContentText(intentLower string, textLower string) int {
+	intentLower = strings.TrimSpace(intentLower)
+	textLower = strings.TrimSpace(textLower)
+	if intentLower == "" || textLower == "" {
+		return 0
+	}
+	score := 0
+	if strings.Contains(intentLower, textLower) {
+		score += len([]rune(textLower)) + 40
+	}
+	if len([]rune(textLower)) >= 2 {
+		for _, chunk := range draftInterestingSubstrings(textLower) {
+			if strings.Contains(intentLower, chunk) {
+				score += len([]rune(chunk)) + 8
+			}
+		}
+	}
+	return score
+}
+
+func draftInterestingSubstrings(value string) []string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) < 2 {
+		return nil
+	}
+	result := []string{}
+	seen := map[string]struct{}{}
+	for width := minDraftInt(4, len(runes)); width >= 2; width-- {
+		for start := 0; start+width <= len(runes); start++ {
+			chunk := strings.TrimSpace(string(runes[start : start+width]))
+			if chunk == "" {
+				continue
+			}
+			if _, ok := seen[chunk]; ok {
+				continue
+			}
+			seen[chunk] = struct{}{}
+			result = append(result, chunk)
+		}
+	}
+	return result
+}
+
+func minDraftInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (b *flowDraftBuilder) noteElementMatch(purpose string, element PageObservationElement, selector string, reason string) {
 	b.draft.MatchedElements = append(b.draft.MatchedElements, FlowDraftMatch{
 		Purpose:  purpose,
@@ -948,6 +1338,17 @@ func (b *flowDraftBuilder) noteElementMatch(purpose string, element PageObservat
 		Tag:      element.Tag,
 		Text:     firstNonEmpty(element.Text, element.Label, element.Placeholder),
 		Reason:   reason,
+	})
+}
+
+func (b *flowDraftBuilder) noteContentElementMatch(purpose string, element PageObservationContentElement, selector string, reason string) {
+	b.draft.MatchedElements = append(b.draft.MatchedElements, FlowDraftMatch{
+		Purpose:  purpose,
+		Source:   "content_element",
+		Selector: selector,
+		Tag:      element.Tag,
+		Text:     element.Text,
+		Reason:   firstNonEmpty(reason, observedContentElementMetadata(element)),
 	})
 }
 

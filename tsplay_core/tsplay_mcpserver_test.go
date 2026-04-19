@@ -3,6 +3,9 @@ package tsplay_core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,6 +38,26 @@ func TestNewTSPlayMCPServerOnlyRegistersTSPlayTools(t *testing.T) {
 	}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("tool names = %#v, want %#v", names, want)
+	}
+}
+
+func TestWithDraftFlowObservationInputAcceptsStringOrObject(t *testing.T) {
+	tool := mcp.NewTool("test.tool", withDraftFlowObservationInput())
+	observationSchema, ok := tool.InputSchema.Properties["observation"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected observation schema, got %#v", tool.InputSchema.Properties["observation"])
+	}
+	oneOf, ok := observationSchema["oneOf"].([]any)
+	if !ok || len(oneOf) != 2 {
+		t.Fatalf("expected observation oneOf schema, got %#v", observationSchema["oneOf"])
+	}
+	stringSchema, _ := oneOf[0].(map[string]any)
+	objectSchema, _ := oneOf[1].(map[string]any)
+	if stringSchema["type"] != "string" {
+		t.Fatalf("expected string schema first, got %#v", stringSchema)
+	}
+	if objectSchema["type"] != "object" || objectSchema["additionalProperties"] != true {
+		t.Fatalf("expected flexible object schema, got %#v", objectSchema)
 	}
 }
 
@@ -626,6 +649,27 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
   "url": "https://example.com/orders",
   "title": "Orders",
   "artifact_root": "/tmp/artifacts",
+  "page_summary": "Observed \"Orders\" with 2 interactive elements and 2 content elements. Top content: Order Center; Export orders.",
+  "dom_snapshot_excerpt": "h1: Order Center\na: Export orders -> /export",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h1",
+      "text": "Order Center",
+      "xpath": "/html/body/main/h1[1]",
+      "selector": "xpath=/html/body/main/h1[1]"
+    },
+    {
+      "index": 2,
+      "kind": "article_link",
+      "tag": "a",
+      "text": "Export orders",
+      "href": "/export",
+      "xpath": "/html/body/main/a[1]",
+      "selector": "xpath=/html/body/main/a[1]"
+    }
+  ],
   "elements": [
     {
       "index": 1,
@@ -708,6 +752,16 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	if preset, ok := security["preset"].(string); !ok || preset != "" {
 		t.Fatalf("expected empty preset by default, got %#v", security["preset"])
 	}
+	if summary, ok := payload["page_summary"].(string); !ok || !strings.Contains(summary, "Order Center") {
+		t.Fatalf("expected page_summary passthrough, got %#v", payload["page_summary"])
+	}
+	if excerpt, ok := payload["dom_snapshot_excerpt"].(string); !ok || !strings.Contains(excerpt, "Export orders") {
+		t.Fatalf("expected dom_snapshot_excerpt passthrough, got %#v", payload["dom_snapshot_excerpt"])
+	}
+	content, ok := payload["content_elements"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("expected content_elements passthrough, got %#v", payload["content_elements"])
+	}
 }
 
 func TestHandleDraftFlowToolExposesTopLevelIssue(t *testing.T) {
@@ -757,6 +811,136 @@ func TestHandleDraftFlowToolExposesTopLevelIssue(t *testing.T) {
 	}
 	if issue["code"] != "security_policy" {
 		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+}
+
+func TestHandleDraftFlowToolUsesContentElementsForContentIntent(t *testing.T) {
+	observation := `{
+  "url": "https://money.163.com/",
+  "title": "网易财经",
+  "artifact_root": "/tmp/artifacts",
+  "page_summary": "Observed \"网易财经\" with 1 interactive elements and 3 content elements. Top content: 财经要闻; 头条新闻一; 头条新闻二.",
+  "dom_snapshot_excerpt": "h2: 财经要闻\na: 头条新闻一 -> https://money.163.com/story/1",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h2",
+      "text": "财经要闻",
+      "xpath": "/html/body/main/section[1]/h2[1]",
+      "selector": "xpath=/html/body/main/section[1]/h2[1]"
+    },
+    {
+      "index": 2,
+      "kind": "article_link",
+      "tag": "a",
+      "text": "头条新闻一",
+      "href": "https://money.163.com/story/1",
+      "xpath": "/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+      "selector": "xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]"
+    },
+    {
+      "index": 3,
+      "kind": "article_link",
+      "tag": "a",
+      "text": "头条新闻二",
+      "href": "https://money.163.com/story/2",
+      "xpath": "/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+      "selector": "xpath=/html/body/main/section[1]/ul[1]/li[2]/a[1]"
+    }
+  ],
+  "elements": [
+    {
+      "index": 1,
+      "tag": "a",
+      "type": "link",
+      "text": "头条新闻一",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]"]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "查看财经要闻内容",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	flowYAML, ok := draft["flow_yaml"].(string)
+	if !ok || !strings.Contains(flowYAML, `action: get_all_links`) {
+		t.Fatalf("expected content-oriented draft flow, got %#v", draft["flow_yaml"])
+	}
+}
+
+func TestHandleDraftFlowToolAcceptsStructuredObservationObject(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent": "查看财经要闻内容",
+				"observation": map[string]any{
+					"title": "网易财经",
+					"content_elements\\": []any{
+						map[string]any{
+							"index":    1,
+							"kind":     "headline",
+							"tag":      "h2",
+							"text":     "财经要闻",
+							"xpath":    "/html/body/main/section[1]/h2[1]",
+							"selector": "xpath=/html/body/main/section[1]/h2[1]",
+						},
+						map[string]any{
+							"index":    2,
+							"kind":     "article_link",
+							"tag":      "a",
+							"text":     "头条新闻一",
+							"href":     "https://money.163.com/story/1",
+							"xpath":    "/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+							"selector": "xpath=/html/body/main/section[1]/ul[1]/li[1]/a[1]",
+						},
+						map[string]any{
+							"index":    3,
+							"kind":     "article_link",
+							"tag":      "a",
+							"text":     "头条新闻二",
+							"href":     "https://money.163.com/story/2",
+							"xpath":    "/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+							"selector": "xpath=/html/body/main/section[1]/ul[1]/li[2]/a[1]",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	draft, ok := payload["draft"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected draft payload, got %#v", payload["draft"])
+	}
+	flowYAML, ok := draft["flow_yaml"].(string)
+	if !ok || !strings.Contains(flowYAML, `action: get_all_links`) {
+		t.Fatalf("expected content-oriented flow from structured observation, got %#v", draft["flow_yaml"])
 	}
 }
 
@@ -830,6 +1014,18 @@ func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
   "url": "https://example.com/orders",
   "title": "Orders",
   "artifact_root": "/tmp/artifacts",
+  "page_summary": "Observed \"Orders\" with 2 interactive elements and 2 content elements. Top content: Order Center; Export orders.",
+  "dom_snapshot_excerpt": "h1: Order Center\na: Export orders -> /export",
+  "content_elements": [
+    {
+      "index": 1,
+      "kind": "headline",
+      "tag": "h1",
+      "text": "Order Center",
+      "xpath": "/html/body/main/h1[1]",
+      "selector": "xpath=/html/body/main/h1[1]"
+    }
+  ],
   "elements": [
     {
       "index": 1,
@@ -886,6 +1082,16 @@ func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
 	first, ok := recommended[0].(map[string]any)
 	if !ok || first["id"] != "search_results_to_csv" {
 		t.Fatalf("expected search_results_to_csv first, got %#v", payload["recommended_examples"])
+	}
+	if summary, ok := payload["page_summary"].(string); !ok || !strings.Contains(summary, "Order Center") {
+		t.Fatalf("expected page_summary passthrough, got %#v", payload["page_summary"])
+	}
+	if excerpt, ok := payload["dom_snapshot_excerpt"].(string); !ok || !strings.Contains(excerpt, "Export orders") {
+		t.Fatalf("expected dom_snapshot_excerpt passthrough, got %#v", payload["dom_snapshot_excerpt"])
+	}
+	content, ok := payload["content_elements"].([]any)
+	if !ok || len(content) != 1 {
+		t.Fatalf("expected content_elements passthrough, got %#v", payload["content_elements"])
 	}
 }
 
@@ -1648,6 +1854,61 @@ func TestHandleObservePageToolMissingURL(t *testing.T) {
 		if _, ok := run[key]; !ok {
 			t.Fatalf("expected run metadata key %q in %#v", key, run)
 		}
+	}
+}
+
+func TestHandleObservePageToolIncludesObservationSummaryFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html>
+<html>
+<head><title>Finance</title></head>
+<body>
+  <main>
+    <h1>财经要闻</h1>
+    <p>今日市场聚焦宏观经济数据和行业财报。</p>
+    <a href="/story/1">头条新闻一</a>
+    <a href="/story/2">头条新闻二</a>
+  </main>
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"url": server.URL,
+			},
+		},
+	}
+
+	result, err := handleObservePageToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()})
+	if err != nil {
+		t.Fatalf("observe page: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	if summary, ok := payload["page_summary"].(string); !ok || !strings.Contains(summary, "财经要闻") {
+		t.Fatalf("expected page_summary, got %#v", payload["page_summary"])
+	}
+	if excerpt, ok := payload["dom_snapshot_excerpt"].(string); !ok || !strings.Contains(excerpt, "头条新闻一") {
+		t.Fatalf("expected dom_snapshot_excerpt, got %#v", payload["dom_snapshot_excerpt"])
+	}
+	content, ok := payload["content_elements"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("expected content_elements, got %#v", payload["content_elements"])
+	}
+	observation, ok := payload["observation"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected observation payload, got %#v", payload["observation"])
+	}
+	if observation["page_summary"] != payload["page_summary"] {
+		t.Fatalf("expected observation.page_summary to match top-level summary, got %#v", observation["page_summary"])
 	}
 }
 
