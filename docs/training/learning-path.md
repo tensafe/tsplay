@@ -69,7 +69,7 @@
 - 先修：L3
 - 学习重点：
   - `flow_schema`、`flow_examples`
-  - `observe_page`、`draft_flow`
+  - `finalize_flow`、`observe_page`、`draft_flow`
   - `validate_flow`、`run_flow`
   - `repair_flow_context`、`repair_flow`
   - `save_session`、`list_sessions`、`use_session`

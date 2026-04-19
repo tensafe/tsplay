@@ -216,7 +216,7 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 
 1. 先调 `tsplay.flow_schema`，拿到严格约束
 2. 需要参考模板时调 `tsplay.flow_examples`
-3. 有明确 URL 和意图时优先调 `tsplay.draft_flow`
+3. 有明确 URL 和意图时优先调 `tsplay.finalize_flow`；需要更细粒度控制时再调 `tsplay.draft_flow`
 4. 需要更细粒度观察时先调 `tsplay.observe_page`
 5. 如需单独校验，再调 `tsplay.validate_flow`
 6. 成功后用 `tsplay.run_flow` 执行
@@ -240,6 +240,7 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 另外，和 Flow 结构相关的工具现在会尽量返回结构化诊断：
 
 - `draft.validation.issue`
+- `draft_flow.issue`
 - `validate_flow.issue`
 - `finalize_flow.issue`
 
@@ -274,6 +275,34 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 - 在 observation 里存在更稳 selector 时自动修正一轮
 - 返回 `validation`、`selector_repairs`、`repair_hints`、建议变量和未解决项
 
+真实返回示例（节选）：
+
+```json
+{
+  "ok": true,
+  "tool": "tsplay.draft_flow",
+  "summary": "Drafted flow \"order_search_from_observation\" with 2 planned actions.",
+  "draft": {
+    "flow_name": "order_search_from_observation",
+    "flow_yaml": "schema_version: \"1\"\nname: order_search_from_observation\nvars:\n  target_url: https://example.com/orders\n  query_text: A10086\nsteps:\n  - name: open target page\n    action: navigate\n    url: \"{{target_url}}\"\n  - name: wait for search input\n    action: wait_for_selector\n    selector: '[data-testid=\"order-query\"]'\n    timeout: 10000\n  - name: fill search query\n    action: type_text\n    selector: '[data-testid=\"order-query\"]'\n    text: \"{{query_text}}\"\n  - name: submit search\n    action: click\n    selector: 'text=\"Search\"'\n",
+    "validation": {
+      "valid": true,
+      "name": "order_search_from_observation",
+      "steps": 4
+    },
+    "planned_actions": ["navigate", "search"],
+    "suggested_vars": {
+      "target_url": "https://example.com/orders",
+      "query_text": "A10086"
+    }
+  },
+  "next_action": {
+    "tool": "tsplay.run_flow",
+    "reason": "Run the returned draft.flow_yaml and inspect the trace."
+  }
+}
+```
+
 ### 一步式收敛：`tsplay.finalize_flow`
 
 `tsplay.finalize_flow` 适合做“小模型友好”的默认入口：它会复用 `draft_flow` 的观察和草拟能力，但直接返回是否已经可以执行。
@@ -296,6 +325,53 @@ go run . -action mcp-stdio -flow-root script -artifact-root artifacts
 - `issue`
 - `suggested_vars`
 - `next_action`
+
+真实返回示例（节选）：
+
+```json
+{
+  "ok": true,
+  "tool": "tsplay.finalize_flow",
+  "status": "needs_permission",
+  "summary": "Finalized flow \"upload_from_observation\" with status needs_permission.",
+  "flow_yaml": "schema_version: \"1\"\nname: upload_from_observation\nvars:\n  target_url: https://example.com/upload\n  upload_file_path: TODO\nsteps:\n  - name: open target page\n    action: navigate\n    url: \"{{target_url}}\"\n  - name: wait for upload input\n    action: wait_for_selector\n    selector: '#file-input'\n    timeout: 10000\n  - name: choose upload file\n    action: upload_file\n    selector: '#file-input'\n    file_path: \"{{upload_file_path}}\"\n",
+  "validation": {
+    "valid": false,
+    "name": "upload_from_observation",
+    "steps": 3,
+    "error": "step 3 action \"upload_file\" is disabled by security policy; set allow_file_access=true only for trusted flows",
+    "issue": {
+      "code": "security_policy",
+      "step_path": "3",
+      "action": "upload_file",
+      "field": "allow_file_access",
+      "suggestion": "Retry with allow_file_access=true only if this is a trusted flow."
+    }
+  },
+  "issue": {
+    "code": "security_policy",
+    "step_path": "3",
+    "action": "upload_file",
+    "field": "allow_file_access",
+    "suggestion": "Retry with allow_file_access=true only if this is a trusted flow."
+  },
+  "next_action": {
+    "tool": "tsplay.finalize_flow",
+    "reason": "Retry with the matching security_preset or allow_* override once the user approves it."
+  }
+}
+```
+
+### 常见误写速查表
+
+| 常见误写 | 常见 issue 输出 | 推荐修复 |
+| --- | --- | --- |
+| `action: fill` | `code=unsupported_action`, `did_you_mean=type_text` | 改成 `action: type_text` |
+| `result_var: rows` | `code=unknown_field`, `did_you_mean=save_as` | 改成 `save_as: rows` |
+| `with.headers:` 直接写成顶层字段 | `code=unknown_field`, `field=with.headers` | 改成 `with: { headers: [...] }` |
+| `navigate.timeout` | `code=unexpected_parameter`, `field=timeout` | 去掉 step 级 `timeout`，改用 `browser.timeout` 或 MCP 工具超时 |
+| `action: save_file` | `code=unsupported_action` | 按产物类型改用 `write_json`、`write_csv`、`save_html` 或下载动作 |
+| `action: log` | `code=unsupported_action` | 把完成提示放到调用方，或用 `set_var` / `append_var` 保存状态 |
 
 ## 浏览器会话与 Flow 级配置
 

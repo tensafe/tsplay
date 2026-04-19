@@ -710,6 +710,56 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	}
 }
 
+func TestHandleDraftFlowToolExposesTopLevelIssue(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/upload",
+  "title": "Upload",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "file",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#file-input"]
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Upload",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["text=\"Upload\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "上传文件并提交",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level issue payload, got %#v", payload["issue"])
+	}
+	if issue["code"] != "security_policy" {
+		t.Fatalf("unexpected issue payload: %#v", issue)
+	}
+}
+
 func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
 	observation := `{
   "url": "https://example.com/orders",
@@ -763,6 +813,134 @@ func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
 	nextAction, ok := payload["next_action"].(map[string]any)
 	if !ok || nextAction["tool"] != "tsplay.run_flow" {
 		t.Fatalf("expected next_action tsplay.run_flow, got %#v", payload["next_action"])
+	}
+}
+
+func TestHandleFinalizeFlowToolWithObservationNeedsInput(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/orders",
+  "title": "Orders",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "Order keyword",
+      "placeholder": "Search orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {"data-testid": "order-query"}
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "搜索订单",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleFinalizeFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("finalize flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true || payload["status"] != "needs_input" {
+		t.Fatalf("expected needs_input finalize payload, got %#v", payload)
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.finalize_flow" {
+		t.Fatalf("expected next_action tsplay.finalize_flow, got %#v", payload["next_action"])
+	}
+}
+
+func TestHandleFinalizeFlowToolWithObservationNeedsPermission(t *testing.T) {
+	observation := `{
+  "url": "https://example.com/upload",
+  "title": "Upload",
+  "artifact_root": "/tmp/artifacts",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "file",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#file-input"]
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Upload",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["text=\"Upload\""]
+    }
+  ]
+}`
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":      "上传文件并提交",
+				"observation": observation,
+			},
+		},
+	}
+
+	result, err := handleFinalizeFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("finalize flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true || payload["status"] != "needs_permission" {
+		t.Fatalf("expected needs_permission finalize payload, got %#v", payload)
+	}
+	issue, ok := payload["issue"].(map[string]any)
+	if !ok || issue["code"] != "security_policy" {
+		t.Fatalf("expected security issue, got %#v", payload["issue"])
+	}
+	nextAction, ok := payload["next_action"].(map[string]any)
+	if !ok || nextAction["tool"] != "tsplay.finalize_flow" {
+		t.Fatalf("expected next_action tsplay.finalize_flow, got %#v", payload["next_action"])
+	}
+}
+
+func TestFinalizeFlowStatusNeedsRepair(t *testing.T) {
+	draft := &FlowDraft{
+		Validation: &FlowDraftValidation{
+			Valid: false,
+			Error: `step 2 uses unsupported action "fill"`,
+			Issue: &FlowIssue{
+				Code:       "unsupported_action",
+				DidYouMean: "type_text",
+			},
+		},
+	}
+
+	status, reason := finalizeFlowStatus(draft)
+	if status != "needs_repair" {
+		t.Fatalf("expected needs_repair, got %q", status)
+	}
+	if !strings.Contains(reason, `unsupported action "fill"`) {
+		t.Fatalf("unexpected reason: %q", reason)
 	}
 }
 
@@ -1435,6 +1613,33 @@ steps:
 	policy, ok := security["policy"].(map[string]any)
 	if !ok || policy["allow_lua"] != true {
 		t.Fatalf("expected allow_lua in security policy, got %#v", payload["security"])
+	}
+}
+
+func TestHandleValidateFlowToolAcceptsFlowYAMLAlias(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow_yaml": `
+schema_version: "1"
+name: validate_from_flow_yaml
+steps:
+  - action: click
+    selector: "#submit"
+`,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != true || payload["name"] != "validate_from_flow_yaml" {
+		t.Fatalf("expected flow_yaml alias to validate, got %#v", payload)
 	}
 }
 

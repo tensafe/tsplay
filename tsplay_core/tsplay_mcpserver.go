@@ -1021,6 +1021,9 @@ func draftFlowPayloadWithOptions(
 		"draft":       draft,
 		"security":    securityResolution,
 	}
+	if draft.Validation != nil && draft.Validation.Issue != nil {
+		result["issue"] = draft.Validation.Issue
+	}
 	if runHandle != nil {
 		result["run"] = runHandle.finish(nil, map[string]any{
 			"url":              firstNonEmpty(url, observation.URL),
@@ -1035,6 +1038,9 @@ func draftFlowPayloadWithOptions(
 func finalizeFlowStatus(draft *FlowDraft) (string, string) {
 	if draft == nil {
 		return "failed", "Draft did not produce a usable flow."
+	}
+	if draft.Validation == nil {
+		return "needs_repair", "The draft did not produce a validation result."
 	}
 	if draft.Validation != nil && !draft.Validation.Valid {
 		if draft.Validation.Issue != nil && draft.Validation.Issue.Code == "security_policy" {
@@ -1052,14 +1058,32 @@ func draftHasTODOInput(draft *FlowDraft) bool {
 	if draft == nil {
 		return false
 	}
-	return flowValueContainsTODO(draft.SuggestedVars)
+	if flowValueContainsTODO(draft.SuggestedVars) {
+		return true
+	}
+	if draft.Flow != nil && flowValueContainsTODO(draft.Flow.Vars) {
+		return true
+	}
+	return false
 }
 
 func flowValueContainsTODO(value any) bool {
 	switch typed := value.(type) {
 	case string:
-		return strings.TrimSpace(typed) == "TODO"
+		return strings.EqualFold(strings.TrimSpace(typed), "TODO")
+	case []string:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
 	case []any:
+		for _, item := range typed {
+			if flowValueContainsTODO(item) {
+				return true
+			}
+		}
+	case map[string]string:
 		for _, item := range typed {
 			if flowValueContainsTODO(item) {
 				return true
@@ -1426,8 +1450,15 @@ func flowFromToolRequest(request mcp.CallToolRequest) (*Flow, error) {
 func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayMCPServerOptions) (*Flow, error) {
 	flowPath := request.GetString("flow_path", "")
 	flowContent := request.GetString("flow", "")
+	flowYAMLContent := request.GetString("flow_yaml", "")
+	if flowContent != "" && flowYAMLContent != "" {
+		return nil, fmt.Errorf("use either flow or flow_yaml, not both")
+	}
+	if flowContent == "" {
+		flowContent = flowYAMLContent
+	}
 	if flowPath != "" && flowContent != "" {
-		return nil, fmt.Errorf("use either flow or flow_path, not both")
+		return nil, fmt.Errorf("use either flow, flow_yaml, or flow_path, not both")
 	}
 	if flowPath != "" {
 		resolvedPath, err := resolveMCPFlowPath(flowPath, options.FlowPathRoot)
@@ -1437,7 +1468,7 @@ func flowFromToolRequestWithOptions(request mcp.CallToolRequest, options TSPlayM
 		return LoadFlowFile(resolvedPath)
 	}
 	if flowContent == "" {
-		return nil, fmt.Errorf("either flow or flow_path is required")
+		return nil, fmt.Errorf("either flow, flow_yaml, or flow_path is required")
 	}
 	return ParseFlow([]byte(flowContent), request.GetString("format", "yaml"))
 }

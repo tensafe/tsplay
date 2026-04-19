@@ -61,7 +61,7 @@
 
 ### 第 3 周：MCP 与会话能力
 
-- 引入 `observe_page`、`draft_flow`、`repair_flow`
+- 引入 `finalize_flow`、`observe_page`、`draft_flow`、`repair_flow`
 - 对需要登录态的场景试用 `save_session` / `use_session`
 
 ### 第 4 周：标准化与传帮带

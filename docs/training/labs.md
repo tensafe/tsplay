@@ -110,7 +110,7 @@
   - 任一 `demo/` 页面
   - MCP server
 - 任务：
-  - 用 `tsplay.observe_page` 或 `tsplay.draft_flow` 草拟一条 Flow
+  - 优先用 `tsplay.finalize_flow` 收敛一条 Flow；需要细粒度控制时再用 `tsplay.observe_page` 或 `tsplay.draft_flow`
   - 用 `tsplay.validate_flow` 校验
   - 人为制造一个 selector 错误
   - 用 `tsplay.repair_flow_context` 或 `tsplay.repair_flow` 组织修复
