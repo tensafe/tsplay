@@ -85,6 +85,7 @@ go mod download
 | 运行 Lua 脚本 | `go run . -script script/open_url.lua` |
 | 运行 Flow | `go run . -flow script/demo_baidu.flow.yaml` |
 | 启动内置静态文件服务 | `go run . -action file-srv -addr :8000` |
+| 直接调用一个 TSPlay MCP 工具 | `go run . -action mcp-tool -tool tsplay.list_actions` |
 | 列出二进制内置资源 | `go run . -action list-assets` |
 | 释放内置 docs/script/demo | `go run . -action extract-assets -extract-root ./tsplay-assets` |
 | 启动 MCP Server | `go run . -action srv` |
@@ -167,6 +168,8 @@ go run . -action srv
 go run . -action srv -addr :8081
 go run . -action srv -flow-root script -artifact-root artifacts
 go run . -action mcp-stdio -flow-root script -artifact-root artifacts
+go run . -action mcp-tool -tool tsplay.list_actions
+go run . -action mcp-tool -tool tsplay.observe_page -args-file script/tutorials/113_mcp_observe_page_template_release.args.json
 ```
 
 默认约束：

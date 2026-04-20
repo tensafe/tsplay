@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,21 +25,50 @@ func runMCPToolAction(
 		return err
 	}
 
-	payload, err := tsplay_core.InvokeTSPlayTool(
-		context.Background(),
-		toolName,
-		arguments,
-		tsplay_core.TSPlayMCPServerOptions{
-			FlowPathRoot: flowRoot,
-			ArtifactRoot: artifactRoot,
-		},
-	)
+	suppressedPayload, err := invokeMCPToolWithoutStdout(func() (map[string]any, error) {
+		return tsplay_core.InvokeTSPlayTool(
+			context.Background(),
+			toolName,
+			arguments,
+			tsplay_core.TSPlayMCPServerOptions{
+				FlowPathRoot: flowRoot,
+				ArtifactRoot: artifactRoot,
+			},
+		)
+	})
 	if err != nil {
 		return err
 	}
 
-	printJSON(payload)
+	printJSON(suppressedPayload)
 	return nil
+}
+
+func invokeMCPToolWithoutStdout(run func() (map[string]any, error)) (map[string]any, error) {
+	originalStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+
+	outputCh := make(chan string, 1)
+	go func() {
+		var buffer bytes.Buffer
+		_, _ = io.Copy(&buffer, reader)
+		outputCh <- buffer.String()
+	}()
+
+	os.Stdout = writer
+	payload, runErr := run()
+	_ = writer.Close()
+	os.Stdout = originalStdout
+	_ = reader.Close()
+	<-outputCh
+
+	if runErr != nil {
+		return nil, runErr
+	}
+	return payload, nil
 }
 
 func loadMCPToolArguments(argsJSON string, argsFile string) (map[string]any, error) {

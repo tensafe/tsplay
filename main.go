@@ -57,7 +57,7 @@ var g_headless = false
 var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | File Server")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
