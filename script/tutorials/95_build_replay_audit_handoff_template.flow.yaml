@@ -1,0 +1,98 @@
+schema_version: "1"
+name: lesson_95_build_replay_audit_handoff_template_flow
+description: Reframe the handoff chain into replay, audit, and delivery blocks that can be reused as a template.
+vars:
+  template_catalog_file: artifacts/tutorials/92-build-template-artifact-catalog-flow.csv
+  handoff_file: artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-flow.csv
+  replay_batch_id: ""
+  template_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{template_catalog_file}}"
+    save_as: catalog_rows
+
+  - action: read_csv
+    file_path: "{{handoff_file}}"
+    save_as: handoff_rows
+
+  - action: foreach
+    items: "{{handoff_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: handoff_scan
+    steps:
+      - action: set_var
+        save_as: replay_batch_id
+        with:
+          value: "{{row.replay_batch_id}}"
+
+  - action: foreach
+    items: "{{catalog_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: catalog_scan
+    steps:
+      - action: lua
+        save_as: template_row
+        code: |
+          local artifact_key = tostring(row.artifact_key or "")
+          local block_name = "handoff_release"
+          local step_order = "4"
+          if artifact_key == "lifecycle_evidence" then
+            block_name = "replay_batch"
+            step_order = "1"
+          elseif artifact_key == "replay_result" then
+            block_name = "replay_batch"
+            step_order = "2"
+          elseif artifact_key == "audit_comparison" then
+            block_name = "replay_audit"
+            step_order = "3"
+          end
+          return {
+            block_name = block_name,
+            step_order = step_order,
+            template_slot = tostring(row.template_slot or ""),
+            action_focus = tostring(row.action_focus or ""),
+            expected_artifact = artifact_key,
+            owner_batch_id = tostring(replay_batch_id or ""),
+            note = tostring(row.note or ""),
+          }
+      - action: append_var
+        save_as: template_rows
+        with:
+          value: "{{template_row}}"
+
+  - action: append_var
+    save_as: template_rows
+    with:
+      value:
+        block_name: handoff_release
+        step_order: "5"
+        template_slot: output.handoff_summary_csv
+        action_focus: read_csv,write_json
+        expected_artifact: handoff_summary
+        owner_batch_id: "{{replay_batch_id}}"
+        note: final handoff summary for template release
+
+  - action: write_csv
+    file_path: artifacts/tutorials/95-build-replay-audit-handoff-template-flow.csv
+    with:
+      value: "{{template_rows}}"
+      headers:
+        - block_name
+        - step_order
+        - template_slot
+        - action_focus
+        - expected_artifact
+        - owner_batch_id
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/95-build-replay-audit-handoff-template-flow.json
+    with:
+      value:
+        lesson: "95"
+        mode: flow
+        template_catalog_file: "{{template_catalog_file}}"
+        handoff_file: "{{handoff_file}}"
+        template_rows: "{{template_rows}}"

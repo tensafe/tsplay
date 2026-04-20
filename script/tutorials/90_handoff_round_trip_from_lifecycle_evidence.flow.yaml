@@ -1,0 +1,324 @@
+schema_version: "1"
+name: lesson_90_handoff_round_trip_from_lifecycle_evidence_flow
+description: Rebuild a handoff batch from lifecycle evidence, add an audit row, and emit a final delivery summary.
+vars:
+  lifecycle_file: artifacts/tutorials/80-external-sync-lifecycle-round-trip-flow.csv
+  counter_key: tutorial:session_import:batch_counter
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+  original_batch_id: ""
+  original_audit_id: ""
+  input_file: ""
+  expected_row_count: "0"
+  latest_operator: unknown
+  detail_rows: []
+  manifest_rows: []
+  checklist_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{lifecycle_file}}"
+    save_as: lifecycle_rows
+
+  - action: foreach
+    items: "{{lifecycle_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: lifecycle_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: original_audit_id
+        with:
+          value: "{{row.audit_id}}"
+      - action: set_var
+        save_as: input_file
+        with:
+          value: "{{row.input_file}}"
+      - action: set_var
+        save_as: expected_row_count
+        with:
+          value: "{{row.pre_cleanup_detail}}"
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: source_scan
+    steps:
+      - action: set_var
+        save_as: latest_operator
+        with:
+          value: "{{row.operator}}"
+
+  - action: redis_incr
+    key: "{{counter_key}}"
+    save_as: handoff_number
+
+  - action: set_var
+    save_as: replay_batch_id
+    with:
+      value: "{{original_batch_id}}-handoff-{{handoff_number}}"
+
+  - action: set_var
+    save_as: payload_key
+    with:
+      value: "{{payload_prefix}}{{replay_batch_id}}"
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: detail_scan
+    steps:
+      - action: append_var
+        save_as: detail_rows
+        with:
+          value:
+            batch_id: "{{replay_batch_id}}"
+            line_no: "{{row.line_no}}"
+            name: "{{row.name}}"
+            phone: "{{row.phone}}"
+            status: "{{row.status}}"
+            operator_name: "{{row.operator}}"
+
+  - action: redis_set
+    key: "{{payload_key}}"
+    ttl_seconds: 3600
+    with:
+      value:
+        lesson: "90"
+        batch_id: "{{replay_batch_id}}"
+        source_batch_id: "{{original_batch_id}}"
+        source_audit_id: "{{original_audit_id}}"
+        input_file: "{{input_file}}"
+        row_count: "{{detail_scan.iterations}}"
+        latest_operator: "{{latest_operator}}"
+
+  - action: redis_set
+    key: "{{latest_key}}"
+    value: "{{replay_batch_id}}"
+    ttl_seconds: 3600
+
+  - action: db_transaction
+    save_as: transaction_result
+    steps:
+      - action: db_upsert
+        connection: reporting
+        save_as: summary_upsert_result
+        with:
+          table: public.tutorial_import_batches
+          columns:
+            - batch_id
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          key_columns:
+            - batch_id
+          update_columns:
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          row:
+            batch_id: "{{replay_batch_id}}"
+            report_file: "{{input_file}}"
+            source_lesson: "90"
+            row_count: "{{detail_scan.iterations}}"
+            operator_name: "{{latest_operator}}"
+
+      - action: db_execute
+        connection: reporting
+        save_as: delete_rows_result
+        with:
+          sql: DELETE FROM public.tutorial_import_rows WHERE batch_id = $1
+          args:
+            - "{{replay_batch_id}}"
+
+      - action: db_insert_many
+        connection: reporting
+        save_as: detail_insert_result
+        with:
+          table: public.tutorial_import_rows
+          columns:
+            - batch_id
+            - line_no
+            - name
+            - phone
+            - status
+            - operator_name
+          rows: "{{detail_rows}}"
+
+  - action: set_var
+    save_as: replay_audit_id
+    with:
+      value: "{{replay_batch_id}}-handoff-audit"
+
+  - action: db_upsert
+    connection: reporting
+    save_as: audit_upsert_result
+    with:
+      table: public.tutorial_import_audits
+      columns:
+        - audit_id
+        - batch_id
+        - event_type
+        - status
+        - detail
+        - success_count
+        - failure_count
+        - source_lesson
+      key_columns:
+        - audit_id
+      update_columns:
+        - batch_id
+        - event_type
+        - status
+        - detail
+        - success_count
+        - failure_count
+        - source_lesson
+      row:
+        audit_id: "{{replay_audit_id}}"
+        batch_id: "{{replay_batch_id}}"
+        event_type: handoff_round_trip
+        status: ok
+        detail: replayed from lifecycle evidence and prepared handoff package
+        success_count: "{{detail_scan.iterations}}"
+        failure_count: 0
+        source_lesson: "90"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: detail_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{replay_batch_id}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: audit_row
+    with:
+      sql: SELECT audit_id, batch_id, event_type, status, detail, success_count, failure_count, source_lesson FROM public.tutorial_import_audits WHERE audit_id = $1
+      args:
+        - "{{replay_audit_id}}"
+
+  - action: lua
+    save_as: verification
+    code: |
+      local expected = tonumber(expected_row_count) or 0
+      local detail_rows = tonumber(detail_count_row.row_count) or 0
+      if detail_rows ~= expected then
+        error("handoff row count mismatch: detail=" .. tostring(detail_rows) .. " expected=" .. tostring(expected))
+      end
+      return {
+        expected_row_count = expected,
+        replay_row_count = detail_rows,
+        status = "ok",
+      }
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: lifecycle_evidence
+        batch_id: "{{original_batch_id}}"
+        related_batch_id: "{{replay_batch_id}}"
+        row_count: "{{verification.expected_row_count}}"
+        note: source lifecycle evidence from lesson 80
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: handoff_replay
+        batch_id: "{{replay_batch_id}}"
+        related_batch_id: "{{original_batch_id}}"
+        row_count: "{{verification.replay_row_count}}"
+        note: new replay batch prepared for handoff
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: handoff_audit
+        batch_id: "{{replay_batch_id}}"
+        related_batch_id: "{{replay_audit_id}}"
+        row_count: "{{verification.replay_row_count}}"
+        note: audit row written for handoff batch
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: lifecycle_evidence
+        status: ready
+        note: lifecycle evidence loaded
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: handoff_replay
+        status: ready
+        note: replay batch persisted
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: handoff_audit
+        status: ready
+        note: audit row written
+
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: write_csv
+    file_path: artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-flow.csv
+    with:
+      value:
+        - original_batch_id: "{{original_batch_id}}"
+          replay_batch_id: "{{replay_batch_id}}"
+          replay_audit_id: "{{replay_audit_id}}"
+          expected_row_count: "{{verification.expected_row_count}}"
+          replay_row_count: "{{verification.replay_row_count}}"
+          latest_batch_id: "{{latest_batch_id}}"
+          status: "{{verification.status}}"
+      headers:
+        - original_batch_id
+        - replay_batch_id
+        - replay_audit_id
+        - expected_row_count
+        - replay_row_count
+        - latest_batch_id
+        - status
+
+  - action: write_json
+    file_path: artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-flow.json
+    with:
+      value:
+        lesson: "90"
+        mode: flow
+        lifecycle_file: "{{lifecycle_file}}"
+        input_file: "{{input_file}}"
+        original_batch_id: "{{original_batch_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        replay_audit_id: "{{replay_audit_id}}"
+        transaction_result: "{{transaction_result}}"
+        audit_upsert_result: "{{audit_upsert_result}}"
+        detail_count_row: "{{detail_count_row}}"
+        audit_row: "{{audit_row}}"
+        manifest_rows: "{{manifest_rows}}"
+        checklist_rows: "{{checklist_rows}}"

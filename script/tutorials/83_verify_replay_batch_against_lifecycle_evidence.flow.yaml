@@ -1,0 +1,162 @@
+schema_version: "1"
+name: lesson_83_verify_replay_batch_against_lifecycle_evidence_flow
+description: Compare the replayed batch from Lesson 82 against the lifecycle evidence captured in Lesson 80.
+vars:
+  lifecycle_file: artifacts/tutorials/80-external-sync-lifecycle-round-trip-flow.csv
+  replay_file: artifacts/tutorials/82-replay-batch-from-lifecycle-evidence-flow.csv
+  latest_key: tutorial:session_import:latest_batch
+  original_batch_id: ""
+  expected_row_count: "0"
+  input_file: ""
+  replay_batch_id: ""
+  payload_key: ""
+steps:
+  - action: read_csv
+    file_path: "{{lifecycle_file}}"
+    save_as: lifecycle_rows
+
+  - action: foreach
+    items: "{{lifecycle_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: lifecycle_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: expected_row_count
+        with:
+          value: "{{row.pre_cleanup_detail}}"
+      - action: set_var
+        save_as: input_file
+        with:
+          value: "{{row.input_file}}"
+
+  - action: read_csv
+    file_path: "{{replay_file}}"
+    save_as: replay_rows
+
+  - action: foreach
+    items: "{{replay_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: replay_scan
+    steps:
+      - action: set_var
+        save_as: replay_batch_id
+        with:
+          value: "{{row.replay_batch_id}}"
+      - action: set_var
+        save_as: payload_key
+        with:
+          value: "{{row.payload_key}}"
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    save_as: source_rows
+
+  - action: foreach
+    items: "{{source_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: source_scan
+    steps:
+      - action: set_var
+        save_as: last_source_name
+        with:
+          value: "{{row.name}}"
+
+  - action: redis_get
+    key: "{{payload_key}}"
+    save_as: payload_text
+
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_after
+
+  - action: json_extract
+    value: "{{payload_text}}"
+    path: $.row_count
+    save_as: replay_payload_row_count
+
+  - action: json_extract
+    value: "{{payload_text}}"
+    path: $.source_batch_id
+    save_as: replay_source_batch_id
+
+  - action: json_extract
+    value: "{{payload_text}}"
+    path: $.input_file
+    save_as: replay_input_file
+
+  - action: db_query_one
+    connection: reporting
+    save_as: replay_summary_row
+    with:
+      sql: SELECT batch_id, report_file, row_count, operator_name FROM public.tutorial_import_batches WHERE batch_id = $1
+      args:
+        - "{{replay_batch_id}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: replay_detail_count_row
+    with:
+      sql: SELECT COUNT(*) AS row_count FROM public.tutorial_import_rows WHERE batch_id = $1
+      args:
+        - "{{replay_batch_id}}"
+
+  - action: lua
+    save_as: verification
+    code: |
+      local expected = tonumber(expected_row_count) or 0
+      local source_rows = tonumber(source_scan.iterations) or 0
+      local payload_rows = tonumber(replay_payload_row_count) or 0
+      local summary_rows = tonumber(replay_summary_row.row_count) or 0
+      local detail_rows = tonumber(replay_detail_count_row.row_count) or 0
+      if source_rows ~= expected then
+        error("source row count mismatch: source=" .. tostring(source_rows) .. " expected=" .. tostring(expected))
+      end
+      if payload_rows ~= expected then
+        error("payload row count mismatch: payload=" .. tostring(payload_rows) .. " expected=" .. tostring(expected))
+      end
+      if summary_rows ~= expected then
+        error("summary row count mismatch: summary=" .. tostring(summary_rows) .. " expected=" .. tostring(expected))
+      end
+      if detail_rows ~= expected then
+        error("detail row count mismatch: detail=" .. tostring(detail_rows) .. " expected=" .. tostring(expected))
+      end
+      if tostring(replay_source_batch_id or "") ~= tostring(original_batch_id or "") then
+        error("source batch mismatch: payload=" .. tostring(replay_source_batch_id or "") .. " lifecycle=" .. tostring(original_batch_id or ""))
+      end
+      if tostring(replay_input_file or "") ~= tostring(input_file or "") then
+        error("input file mismatch: payload=" .. tostring(replay_input_file or "") .. " lifecycle=" .. tostring(input_file or ""))
+      end
+      if tostring(latest_batch_after or "") ~= tostring(replay_batch_id or "") then
+        error("latest batch mismatch: latest=" .. tostring(latest_batch_after or "") .. " replay=" .. tostring(replay_batch_id or ""))
+      end
+      return {
+        expected_row_count = expected,
+        source_row_count = source_rows,
+        payload_row_count = payload_rows,
+        summary_row_count = summary_rows,
+        detail_row_count = detail_rows,
+        status = "ok",
+      }
+
+  - action: write_json
+    file_path: artifacts/tutorials/83-verify-replay-batch-against-lifecycle-evidence-flow.json
+    with:
+      value:
+        lesson: "83"
+        mode: flow
+        lifecycle_file: "{{lifecycle_file}}"
+        replay_file: "{{replay_file}}"
+        original_batch_id: "{{original_batch_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        input_file: "{{input_file}}"
+        verification: "{{verification}}"
+        replay_summary_row: "{{replay_summary_row}}"
+        replay_detail_count_row: "{{replay_detail_count_row}}"
+        latest_batch_after: "{{latest_batch_after}}"

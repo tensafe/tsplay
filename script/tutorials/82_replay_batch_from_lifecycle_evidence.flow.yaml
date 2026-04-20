@@ -1,0 +1,206 @@
+schema_version: "1"
+name: lesson_82_replay_batch_from_lifecycle_evidence_flow
+description: Rebuild a new operational batch from the lifecycle evidence left by Lesson 80.
+vars:
+  lifecycle_file: artifacts/tutorials/80-external-sync-lifecycle-round-trip-flow.csv
+  counter_key: tutorial:session_import:batch_counter
+  latest_key: tutorial:session_import:latest_batch
+  payload_prefix: "tutorial:session_import:batch:"
+  original_batch_id: ""
+  original_audit_id: ""
+  input_file: ""
+  latest_name: ""
+  latest_operator: unknown
+  detail_rows: []
+  report_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{lifecycle_file}}"
+    save_as: lifecycle_rows
+
+  - action: foreach
+    items: "{{lifecycle_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: lifecycle_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: original_audit_id
+        with:
+          value: "{{row.audit_id}}"
+      - action: set_var
+        save_as: input_file
+        with:
+          value: "{{row.input_file}}"
+
+  - action: read_csv
+    file_path: "{{input_file}}"
+    with:
+      row_number_field: line_no
+    save_as: rows
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: source_scan
+    steps:
+      - action: set_var
+        save_as: latest_name
+        with:
+          value: "{{row.name}}"
+      - action: set_var
+        save_as: latest_operator
+        with:
+          value: "{{row.operator}}"
+
+  - action: redis_incr
+    key: "{{counter_key}}"
+    save_as: replay_number
+
+  - action: set_var
+    save_as: replay_batch_id
+    with:
+      value: "{{original_batch_id}}-replay-{{replay_number}}"
+
+  - action: set_var
+    save_as: payload_key
+    with:
+      value: "{{payload_prefix}}{{replay_batch_id}}"
+
+  - action: foreach
+    items: "{{rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: detail_scan
+    steps:
+      - action: append_var
+        save_as: detail_rows
+        with:
+          value:
+            batch_id: "{{replay_batch_id}}"
+            line_no: "{{row.line_no}}"
+            name: "{{row.name}}"
+            phone: "{{row.phone}}"
+            status: "{{row.status}}"
+            operator_name: "{{row.operator}}"
+
+  - action: redis_set
+    key: "{{payload_key}}"
+    ttl_seconds: 3600
+    with:
+      value:
+        lesson: "82"
+        batch_id: "{{replay_batch_id}}"
+        source_batch_id: "{{original_batch_id}}"
+        source_audit_id: "{{original_audit_id}}"
+        input_file: "{{input_file}}"
+        row_count: "{{detail_scan.iterations}}"
+        latest_name: "{{latest_name}}"
+        latest_operator: "{{latest_operator}}"
+
+  - action: redis_set
+    key: "{{latest_key}}"
+    value: "{{replay_batch_id}}"
+    ttl_seconds: 3600
+
+  - action: db_transaction
+    save_as: transaction_result
+    steps:
+      - action: db_upsert
+        connection: reporting
+        save_as: summary_upsert_result
+        with:
+          table: public.tutorial_import_batches
+          columns:
+            - batch_id
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          key_columns:
+            - batch_id
+          update_columns:
+            - report_file
+            - source_lesson
+            - row_count
+            - operator_name
+          row:
+            batch_id: "{{replay_batch_id}}"
+            report_file: "{{input_file}}"
+            source_lesson: "82"
+            row_count: "{{detail_scan.iterations}}"
+            operator_name: "{{latest_operator}}"
+
+      - action: db_execute
+        connection: reporting
+        save_as: delete_rows_result
+        with:
+          sql: DELETE FROM public.tutorial_import_rows WHERE batch_id = $1
+          args:
+            - "{{replay_batch_id}}"
+
+      - action: db_insert_many
+        connection: reporting
+        save_as: detail_insert_result
+        with:
+          table: public.tutorial_import_rows
+          columns:
+            - batch_id
+            - line_no
+            - name
+            - phone
+            - status
+            - operator_name
+          rows: "{{detail_rows}}"
+
+  - action: redis_get
+    key: "{{latest_key}}"
+    save_as: latest_batch_id
+
+  - action: append_var
+    save_as: report_rows
+    with:
+      value:
+        source_batch_id: "{{original_batch_id}}"
+        source_audit_id: "{{original_audit_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        payload_key: "{{payload_key}}"
+        input_file: "{{input_file}}"
+        row_count: "{{detail_scan.iterations}}"
+        latest_operator: "{{latest_operator}}"
+        latest_batch_id: "{{latest_batch_id}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/82-replay-batch-from-lifecycle-evidence-flow.csv
+    with:
+      value: "{{report_rows}}"
+      headers:
+        - source_batch_id
+        - source_audit_id
+        - replay_batch_id
+        - payload_key
+        - input_file
+        - row_count
+        - latest_operator
+        - latest_batch_id
+
+  - action: write_json
+    file_path: artifacts/tutorials/82-replay-batch-from-lifecycle-evidence-flow.json
+    with:
+      value:
+        lesson: "82"
+        mode: flow
+        lifecycle_file: "{{lifecycle_file}}"
+        source_batch_id: "{{original_batch_id}}"
+        source_audit_id: "{{original_audit_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        payload_key: "{{payload_key}}"
+        input_file: "{{input_file}}"
+        row_count: "{{detail_scan.iterations}}"
+        transaction_result: "{{transaction_result}}"
+        latest_batch_id: "{{latest_batch_id}}"

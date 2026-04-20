@@ -239,6 +239,8 @@ steps:
       value:
         batch_id: "{{batch_id}}"
         audit_id: "{{audit_id}}"
+        input_file: "{{input_file}}"
+        payload_key: "{{payload_key}}"
         pre_cleanup_summary: "{{pre_cleanup_summary.row_count}}"
         pre_cleanup_detail: "{{pre_cleanup_detail.row_count}}"
         post_cleanup_summary: "{{post_cleanup_summary.row_count}}"
@@ -253,6 +255,8 @@ steps:
       headers:
         - batch_id
         - audit_id
+        - input_file
+        - payload_key
         - pre_cleanup_summary
         - pre_cleanup_detail
         - post_cleanup_summary

@@ -1,0 +1,80 @@
+schema_version: "1"
+name: lesson_92_build_template_artifact_catalog_flow
+description: Convert handoff artifact roles into a reusable template catalog with stable slot names and env overrides.
+vars:
+  role_file: artifacts/tutorials/91-read-handoff-manifest-roles-flow.csv
+  catalog_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{role_file}}"
+    save_as: role_rows
+
+  - action: foreach
+    items: "{{role_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: role_scan
+    steps:
+      - action: lua
+        save_as: catalog_row
+        code: |
+          local artifact_key = tostring(row.artifact_key or "")
+          local template_slot = "other.review_file"
+          local required_env = "TSPLAY_ARTIFACT_FILE"
+          local action_focus = "read_csv"
+          local batch_scope = "replay"
+          if artifact_key == "lifecycle_evidence" then
+            template_slot = "input.lifecycle_csv"
+            required_env = "TSPLAY_LIFECYCLE_FILE"
+            action_focus = "read_csv"
+            batch_scope = "original"
+          elseif artifact_key == "replay_result" then
+            template_slot = "process.replay_result_csv"
+            required_env = "TSPLAY_REPLAY_FILE"
+            action_focus = "read_csv,write_csv"
+          elseif artifact_key == "audit_comparison" then
+            template_slot = "verify.audit_compare_csv"
+            required_env = "TSPLAY_AUDIT_COMPARE_FILE"
+            action_focus = "read_csv,write_csv"
+          elseif artifact_key == "reconciliation_pack" then
+            template_slot = "deliver.reconciliation_csv"
+            required_env = "TSPLAY_RECONCILIATION_FILE"
+            action_focus = "read_csv,write_csv,write_json"
+          end
+          return {
+            template_slot = template_slot,
+            artifact_key = artifact_key,
+            phase = tostring(row.phase or ""),
+            required_env = required_env,
+            action_focus = action_focus,
+            default_path = tostring(row.file_path or ""),
+            batch_scope = batch_scope,
+            note = tostring(row.note or ""),
+          }
+      - action: append_var
+        save_as: catalog_rows
+        with:
+          value: "{{catalog_row}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/92-build-template-artifact-catalog-flow.csv
+    with:
+      value: "{{catalog_rows}}"
+      headers:
+        - template_slot
+        - artifact_key
+        - phase
+        - required_env
+        - action_focus
+        - default_path
+        - batch_scope
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/92-build-template-artifact-catalog-flow.json
+    with:
+      value:
+        lesson: "92"
+        mode: flow
+        role_file: "{{role_file}}"
+        catalog_rows: "{{catalog_rows}}"

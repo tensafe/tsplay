@@ -1,0 +1,79 @@
+schema_version: "1"
+name: lesson_99_build_template_preflight_checklist_flow
+description: Build a release checklist for the template package itself.
+vars:
+  template_index_file: artifacts/tutorials/96-build-template-index-flow.csv
+  template_verification_file: artifacts/tutorials/97-verify-template-covers-handoff-chain-flow.csv
+  template_lesson_matrix_file: artifacts/tutorials/98-build-template-lesson-matrix-flow.csv
+  checklist_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{template_index_file}}"
+    save_as: index_rows
+
+  - action: read_csv
+    file_path: "{{template_verification_file}}"
+    save_as: verification_rows
+
+  - action: read_csv
+    file_path: "{{template_lesson_matrix_file}}"
+    save_as: matrix_rows
+
+  - action: lua
+    save_as: verification_ready
+    code: |
+      for _, row in ipairs(verification_rows or {}) do
+        if tostring(row.status or "") ~= "ready" then
+          return "blocked"
+        end
+      end
+      return "ready"
+
+  - action: lua
+    save_as: checklist_flags
+    code: |
+      return {
+        template_index_present = (#(index_rows or {}) >= 3) and "ready" or "blocked",
+        template_lesson_matrix_present = (#(matrix_rows or {}) >= 3) and "ready" or "blocked",
+      }
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        check_name: template_index_present
+        status: "{{checklist_flags.template_index_present}}"
+        note: template index should expose the three reusable template families
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        check_name: template_verification_passed
+        status: "{{verification_ready}}"
+        note: template verification from lesson 97 should be fully ready
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        check_name: template_lesson_matrix_present
+        status: "{{checklist_flags.template_lesson_matrix_present}}"
+        note: template lesson matrix should map scenarios to templates
+
+  - action: write_csv
+    file_path: artifacts/tutorials/99-build-template-preflight-checklist-flow.csv
+    with:
+      value: "{{checklist_rows}}"
+      headers:
+        - check_name
+        - status
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/99-build-template-preflight-checklist-flow.json
+    with:
+      value:
+        lesson: "99"
+        mode: flow
+        checklist_rows: "{{checklist_rows}}"

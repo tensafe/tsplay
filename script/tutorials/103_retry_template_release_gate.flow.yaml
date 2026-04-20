@@ -1,0 +1,52 @@
+schema_version: "1"
+name: lesson_103_retry_template_release_gate_flow
+description: Retry the template release gate until the page reports success, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#retry-gate-button"
+    timeout: 5000
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: retry_result
+    steps:
+      - action: click
+        selector: "#retry-gate-button"
+      - action: assert_text
+        selector: "#retry-gate-status"
+        text: "Gate passed"
+        timeout: 500
+      - action: assert_visible
+        selector: "#retry-gate-badge"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#retry-gate-status"
+    timeout: 5000
+    save_as: gate_status
+
+  - action: assert_visible
+    selector: "#retry-gate-badge"
+    timeout: 5000
+    save_as: badge_visible
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "103"
+        mode: flow
+        page_url: "{{page_url}}"
+        retry_result: "{{retry_result}}"
+        gate_status: "{{gate_status}}"
+        badge_visible: "{{badge_visible}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/103-retry-template-release-gate-flow.json
+    value: "{{payload}}"

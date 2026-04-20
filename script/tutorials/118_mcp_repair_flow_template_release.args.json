@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/117_mcp_template_release_summary_broken.flow.yaml",
+  "repair_context": "@file:../../artifacts/tutorials/117-mcp-repair-flow-context-template-release.json"
+}

@@ -1,0 +1,52 @@
+schema_version: "1"
+name: lesson_81_read_lifecycle_evidence_flow
+description: Read the lifecycle CSV from Lesson 80 and query the preserved audit row back from Postgres.
+vars:
+  lifecycle_file: artifacts/tutorials/80-external-sync-lifecycle-round-trip-flow.csv
+  batch_id: ""
+  audit_id: ""
+  input_file: ""
+steps:
+  - action: read_csv
+    file_path: "{{lifecycle_file}}"
+    save_as: lifecycle_rows
+
+  - action: foreach
+    items: "{{lifecycle_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: lifecycle_scan
+    steps:
+      - action: set_var
+        save_as: batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: audit_id
+        with:
+          value: "{{row.audit_id}}"
+      - action: set_var
+        save_as: input_file
+        with:
+          value: "{{row.input_file}}"
+
+  - action: db_query_one
+    connection: reporting
+    save_as: audit_row
+    with:
+      sql: SELECT audit_id, batch_id, event_type, status, detail, success_count, failure_count, source_lesson FROM public.tutorial_import_audits WHERE audit_id = $1
+      args:
+        - "{{audit_id}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/81-read-lifecycle-evidence-flow.json
+    with:
+      value:
+        lesson: "81"
+        mode: flow
+        lifecycle_file: "{{lifecycle_file}}"
+        lifecycle_rows: "{{lifecycle_rows}}"
+        batch_id: "{{batch_id}}"
+        audit_id: "{{audit_id}}"
+        input_file: "{{input_file}}"
+        audit_row: "{{audit_row}}"

@@ -1,0 +1,5 @@
+{
+  "flow": "@jsonpathfile:../../artifacts/tutorials/114-mcp-draft-flow-template-release.json#draft.flow_yaml",
+  "security_preset": "readonly",
+  "headless": true
+}

@@ -1,0 +1,48 @@
+schema_version: "1"
+name: lesson_101_assert_visible_template_release_card_flow
+description: Assert that the template release card and staged-check badge are visible, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#template-release-card"
+    timeout: 5000
+
+  - action: assert_visible
+    selector: "#template-release-card"
+    timeout: 5000
+    save_as: card_visible
+
+  - action: assert_visible
+    selector: "#release-badge"
+    timeout: 5000
+    save_as: badge_visible
+
+  - action: extract_text
+    selector: "#release-title"
+    timeout: 5000
+    save_as: release_title
+
+  - action: extract_text
+    selector: "#release-status"
+    timeout: 5000
+    save_as: release_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "101"
+        mode: flow
+        page_url: "{{page_url}}"
+        card_visible: "{{card_visible}}"
+        badge_visible: "{{badge_visible}}"
+        release_title: "{{release_title}}"
+        release_status: "{{release_status}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/101-assert-visible-template-release-card-flow.json
+    value: "{{payload}}"

@@ -1,0 +1,6 @@
+{
+  "url": "http://127.0.0.1:8000/demo/template_release_lab.html",
+  "headless": true,
+  "timeout": 5000,
+  "max_elements": 25
+}
