@@ -1,14 +1,28 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestLoadAllTutorialFlows(t *testing.T) {
-	paths, err := filepath.Glob("script/tutorials/*.flow.yaml")
+	var paths []string
+	err := filepath.Walk("script/tutorials", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".flow.yaml") {
+			paths = append(paths, path)
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("glob tutorial flows: %v", err)
+		t.Fatalf("walk tutorial flows: %v", err)
 	}
 	if len(paths) == 0 {
 		t.Fatalf("expected tutorial flow files")
