@@ -1,0 +1,22 @@
+schema_version: "1"
+name: lesson_149_release_asset_version_strategy_flow
+description: Build a release strategy summary that separates binary version changes from tutorial asset version changes.
+steps:
+  - action: set_var
+    save_as: version_strategy
+    with:
+      value:
+        lesson: "149"
+        version_layers:
+          binary_version: changes when executable behavior changes
+          asset_version: changes when bundled docs, demos, or scripts change
+        release_rules:
+          - note when both layers change together
+          - keep asset updates traceable even when CLI flags stay stable
+          - tie tutorial docs to the exact bundled demo files they teach
+
+  - action: write_json
+    file_path: artifacts/tutorials/149/release-asset-version-strategy.json
+    with:
+      value: "{{version_strategy}}"
+    save_as: write_result

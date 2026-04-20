@@ -1,0 +1,26 @@
+schema_version: "1"
+name: lesson_158_tutorial_gap_review_cycle_flow
+description: Build a monthly tutorial gap review template that turns learner feedback into prioritized follow-up work.
+steps:
+  - action: set_var
+    save_as: gap_review_template
+    with:
+      value:
+        lesson: "158"
+        cadence: monthly
+        review_inputs:
+          - learner blockers
+          - failed lessons or weak outputs
+          - missing bridge topics
+          - outdated demo or docs
+        review_outputs:
+          - new lesson candidates
+          - reorder candidates
+          - docs cleanup list
+          - demo or script refresh list
+
+  - action: write_json
+    file_path: artifacts/tutorials/158/tutorial-gap-review-cycle.json
+    with:
+      value: "{{gap_review_template}}"
+    save_as: write_result

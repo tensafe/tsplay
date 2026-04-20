@@ -1,0 +1,30 @@
+schema_version: "1"
+name: lesson_154_advanced_capstone_brief_flow
+description: Build an advanced capstone brief that combines security boundaries, review rules, and release packaging into one delivery scenario.
+steps:
+  - action: set_var
+    save_as: capstone_brief
+    with:
+      value:
+        lesson: "154"
+        target_role: advanced
+        required_lessons:
+          - "121-130"
+          - "131-140"
+          - "141-150"
+        assignment:
+          - explain one security boundary decision
+          - provide one review checklist or naming policy
+          - provide one single-binary delivery manifest
+          - show how a new teammate should start from the bundled tutorials
+        deliverables:
+          - boundary explanation
+          - review checklist
+          - release manifest
+          - onboarding note
+
+  - action: write_json
+    file_path: artifacts/tutorials/154/advanced-capstone-brief.json
+    with:
+      value: "{{capstone_brief}}"
+    save_as: write_result

@@ -144,6 +144,36 @@
 128. [Lesson 128: 为什么教程不能跳过权限边界](128-why-security-boundaries-come-first.md)
 129. [Lesson 129: 理解 `security_preset` 和显式 `allow_*` 覆盖](129-security-preset-and-override.md)
 130. [Lesson 130: 完成安全边界模块的第一轮 checkpoint](130-security-boundary-learning-checkpoint.md)
+131. [Lesson 131: 先把 Flow 名字和描述写得可 review](131-review-flow-name-and-description.md)
+132. [Lesson 132: 继续把 `save_as` 变量名写得可 review](132-review-save-as-variable-names.md)
+133. [Lesson 133: 把 artifact 目录也整理成可 review 的结构](133-review-artifact-directory-layout.md)
+134. [Lesson 134: 用一份 checklist 正式 review 教程示例](134-review-example-with-checklist.md)
+135. [Lesson 135: review 时，什么时候才允许 Lua escape hatch](135-review-when-lua-is-allowed.md)
+136. [Lesson 136: review 时，什么时候应该把 Lua 抽回 Flow](136-review-when-to-extract-lua-to-flow.md)
+137. [Lesson 137: review 时，什么时候应该新增 demo 页面](137-review-when-to-add-demo-page.md)
+138. [Lesson 138: review 时，一节教程至少该带哪些交付物](138-review-required-deliverables.md)
+139. [Lesson 139: 设计一个大型 Flow 示例包的目录骨架](139-large-flow-package-layout.md)
+140. [Lesson 140: 复盘为什么教程也需要 code review 思维](140-why-tutorials-need-code-review-thinking.md)
+141. [Lesson 141: 为什么要把 `ReadMe.md`、`docs/`、`script/`、`demo/` 一起打进二进制](141-why-embed-docs-script-demo.md)
+142. [Lesson 142: 新手怎么读懂 `list-assets`](142-list-assets-for-beginners.md)
+143. [Lesson 143: 新手怎么跑通 `extract-assets`](143-extract-assets-for-beginners.md)
+144. [Lesson 144: 设计“只发一个二进制给用户”的交付流程](144-single-binary-delivery-flow.md)
+145. [Lesson 145: 设计“离线环境也能跑基础教程”的交付流程](145-offline-learning-delivery-flow.md)
+146. [Lesson 146: 设计“哪些资源必须内置，哪些资源可以不带”的规则](146-embedded-asset-policy.md)
+147. [Lesson 147: `file-srv` 的开发态和发布态有什么区别](147-file-srv-dev-vs-release.md)
+148. [Lesson 148: 新用户第一次打开二进制时，应该先看到什么](148-first-run-entry-strategy.md)
+149. [Lesson 149: 课程包版本号和资源版本号应该怎么维护](149-release-asset-version-strategy.md)
+150. [Lesson 150: 复盘“单二进制 + 内置教程”对交付的意义](150-single-binary-delivery-summary.md)
+151. [Lesson 151: 设计一个新手结业题](151-newbie-capstone-brief.md)
+152. [Lesson 152: 设计一个初级结业题](152-junior-capstone-brief.md)
+153. [Lesson 153: 设计一个中级结业题](153-intermediate-capstone-brief.md)
+154. [Lesson 154: 设计一个高级结业题](154-advanced-capstone-brief.md)
+155. [Lesson 155: 设计一套“新人 7 天计划”](155-new-hire-7-day-plan.md)
+156. [Lesson 156: 设计一套“实施同学 2 周计划”](156-implementer-2-week-plan.md)
+157. [Lesson 157: 设计一套“讲师备课顺序”](157-trainer-prep-sequence.md)
+158. [Lesson 158: 设计一套“教程缺口复盘机制”](158-tutorial-gap-review-cycle.md)
+159. [Lesson 159: 设计一套“每 10 次迭代回看一次”的检查机制](159-every-10-iteration-review.md)
+160. [Lesson 160: 通过高级阶段检查，并为下一圈教程扩展做准备](160-curriculum-continuation-plan.md)
 
 ### 路线 B：完整进阶教程体系
 
@@ -291,6 +321,36 @@
 | 128 | 为什么教程不能跳过权限边界 | - | - | 复盘型章节，重新解释为什么要先学边界再学放权 |
 | 129 | 理解 `security_preset` 和显式 `allow_*` 覆盖 | - | [../../script/tutorials/129_mcp_validate_file_access_browser_write.args.json](../../script/tutorials/129_mcp_validate_file_access_browser_write.args.json) | 从单个 allow 进入 preset 和 override 组合策略 |
 | 130 | 完成安全边界模块的第一轮 checkpoint | - | - | 收口型章节，把 `121-129` 重新整理成高级阶段 checkpoint |
+| 131 | 先把 Flow 名字和描述写得可 review | - | [../../script/tutorials/131_review_readability_after.flow.yaml](../../script/tutorials/131_review_readability_after.flow.yaml) | 从安全边界过渡到大型 Flow 评审的第一步 |
+| 132 | 继续把 `save_as` 变量名写得可 review | - | [../../script/tutorials/131_review_readability_after.flow.yaml](../../script/tutorials/131_review_readability_after.flow.yaml) | 继续复用 `Lesson 131` 的 before / after 样例，聚焦变量角色命名 |
+| 133 | 把 artifact 目录也整理成可 review 的结构 | - | [../../script/tutorials/133_review_artifact_layout_after.flow.yaml](../../script/tutorials/133_review_artifact_layout_after.flow.yaml) | 从变量命名继续走到 lesson 级 artifact 布局 |
+| 134 | 用一份 checklist 正式 review 教程示例 | - | - | 复用 review checklist，把 `Lesson 131` 和 `Lesson 133` 收成统一评审入口 |
+| 135 | review 时，什么时候才允许 Lua escape hatch | [../../script/tutorials/135_review_summary_escape_hatch.lua](../../script/tutorials/135_review_summary_escape_hatch.lua) | - | 把 `allow_lua` 的安全边界继续推进到结构评审边界 |
+| 136 | review 时，什么时候应该把 Lua 抽回 Flow | - | [../../script/tutorials/136_review_summary_extracted.flow.yaml](../../script/tutorials/136_review_summary_extracted.flow.yaml) | 用同类示例把“简单编排优先 Flow”讲清楚 |
+| 137 | review 时，什么时候应该新增 demo 页面 | - | - | 从代码结构继续推进到教程资源边界 |
+| 138 | review 时，一节教程至少该带哪些交付物 | - | - | 把文档、脚本、命令、预期输出统一纳入交付检查 |
+| 139 | 设计一个大型 Flow 示例包的目录骨架 | - | [../../script/tutorials/review_pack/139_large_flow_layout/flows/collect.flow.yaml](../../script/tutorials/review_pack/139_large_flow_layout/flows/collect.flow.yaml) | 用 `collect -> verify -> publish` 建立大型教程包骨架 |
+| 140 | 复盘为什么教程也需要 code review 思维 | - | - | 收口 `121-139`，把安全边界和结构评审重新连起来 |
+| 141 | 为什么要把 `ReadMe.md`、`docs/`、`script/`、`demo/` 一起打进二进制 | - | - | 从 review 和组织正式进入发布包与内置资产主题 |
+| 142 | 新手怎么读懂 `list-assets` | - | - | 用最小命令先建立“资源地图”心智模型 |
+| 143 | 新手怎么跑通 `extract-assets` | - | - | 把二进制内置资源释放到本地目录，建立可阅读副本 |
+| 144 | 设计“只发一个二进制给用户”的交付流程 | - | [../../script/tutorials/144_single_binary_delivery_manifest.flow.yaml](../../script/tutorials/144_single_binary_delivery_manifest.flow.yaml) | 把 `list-assets -> extract-assets -> 教程入口` 收成交付 manifest |
+| 145 | 设计“离线环境也能跑基础教程”的交付流程 | - | [../../script/tutorials/145_offline_learning_manifest.flow.yaml](../../script/tutorials/145_offline_learning_manifest.flow.yaml) | 明确离线可先跑的 lesson 顺序 |
+| 146 | 设计“哪些资源必须内置，哪些资源可以不带”的规则 | - | [../../script/tutorials/146_embedded_asset_policy.flow.yaml](../../script/tutorials/146_embedded_asset_policy.flow.yaml) | 把发布包边界写成稳定策略 |
+| 147 | `file-srv` 的开发态和发布态有什么区别 | - | - | 对照 `-serve-root` 和内置资源服务模式 |
+| 148 | 新用户第一次打开二进制时，应该先看到什么 | - | [../../script/tutorials/148_first_run_entry_manifest.flow.yaml](../../script/tutorials/148_first_run_entry_manifest.flow.yaml) | 把 first-run 顺序收成固定 onboarding 入口 |
+| 149 | 课程包版本号和资源版本号应该怎么维护 | - | [../../script/tutorials/149_release_asset_version_strategy.flow.yaml](../../script/tutorials/149_release_asset_version_strategy.flow.yaml) | 建立二进制版本和资源版本两层策略 |
+| 150 | 复盘“单二进制 + 内置教程”对交付的意义 | - | [../../script/tutorials/150_single_binary_delivery_summary.flow.yaml](../../script/tutorials/150_single_binary_delivery_summary.flow.yaml) | 收口 `141-149`，为 `151+` 的培训与 capstone 模块铺路 |
+| 151 | 设计一个新手结业题 | - | [../../script/tutorials/151_newbie_capstone_brief.flow.yaml](../../script/tutorials/151_newbie_capstone_brief.flow.yaml) | 把“资源发现 -> 资源释放 -> 第一条 Flow”收成新手收口题 |
+| 152 | 设计一个初级结业题 | - | [../../script/tutorials/152_junior_capstone_brief.flow.yaml](../../script/tutorials/152_junior_capstone_brief.flow.yaml) | 把本地 demo、文件、控制流和 artifact 收成初级项目 |
+| 153 | 设计一个中级结业题 | - | [../../script/tutorials/153_intermediate_capstone_brief.flow.yaml](../../script/tutorials/153_intermediate_capstone_brief.flow.yaml) | 把 MCP 草拟、执行、修复链收成中级结业题 |
+| 154 | 设计一个高级结业题 | - | [../../script/tutorials/154_advanced_capstone_brief.flow.yaml](../../script/tutorials/154_advanced_capstone_brief.flow.yaml) | 把边界、review 和交付策略收成团队级结业题 |
+| 155 | 设计一套“新人 7 天计划” | - | [../../script/tutorials/155_new_hire_7_day_plan.flow.yaml](../../script/tutorials/155_new_hire_7_day_plan.flow.yaml) | 从 capstone 继续过渡到 onboarding 排期 |
+| 156 | 设计一套“实施同学 2 周计划” | - | [../../script/tutorials/156_implementer_2_week_plan.flow.yaml](../../script/tutorials/156_implementer_2_week_plan.flow.yaml) | 把教程熟练度继续接到真实业务试点 |
+| 157 | 设计一套“讲师备课顺序” | - | [../../script/tutorials/157_trainer_prep_sequence.flow.yaml](../../script/tutorials/157_trainer_prep_sequence.flow.yaml) | 正式把教程主线和 training 资料接起来 |
+| 158 | 设计一套“教程缺口复盘机制” | - | [../../script/tutorials/158_tutorial_gap_review_cycle.flow.yaml](../../script/tutorials/158_tutorial_gap_review_cycle.flow.yaml) | 把月度缺口复盘写成稳定模板 |
+| 159 | 设计一套“每 10 次迭代回看一次”的检查机制 | - | [../../script/tutorials/159_every_10_iteration_review.flow.yaml](../../script/tutorials/159_every_10_iteration_review.flow.yaml) | 把结构回看节奏固定下来 |
+| 160 | 通过高级阶段检查，并为下一圈教程扩展做准备 | - | [../../script/tutorials/160_curriculum_continuation_plan.flow.yaml](../../script/tutorials/160_curriculum_continuation_plan.flow.yaml) | 收口 `151-159`，把 `160` 变成下一圈的起点 |
 
 ## 完整课程体系地图
 
@@ -345,7 +405,7 @@ go run . -action mcp-tool -tool tsplay.list_actions
 ./tsplay -action extract-assets -extract-root ./tsplay-assets
 ```
 
-Lesson 01、Lesson 08、Lesson 14、Lesson 24、Lesson 25、Lesson 111、Lesson 112、Lesson 121 到 Lesson 130 都可以直接开始。  
+Lesson 01、Lesson 08、Lesson 14、Lesson 24、Lesson 25、Lesson 111、Lesson 112、Lesson 121 到 Lesson 160 都可以直接开始。  
 从 Lesson 02 到 Lesson 05、Lesson 09 到 Lesson 12、Lesson 16 到 Lesson 23、Lesson 26 到 Lesson 38、Lesson 42、Lesson 44 到 Lesson 57、Lesson 101 到 Lesson 120，建议另开一个终端，在仓库根目录启动 TSPlay 内置静态文件服务：
 
 ```bash
@@ -465,6 +525,9 @@ mkdir -p artifacts/tutorials
 - `Lesson 101-110` 主要继续复用本地静态文件服务和 `demo/template_release_lab.html`，通常不再需要新开 Redis / Postgres 连接
 - `Lesson 111-120` 主要继续复用同一张模板发布练习页，但切到 `mcp-tool` 路径，重点练习 observation、draft、validate、run、repair 和 finalize
 - `Lesson 121-130` 主要继续练习 `validate_flow`、`security_preset` 和边界对照，通常不需要本地静态文件服务，也不要求真的起 Redis / Postgres / DB 服务
+- `Lesson 131-140` 主要练习 review、命名、artifact 布局、Lua / Flow 取舍和大型 Flow 目录组织，通常也不需要本地静态文件服务
+- `Lesson 141-150` 主要练习内置资源、`list-assets`、`extract-assets`、单二进制交付、离线学习和发布包策略，通常也不需要本地静态文件服务；只有 `Lesson 147` 会对照 `file-srv`
+- `Lesson 151-160` 主要练习结业题、培训排期、讲师备课、缺口复盘和迭代检查，通常也不需要本地静态文件服务
 
 从 Lesson 13 起，开始接本地文件输入输出。  
 如果你只有单个 `./tsplay` 二进制，记得先执行：

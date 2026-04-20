@@ -1,0 +1,24 @@
+schema_version: "1"
+name: lesson_148_first_run_entry_manifest_flow
+description: Build a first-run entry manifest for new binary users so they can find the right tutorial path quickly.
+steps:
+  - action: set_var
+    save_as: first_run_entry
+    with:
+      value:
+        lesson: "148"
+        first_questions:
+          - do you want to inspect bundled assets first
+          - do you want to extract assets first
+          - do you want to start with a no-browser lesson first
+        recommended_sequence:
+          - ./tsplay -action list-assets
+          - ./tsplay -action extract-assets -extract-root ./tsplay-assets-first-run
+          - ./tsplay -flow script/tutorials/01_hello_world.flow.yaml
+          - open docs/tutorials/README.md
+
+  - action: write_json
+    file_path: artifacts/tutorials/148/first-run-entry-manifest.json
+    with:
+      value: "{{first_run_entry}}"
+    save_as: write_result

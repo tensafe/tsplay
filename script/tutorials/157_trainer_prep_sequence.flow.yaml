@@ -1,0 +1,28 @@
+schema_version: "1"
+name: lesson_157_trainer_prep_sequence_flow
+description: Build a trainer preparation sequence that connects the tutorial curriculum with bootcamp and trainer materials.
+steps:
+  - action: set_var
+    save_as: trainer_prep
+    with:
+      value:
+        lesson: "157"
+        sequence:
+          - ReadMe.md
+          - docs/tutorials/README.md
+          - docs/training/README.md
+          - docs/training/bootcamp-plan.md
+          - docs/training/capstone-briefs.md
+          - docs/training/assessment.md
+          - docs/training/trainer-playbook.md
+        trainer_outputs:
+          - lesson selection
+          - lab mapping
+          - capstone choice
+          - review rubric
+
+  - action: write_json
+    file_path: artifacts/tutorials/157/trainer-prep-sequence.json
+    with:
+      value: "{{trainer_prep}}"
+    save_as: write_result

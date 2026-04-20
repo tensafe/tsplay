@@ -1,0 +1,31 @@
+schema_version: "1"
+name: lesson_155_new_hire_7_day_plan_flow
+description: Build a seven-day onboarding plan that moves a new hire from bundled assets to a first structured flow.
+steps:
+  - action: set_var
+    save_as: seven_day_plan
+    with:
+      value:
+        lesson: "155"
+        audience: new_hire
+        days:
+          - day: 1
+            focus: bundled assets and first run
+          - day: 2
+            focus: hello world and artifacts
+          - day: 3
+            focus: local files and csv
+          - day: 4
+            focus: local demo interaction
+          - day: 5
+            focus: retry wait and recovery
+          - day: 6
+            focus: security boundaries and mcp basics
+          - day: 7
+            focus: newbie capstone and review
+
+  - action: write_json
+    file_path: artifacts/tutorials/155/new-hire-7-day-plan.json
+    with:
+      value: "{{seven_day_plan}}"
+    save_as: write_result

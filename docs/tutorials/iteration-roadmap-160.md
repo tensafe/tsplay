@@ -199,42 +199,42 @@
 
 ## 模块 14：大型 Flow、规范、评审
 
-- `[131]` 制定步骤命名评审规则。交付物：规则草案。
-- `[132]` 制定变量命名评审规则。交付物：规则草案。
-- `[133]` 制定 artifact 目录评审规则。交付物：规则草案。
-- `[134]` 制定教程示例代码评审规则。交付物：规则草案。
-- `[135]` 制定“什么时候允许 Lua escape hatch”的评审规则。交付物：规则草案。
-- `[136]` 制定“什么时候必须抽成 Flow”的评审规则。交付物：规则草案。
-- `[137]` 制定“什么时候应该新增 demo 页面”的评审规则。交付物：规则草案。
-- `[138]` 制定“示例必须带什么交付物”的评审规则。交付物：规则草案。
-- `[139]` 设计一个大型 Flow 示例目录结构。交付物：目录草图。
-- `[140]` 复盘教程为什么也需要 code review 思维。交付物：一段说明。
+- `[131]` 跑通 `Lesson 131`，对比一条 before / after Flow，先把 `name` 和 `description` 的 review 入口立起来。交付物：`artifacts/review-output.json`、`artifacts/tutorials/131/review-summary.json`。
+- `[132]` 跑通 `Lesson 132`，继续复用 `Lesson 131` 的样例，把 `save_as` 命名规则收成最小标准。交付物：一页变量命名复盘。
+- `[133]` 跑通 `Lesson 133`，把 artifact 平铺输出改成 lesson 级目录输出。交付物：`artifacts/output.json`、`artifacts/tutorials/133/review-layout/output.json`、`artifacts/tutorials/133/review-layout/manifest.json`。
+- `[134]` 跑通 `Lesson 134`，用统一 checklist review `Lesson 131` 和 `Lesson 133`。交付物：一页 review checklist 复盘。
+- `[135]` 跑通 `Lesson 135`，先运行一个最小 Lua escape hatch，再判断它是不是结构上应该保留。交付物：`artifacts/tutorials/135/review-summary-from-lua.json`。
+- `[136]` 跑通 `Lesson 136`，把上一节的简单 Lua 编排抽回 Flow。交付物：`artifacts/tutorials/136/review-summary-from-flow.json`。
+- `[137]` 跑通 `Lesson 137`，先盘点现有 demo，再判断什么时候才该新增页面。交付物：`artifacts/tutorials/137-list-assets.txt` 和一页 demo 决策复盘。
+- `[138]` 跑通 `Lesson 138`，把教程最小交付物收成一份稳定 checklist。交付物：一页交付物清单复盘。
+- `[139]` 跑通 `Lesson 139`，把大型 Flow 包拆成 `collect -> verify -> publish` 三段目录骨架。交付物：`artifacts/tutorials/139/collect/raw-items.json`、`artifacts/tutorials/139/verify/verification-summary.json`、`artifacts/tutorials/139/publish/publish-manifest.json`。
+- `[140]` 跑通 `Lesson 140`，把安全边界和 review 思维重新收成一张高级阶段心智图。交付物：一页复盘说明。
 
 ## 模块 15：发布包、内置资产、交付体验
 
-- `[141]` 解释为什么把 `docs/`、`script/`、`demo/` 一起打包到二进制里。交付物：一段说明。
-- `[142]` 为 `list-assets` 写一条面向新人的使用说明。交付物：一页帮助文案。
-- `[143]` 为 `extract-assets` 写一条面向新人的使用说明。交付物：一页帮助文案。
-- `[144]` 设计“只发一个二进制给用户”的交付流程。交付物：交付说明。
-- `[145]` 设计“离线环境也能跑基础教程”的交付流程。交付物：交付说明。
-- `[146]` 设计“发布包里哪些资源必须带，哪些可以不带”的规则。交付物：清单。
-- `[147]` 为 `file-srv` 写一条“开发态”和“发布态”的对照说明。交付物：一页说明。
-- `[148]` 设计“新用户第一次打开二进制时怎么找到教程”的入口策略。交付物：入口草案。
-- `[149]` 设计“课程包版本号与资源版本号”的维护策略。交付物：版本策略草案。
-- `[150]` 复盘“单二进制 + 内置教程”对交付的意义。交付物：一段总结。
+- `[141]` 跑通 `Lesson 141`，先用 `list-assets` 证明二进制里真的带着 `ReadMe.md`、`docs/`、`script/`、`demo/`。交付物：`artifacts/tutorials/141-bundled-assets.txt`。
+- `[142]` 跑通 `Lesson 142`，把 `list-assets` 输出重新整理成“教程 / 脚本 / demo”三类入口心智模型。交付物：一页 `list-assets` 复盘。
+- `[143]` 跑通 `Lesson 143`，把内置资源真正释放到本地目录并核对关键入口。交付物：`./tsplay-assets-143` 和 `artifacts/tutorials/143-extracted-assets.txt`。
+- `[144]` 跑通 `Lesson 144`，把单二进制交付流程收成稳定 manifest。交付物：`artifacts/tutorials/144/single-binary-delivery-manifest.json`。
+- `[145]` 跑通 `Lesson 145`，把离线学习路径收成 manifest。交付物：`artifacts/tutorials/145/offline-learning-manifest.json`。
+- `[146]` 跑通 `Lesson 146`，把必须内置和可选资源收成策略 JSON。交付物：`artifacts/tutorials/146/embedded-asset-policy.json`。
+- `[147]` 跑通 `Lesson 147`，把 `file-srv` 的开发态和发布态对照说明写清楚。交付物：一页 dev / release 模式说明。
+- `[148]` 跑通 `Lesson 148`，把新用户 first-run 路径收成固定入口 manifest。交付物：`artifacts/tutorials/148/first-run-entry-manifest.json`。
+- `[149]` 跑通 `Lesson 149`，把二进制版本和资源版本拆成两层维护策略。交付物：`artifacts/tutorials/149/release-asset-version-strategy.json`。
+- `[150]` 跑通 `Lesson 150`，把“单二进制 + 内置教程”收成完整交付复盘。交付物：`artifacts/tutorials/150/single-binary-delivery-summary.json`。
 
 ## 模块 16：Capstone、培训、持续演化
 
-- `[151]` 设计一个新手结业题。交付物：题目说明。
-- `[152]` 设计一个初级结业题。交付物：题目说明。
-- `[153]` 设计一个中级结业题。交付物：题目说明。
-- `[154]` 设计一个高级结业题。交付物：题目说明。
-- `[155]` 设计一套“新人 7 天计划”。交付物：7 天排期。
-- `[156]` 设计一套“实施同学 2 周计划”。交付物：2 周排期。
-- `[157]` 设计一套“讲师备课顺序”。交付物：备课提纲。
-- `[158]` 设计一套“教程缺口复盘机制”。交付物：月度复盘模板。
-- `[159]` 设计一套“每 10 次迭代回看一次”的检查机制。交付物：检查清单。
-- `[160]` 通过高级阶段检查。交付物：能继续沿同一逻辑再扩 40 次以上而不失去结构。
+- `[151]` 跑通 `Lesson 151`，把新手阶段收成一份 capstone brief。交付物：`artifacts/tutorials/151/newbie-capstone-brief.json`。
+- `[152]` 跑通 `Lesson 152`，把初级阶段收成一份本地 demo 与文件能力的 capstone brief。交付物：`artifacts/tutorials/152/junior-capstone-brief.json`。
+- `[153]` 跑通 `Lesson 153`，把 MCP 草拟、执行、修复链收成一份中级 capstone brief。交付物：`artifacts/tutorials/153/intermediate-capstone-brief.json`。
+- `[154]` 跑通 `Lesson 154`，把安全边界、review 和交付策略收成一份高级 capstone brief。交付物：`artifacts/tutorials/154/advanced-capstone-brief.json`。
+- `[155]` 跑通 `Lesson 155`，把新人的第一周收成固定 onboarding 节奏。交付物：`artifacts/tutorials/155/new-hire-7-day-plan.json`。
+- `[156]` 跑通 `Lesson 156`，把实施同学的前两周收成“教程 -> 试点 -> handoff”节奏。交付物：`artifacts/tutorials/156/implementer-2-week-plan.json`。
+- `[157]` 跑通 `Lesson 157`，把教程、Bootcamp、Capstone、评审和讲师手册接成备课顺序。交付物：`artifacts/tutorials/157/trainer-prep-sequence.json`。
+- `[158]` 跑通 `Lesson 158`，把月度教程缺口复盘收成稳定模板。交付物：`artifacts/tutorials/158/tutorial-gap-review-cycle.json`。
+- `[159]` 跑通 `Lesson 159`，把“每 10 次迭代回看一次”的检查机制写成稳定 checklist。交付物：`artifacts/tutorials/159/every-10-iteration-review.json`。
+- `[160]` 跑通 `Lesson 160`，把下一圈教程扩展计划收成 continuation plan。交付物：`artifacts/tutorials/160/curriculum-continuation-plan.json`。
 
 ## 怎么继续往后生长
 

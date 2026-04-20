@@ -1,0 +1,25 @@
+schema_version: "1"
+name: lesson_160_curriculum_continuation_plan_flow
+description: Build a continuation plan that proves the curriculum can keep growing for another forty iterations without losing structure.
+steps:
+  - action: set_var
+    save_as: continuation_plan
+    with:
+      value:
+        lesson: "160"
+        graduation_check:
+          - can identify the next prerequisite layer
+          - can define outputs before writing docs
+          - can connect tutorials with training materials
+          - can schedule periodic review without stalling delivery
+        next_growth_tracks:
+          - more capstone variants
+          - more role-based training plans
+          - more trainer materials
+          - more release and review automation
+
+  - action: write_json
+    file_path: artifacts/tutorials/160/curriculum-continuation-plan.json
+    with:
+      value: "{{continuation_plan}}"
+    save_as: write_result

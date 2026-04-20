@@ -49,5 +49,5 @@ go run . -action extract-assets -extract-root ./tsplay-assets-140
 
 ## 下一步
 
-继续看高级路线说明：
-[track-advanced.md](track-advanced.md)
+继续看：
+[Lesson 141](141-why-embed-docs-script-demo.md)

@@ -1,0 +1,22 @@
+schema_version: "1"
+name: lesson_159_every_10_iteration_review_flow
+description: Build an every-ten-iterations review checklist that keeps the curriculum coherent while it grows.
+steps:
+  - action: set_var
+    save_as: iteration_review
+    with:
+      value:
+        lesson: "159"
+        cadence: every_10_iterations
+        checks:
+          - terminology introduced at the right time
+          - commands do not depend on hidden setup
+          - outputs still land in predictable paths
+          - lesson ordering still feels gradual
+          - the next ten lessons still have clear prerequisites
+
+  - action: write_json
+    file_path: artifacts/tutorials/159/every-10-iteration-review.json
+    with:
+      value: "{{iteration_review}}"
+    save_as: write_result
