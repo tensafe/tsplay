@@ -621,7 +621,7 @@ go run . -action file-srv -addr :8000
 
 建议按这个顺序看：
 
-1. [../../ReadMe.md](../../ReadMe.md) 的 MCP 章节
+1. [../../README.zh-CN.md](../../README.zh-CN.md) 的 MCP 章节
 2. 本文
 3. [labs.md](labs.md) 里的 Lab 6
 4. [capstone-briefs.md](capstone-briefs.md) 里的 MCP 场景

@@ -8,7 +8,7 @@
 
 ### 学员预习包
 
-- 阅读 [../../ReadMe.md](../../ReadMe.md) 的“运行模式”“快速开始”
+- 阅读 [../../README.zh-CN.md](../../README.zh-CN.md) 的“运行模式”“快速开始”
 - 阅读 [learning-path.md](learning-path.md) 的 L0-L2
 - 准备好 Go 与 Playwright 运行环境
 - 熟悉仓库中的：

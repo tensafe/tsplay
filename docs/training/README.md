@@ -82,7 +82,7 @@
 - 页面素材：`demo/`
 - 示例脚本：`script/`
 - Flow 示例：`script/demo_baidu.flow.yaml`
-- MCP 能力：见根目录 [../../ReadMe.md](../../ReadMe.md) 的 MCP 章节
+- MCP 能力：见根目录 [../../README.zh-CN.md](../../README.zh-CN.md) 的 MCP 章节
 
 如果希望优先走 AI 路线，建议先阅读 [ai-intent-to-flow.md](ai-intent-to-flow.md)。
 
