@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Template Release Lab</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4efe6;
+      --panel: #fffdf8;
+      --line: #d9cdb9;
+      --text: #2d241b;
+      --muted: #6f6356;
+      --accent: #a84f2f;
+      --accent-soft: #f6d7c7;
+      --success: #1f6b47;
+      --success-soft: #d8f1e3;
+      --warn: #9a5c12;
+      --warn-soft: #fbe7c8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      background:
+        radial-gradient(circle at top right, rgba(168, 79, 47, 0.12), transparent 28%),
+        linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: "Helvetica Neue", "PingFang SC", sans-serif;
+      line-height: 1.6;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    h1,
+    h2 {
+      margin: 0 0 12px;
+    }
+
+    .lead {
+      margin: 0 0 28px;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .panel {
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 12px 30px rgba(72, 50, 31, 0.06);
+    }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fffaf2;
+    }
+
+    .badge {
+      display: none;
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--success-soft);
+      color: var(--success);
+      font-weight: 600;
+      width: fit-content;
+    }
+
+    button {
+      margin-top: 8px;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #645748;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font: inherit;
+      background: #fff;
+    }
+
+    .note {
+      display: none;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--warn-soft);
+      color: var(--warn);
+      border: 1px solid #efce9a;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Template Release Lab</h1>
+    <p class="lead">
+      这张页面给 `Lesson 101-110` 共用。它模拟模板包在发布前会遇到的几类真实情况：
+      基础断言、异步就绪、偶发失败、延迟元素、失败恢复、重载确认和证据留存。
+    </p>
+
+    <div class="grid">
+      <section class="panel" id="template-release-card">
+        <span class="tag">Template Package</span>
+        <h2 id="release-title">Template Release Package</h2>
+        <p id="release-summary">Current package: handoff-to-template v1.0</p>
+        <div class="status" id="release-status">Draft checks complete</div>
+        <div class="badge" id="release-badge" style="display: inline-block;">Ready for staged checks</div>
+      </section>
+
+      <section class="panel">
+        <span class="tag">Wait Until</span>
+        <h2>Stage Check</h2>
+        <p>点击后会启动一次异步预发布检查，大约 1.2 秒后才会变成 ready。</p>
+        <button id="stage-check-button" type="button">Run stage check</button>
+        <div class="status" id="stage-check-status">Idle</div>
+        <div class="badge" id="stage-ready-badge">Ready for publish</div>
+      </section>
+
+      <section class="panel">
+        <span class="tag">Retry</span>
+        <h2>Retry Gate</h2>
+        <p>第一次点击只会返回临时不一致，第二次点击才会真正通过。</p>
+        <button id="retry-gate-button" type="button">Run retry gate</button>
+        <div class="status" id="retry-gate-status">Waiting for gate check</div>
+        <div class="badge" id="retry-gate-badge">Gate passed</div>
+      </section>
+
+      <section class="panel">
+        <span class="tag">Delayed Element</span>
+        <h2>Delayed Release Note</h2>
+        <p>点击后不会立刻出现说明项，而是稍后补上一条延迟到达的 checklist note。</p>
+        <button id="show-delay-note-button" type="button">Reveal delayed note</button>
+        <div class="status" id="delay-note-status">No delayed note yet</div>
+        <div class="note" id="delayed-release-note">Late checklist item attached</div>
+      </section>
+
+      <section class="panel">
+        <span class="tag">Flaky Click</span>
+        <h2>Publish Preview</h2>
+        <p>第一次点击会碰到 busy 状态，第二次点击才会真正打开发布预览。</p>
+        <button id="flaky-publish-button" type="button">Open publish preview</button>
+        <div class="status" id="flaky-publish-status">Preview closed</div>
+        <div class="badge" id="flaky-publish-badge">Publish preview opened</div>
+      </section>
+
+      <section class="panel">
+        <span class="tag">On Error</span>
+        <h2>Finalize Release</h2>
+        <p>这里要求 ticket 以 `REL-` 开头。新手教程会故意填错一遍，再在错误分支里恢复。</p>
+        <input id="release-ticket" type="text" placeholder="REL-2026-001">
+        <div class="button-row">
+          <button id="finalize-release-button" type="button">Finalize release</button>
+          <button class="secondary" id="reset-finalize" type="button">Reset finalize state</button>
+        </div>
+        <div class="status" id="finalize-status">Awaiting release ticket</div>
+      </section>
+
+      <section class="panel">
+        <span class="tag">Reload</span>
+        <h2>Reload Recovery</h2>
+        <p>这段流程会先写入一份“需要重载确认”的状态，刷新页面后才会看到恢复成功。</p>
+        <button id="reload-recovery-button" type="button">Stage reload recovery</button>
+        <div class="status" id="reload-status">Idle</div>
+        <div class="badge" id="reload-badge">Recovered after reload</div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let retryGateAttempts = 0;
+    let flakyPublishAttempts = 0;
+
+    document.getElementById("stage-check-button").addEventListener("click", function() {
+      const status = document.getElementById("stage-check-status");
+      const badge = document.getElementById("stage-ready-badge");
+
+      status.textContent = "Running staged checks";
+      badge.style.display = "none";
+
+      window.setTimeout(function() {
+        status.textContent = "Ready for publish";
+        badge.style.display = "inline-block";
+      }, 1200);
+    });
+
+    document.getElementById("retry-gate-button").addEventListener("click", function() {
+      retryGateAttempts += 1;
+
+      const status = document.getElementById("retry-gate-status");
+      const badge = document.getElementById("retry-gate-badge");
+
+      if (retryGateAttempts < 2) {
+        status.textContent = "Temporary mismatch";
+        badge.style.display = "none";
+        return;
+      }
+
+      status.textContent = "Gate passed";
+      badge.style.display = "inline-block";
+    });
+
+    document.getElementById("show-delay-note-button").addEventListener("click", function() {
+      const status = document.getElementById("delay-note-status");
+      const note = document.getElementById("delayed-release-note");
+
+      status.textContent = "Waiting for delayed note";
+      note.style.display = "none";
+
+      window.setTimeout(function() {
+        status.textContent = "Late checklist item attached";
+        note.style.display = "block";
+      }, 900);
+    });
+
+    document.getElementById("flaky-publish-button").addEventListener("click", function() {
+      flakyPublishAttempts += 1;
+
+      const status = document.getElementById("flaky-publish-status");
+      const badge = document.getElementById("flaky-publish-badge");
+
+      if (flakyPublishAttempts < 2) {
+        status.textContent = "Button was busy, click again";
+        badge.style.display = "none";
+        return;
+      }
+
+      status.textContent = "Publish preview opened";
+      badge.style.display = "inline-block";
+    });
+
+    document.getElementById("finalize-release-button").addEventListener("click", function() {
+      const ticket = document.getElementById("release-ticket").value.trim();
+      const status = document.getElementById("finalize-status");
+
+      if (!ticket.startsWith("REL-")) {
+        status.textContent = "Release blocked: missing REL- ticket";
+        return;
+      }
+
+      status.textContent = "Release finalized";
+    });
+
+    document.getElementById("reset-finalize").addEventListener("click", function() {
+      document.getElementById("release-ticket").value = "";
+      document.getElementById("finalize-status").textContent = "Awaiting release ticket";
+    });
+
+    if (sessionStorage.getItem("template_release_needs_reload") === "1") {
+      sessionStorage.removeItem("template_release_needs_reload");
+      sessionStorage.setItem("template_release_recovered", "1");
+    }
+
+    function renderReloadState() {
+      const recovered = sessionStorage.getItem("template_release_recovered") === "1";
+      const status = document.getElementById("reload-status");
+      const badge = document.getElementById("reload-badge");
+
+      if (recovered) {
+        status.textContent = "Recovered after reload";
+        badge.style.display = "inline-block";
+        return;
+      }
+
+      status.textContent = "Idle";
+      badge.style.display = "none";
+    }
+
+    document.getElementById("reload-recovery-button").addEventListener("click", function() {
+      sessionStorage.setItem("template_release_needs_reload", "1");
+      sessionStorage.removeItem("template_release_recovered");
+      document.getElementById("reload-status").textContent = "Snapshot updated, reload to confirm";
+      document.getElementById("reload-badge").style.display = "none";
+    });
+
+    renderReloadState();
+  </script>
+</body>
+</html>

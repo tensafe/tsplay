@@ -65,6 +65,9 @@ func main() {
 	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
 	serveRoot := flag.String("serve-root", "", "optional local root directory for built-in static file server; when omitted tsplay serves bundled assets from the binary")
 	extractRoot := flag.String("extract-root", "tsplay-assets", "target directory for extracting bundled docs/demo/script assets")
+	toolName := flag.String("tool", "", "TSPlay MCP tool name for -action mcp-tool")
+	argsJSON := flag.String("args-json", "", "JSON object arguments for -action mcp-tool")
+	argsFile := flag.String("args-file", "", "JSON file containing arguments for -action mcp-tool")
 	sessionName := flag.String("session-name", "", "saved session name for session management actions")
 	storageStatePath := flag.String("storage-state-path", "", "storage state path for save-session actions")
 	storageStateJSON := flag.String("storage-state-json", "", "inline storage state JSON for save-session actions")
@@ -109,6 +112,10 @@ func main() {
 				FlowPathRoot: *flowRoot,
 				ArtifactRoot: *artifactRoot,
 			})
+		case "mcp-tool":
+			if err := runMCPToolAction(*toolName, *argsJSON, *argsFile, *flowRoot, *artifactRoot); err != nil {
+				log.Fatal(err)
+			}
 		case "file-srv", "demo-srv":
 			if err := serveStaticFiles(*addr, *serveRoot); err != nil {
 				log.Fatal(err)
