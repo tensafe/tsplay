@@ -48,7 +48,7 @@
 
 如果你是按课程体系推进，  
 可以继续看：
-[track-advanced.md](track-advanced.md)
+[track-advanced.zh-CN.md](track-advanced.zh-CN.md)
 
 如果你是按长期演化推进，  
 可以继续看：

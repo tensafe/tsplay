@@ -103,5 +103,5 @@
 
 配套文档：
 
-- [curriculum-overview.md](curriculum-overview.md)
+- [curriculum-overview.zh-CN.md](curriculum-overview.zh-CN.md)
 - [iteration-roadmap-160.md](iteration-roadmap-160.md)

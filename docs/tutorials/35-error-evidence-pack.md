@@ -79,4 +79,4 @@ go run . -flow script/tutorials/35_error_evidence_pack.flow.yaml -headless
 而是开始具备会话观察、状态快照和失败现场保留能力了。
 
 如果你要继续按课程体系推进，可以回到：
-[track-junior.md](track-junior.md)
+[track-junior.zh-CN.md](track-junior.zh-CN.md)

@@ -248,9 +248,9 @@
 
 配套文档：
 
-- [curriculum-overview.md](curriculum-overview.md)
-- [track-newbie.md](track-newbie.md)
-- [track-junior.md](track-junior.md)
-- [track-intermediate.md](track-intermediate.md)
-- [track-advanced.md](track-advanced.md)
+- [curriculum-overview.zh-CN.md](curriculum-overview.zh-CN.md)
+- [track-newbie.zh-CN.md](track-newbie.zh-CN.md)
+- [track-junior.zh-CN.md](track-junior.zh-CN.md)
+- [track-intermediate.zh-CN.md](track-intermediate.zh-CN.md)
+- [track-advanced.zh-CN.md](track-advanced.zh-CN.md)
 - [evolution-playbook.md](evolution-playbook.md)

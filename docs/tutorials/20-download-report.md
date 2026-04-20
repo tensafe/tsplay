@@ -93,4 +93,4 @@ go run . -flow script/tutorials/20_download_report.flow.yaml -headless
 - [Lesson 07](07-db-postgres-basics.md)
 
 如果你要继续沿着课程体系推进，可以进入：
-[track-junior.md](track-junior.md)
+[track-junior.zh-CN.md](track-junior.zh-CN.md)

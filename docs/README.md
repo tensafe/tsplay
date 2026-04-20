@@ -1,12 +1,12 @@
 # TSPlay Docs
 
-根目录 [../ReadMe.md](../ReadMe.md) 提供英文项目入口，[../README.zh-CN.md](../README.zh-CN.md) 提供中文对应版本，`docs/` 负责承载更适合团队长期使用的材料，尤其是培训、Enablement 和交付规范。
+根目录 [../ReadMe.md](../ReadMe.md) 提供英文项目入口，[../README.zh-CN.md](../README.zh-CN.md) 提供中文对应版本；教程入口层现在也采用相同策略：英文默认文件名，中文使用 `.zh-CN.md` 副本。`docs/` 负责承载更适合团队长期使用的材料，尤其是培训、Enablement 和交付规范。
 
 ## 推荐阅读顺序
 
 1. [项目总览（中文）](../README.zh-CN.md)
-2. [Step-by-Step 教程](tutorials/README.md)
-3. [完整课程总览](tutorials/curriculum-overview.md)
+2. [Step-by-Step 教程（中文）](tutorials/README.zh-CN.md)
+3. [完整课程总览（中文）](tutorials/curriculum-overview.zh-CN.md)
 4. [160 次递进迭代路线图](tutorials/iteration-roadmap-160.md)
 5. [培训体系总览](training/README.md)
 6. [AI 无感入门](training/ai-intent-to-flow.md)
@@ -21,8 +21,8 @@
 | 类别 | 说明 | 入口 |
 | --- | --- | --- |
 | 项目入口 | TSPlay 的核心概念、运行方式、Flow 和 MCP 能力 | [../README.zh-CN.md](../README.zh-CN.md) |
-| Step-by-Step 教程 | 面向使用者的分步上手教程；同一个功能同时给出 Lua 和 Flow 写法 | [tutorials/README.md](tutorials/README.md) |
-| 完整进阶教程 | 按新手 / 初级 / 中级 / 高级组织的一整套课程体系 | [tutorials/curriculum-overview.md](tutorials/curriculum-overview.md) |
+| Step-by-Step 教程 | 面向使用者的分步上手教程；同一个功能同时给出 Lua 和 Flow 写法 | [tutorials/README.zh-CN.md](tutorials/README.zh-CN.md) |
+| 完整进阶教程 | 按新手 / 初级 / 中级 / 高级组织的一整套课程体系 | [tutorials/curriculum-overview.zh-CN.md](tutorials/curriculum-overview.zh-CN.md) |
 | 160 次迭代路线图 | 把教程建设拆成 160 个渐进迭代点，适合持续演进 | [tutorials/iteration-roadmap-160.md](tutorials/iteration-roadmap-160.md) |
 | 培训总览 | 培训对象、交付模式、成功指标和文档清单 | [training/README.md](training/README.md) |
 | AI 新手教程 | 面向 Codex、OpenClaw 等 Agent 的“用户意图 -> MCP -> Flow -> 执行修复”实战教程 | [training/ai-intent-to-flow.md](training/ai-intent-to-flow.md) |

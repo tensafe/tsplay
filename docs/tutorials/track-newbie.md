@@ -1,31 +1,36 @@
-# 新手教程
+# Newbie Track
 
-这条线只做一件事：让一个从没用过 TSPlay 的人，按顺序拿到第一个、第二个、第三个成功体验。
+English | [简体中文](track-newbie.zh-CN.md)
 
-这里强调的是：
+> The job of this track is simple:
+> help someone who has never used TSPlay accumulate a first, second, and third success in the right order.
 
-- 不跳跃
-- 不抢跑
-- 不先讲抽象词
-- 每学一个动作，就立刻看到结果
+This track is intentionally opinionated:
 
-## 适合谁
+- no jumping ahead
+- no racing toward advanced topics
+- no abstract terminology before hands-on wins
+- every new action should produce an immediate visible result
 
-- 第一天接触 TSPlay
-- 只知道“它是自动化工具”，还不知道该从哪里下手
-- 对 `Lua`、`Flow`、`MCP`、`artifact` 这些词还没有稳定概念
+Most lesson pages linked below are still Chinese, but this page gives you the English learning path and exit criteria.
 
-## 这一层的学习目标
+## Who This Is For
 
-学完之后，应该能独立回答这些问题：
+- people touching TSPlay on day one
+- people who only know “it is an automation tool” and do not yet know where to start
+- people who do not yet have stable intuitions for terms like `Lua`, `Flow`, `MCP`, or `artifact`
 
-- `tsplay` 怎么构建、怎么直接运行
-- 为什么单个二进制也能带着 `docs/`、`script/`、`demo/`
-- `Lua` 和 `Flow` 的边界分别是什么
-- 为什么要先学本地页面，再学外部系统
-- 为什么结果一定要落到 `artifacts/`
+## Learning Goals
 
-## 推荐顺序
+By the end of this track, you should be able to answer:
+
+- how to build and run `tsplay`
+- why a single binary can still carry `docs/`, `script/`, and `demo/`
+- what the boundary is between `Lua` and `Flow`
+- why local pages come before external systems
+- why lesson outputs should land in `artifacts/`
+
+## Recommended Order
 
 1. [Lesson 01](01-hello-world.md)
 2. [Lesson 08](08-bundled-assets-and-artifacts.md)
@@ -38,7 +43,7 @@
 9. [Lesson 11](11-select-another-option.md)
 10. [Lesson 12](12-custom-json-output.md)
 
-## 新手阶段的核心动作
+## Core Actions In This Track
 
 - `set_var`
 - `write_json`
@@ -54,44 +59,44 @@
 - `assert_text`
 - `is_selected`
 
-## 新手阶段的交付物
+## Deliverables
 
-这一层不要求做复杂业务。  
-只要求每学一个主题，都至少交出一种可运行结果：
+This layer does not require complex business workflows.
+It only requires that every topic produces at least one runnable result:
 
-- 一个 `Lua` 脚本
-- 一条 `Flow`
-- 一份写入 `artifacts/tutorials/` 的 JSON
-- 一段你自己的复盘说明
+- one `Lua` script
+- one `Flow`
+- one JSON output under `artifacts/tutorials/`
+- one short reflection in your own words
 
-## 新手阶段的常见误区
+## Common Mistakes
 
-### 误区 1：一开始就想学最完整的业务场景
+### Mistake 1: Starting With The Biggest Business Scenario
 
-结果往往是页面、系统、权限、环境一起卡住。  
-新手阶段应该先把“本地最小成功体验”跑出来。
+That usually means the page, system, permissions, and environment all break at once.
+The newbie track should begin with the smallest local success path instead.
 
-### 误区 2：一开始就只学 Flow，不学 Lua
+### Mistake 2: Learning Only Flow And Skipping Lua
 
-Flow 是主线，但对新手来说，Lua 更像一条直线。  
-先知道“怎么做”，再知道“怎么结构化表达”，心智负担会小很多。
+Flow is the long-term main path, but for a beginner Lua often feels more direct.
+First learn “how to do it”, then learn “how to express it structurally”.
 
-### 误区 3：只看文档，不跑命令
+### Mistake 3: Reading Without Running Commands
 
-TSPlay 不是只看概念就能真正学会的工具。  
-新手阶段必须坚持“每一小步都跑一下”。
+TSPlay is not a tool you truly learn by reading concepts alone.
+At this stage, every small step should be executed.
 
-## 新手阶段的退出标准
+## Exit Criteria
 
-满足下面这些条件时，就可以进入初级教程：
+You are ready to move on when you can:
 
-- 能独立构建 `./tsplay`
-- 能独立启动 `./tsplay -action file-srv -addr :8000`
-- 能独立运行新手本地练习链路：`Lesson 01-05` 和 `Lesson 08-12`
-- 能说清楚 `Lua` 与 `Flow` 的差异
-- 能把页面文本、HTML 片段、表格、JSON 请求结果写到文件里
+- build `./tsplay` independently
+- start `./tsplay -action file-srv -addr :8000` independently
+- run the newbie local practice chain on your own: `Lessons 01-05` and `08-12`
+- explain the difference between `Lua` and `Flow`
+- write page text, HTML fragments, tables, and JSON request results into files
 
-## 学完之后去哪里
+## Where To Go Next
 
-下一站是：
+Next stop:
 [track-junior.md](track-junior.md)

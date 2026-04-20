@@ -1,25 +1,21 @@
-# 高级教程
+# Advanced Track
 
-高级教程的重心，是“系统化交付”。
+English | [简体中文](track-advanced.zh-CN.md)
 
-从这一层开始，不再只关心“这条 Flow 能不能跑”，而是要同时回答：
+> The center of gravity at this layer is systematic delivery.
+> The question is no longer just “Can this Flow run?” but “Can this capability survive review, packaging, handoff, and long-term growth?”
 
-- 它能不能被团队长期维护
-- 它能不能被审查和发布
-- 它能不能被打包交给别人直接用
-- 它能不能作为一套课程继续生长
+## Who This Is For
 
-## 适合谁
+- people rolling TSPlay out inside a team
+- people responsible for integration, review, delivery, training, or standards
+- people treating `tsplay` as a product capability or delivery capability instead of a personal scripting tool
 
-- 要在团队里推广 TSPlay
-- 要做集成、评审、交付、培训、规范
-- 要把 `tsplay` 作为产品能力或交付能力的人
+## Core Themes
 
-## 高级阶段的核心主题
+### 1. Security Boundaries
 
-### 1. 安全边界
-
-要系统理解：
+You should understand:
 
 - `allow_lua`
 - `allow_http`
@@ -28,69 +24,83 @@
 - `allow_database`
 - `allow_browser_state`
 
-重点不是记参数，而是知道为什么要分这些边界。
+The goal is not to memorize flags.
+It is to understand why these boundaries exist and what risk they are containing.
 
-当前仓库里，这一层已经可以先从 `Lesson 121-126` 跑出每一类 `allow_*` 的 blocked / allowed 对照，再用 `Lesson 127-130` 把本地 Flow、MCP、`security_preset`、显式覆盖和教学前置顺序重新串成一条高级阶段的起步主线。
+The current repository already supports a strong progression:
 
-接下来的 `Lesson 131-140`，则继续把这条主线推进到“怎么 review、怎么命名、怎么放 artifact、什么时候该保留 Lua、什么时候该拆成大型 Flow 包”。也就是说，高级阶段现在已经不只是“理解边界”，而是开始真正进入“交付规范和评审思维”。
+- `Lessons 121-126`: blocked vs allowed comparisons for each `allow_*`
+- `Lessons 127-130`: local Flow vs MCP boundaries, `security_preset`, explicit overrides, and why boundary education comes early
+- `Lessons 131-140`: naming, review, artifact layout, Lua escape hatches, and larger package structure
 
-### 2. 大型 Flow 的组织方式
+### 2. Large-Flow Organization
 
-要开始建立规范：
+At this stage you should start defining standards for:
 
-- 步骤命名
-- 变量命名
-- artifact 目录约定
-- 环境变量约定
-- review 规则
+- step naming
+- variable naming
+- artifact directory layout
+- environment variable conventions
+- review rules
 
-### 3. 二进制发布与交付包
+### 3. Binary Delivery and Delivery Packs
 
-这一层要理解为什么现在要把：
+This is where you understand why the project bundles:
 
 - `docs/`
 - `script/`
 - `demo/`
 - `ReadMe.md`
 
-一起打包进二进制。  
-这不是“方便一点”，而是把教程、示例、运行入口做成同一个交付物。
+into the binary itself.
+The purpose is not minor convenience.
+It is to ship the tutorials, examples, and runnable entry points as one deliverable.
 
-当前仓库里，这一层现在已经可以从 `Lesson 141-143` 先跑通“内置资源发现 -> 资源释放”，再用 `Lesson 144-146` 把单二进制交付和资源策略收成 manifest，最后用 `Lesson 147-150` 把 `file-srv`、first-run 入口、版本策略和发布复盘连成一条完整的交付主线。
+The current progression is:
 
-### 4. 课程持续演进
+- `Lessons 141-143`: asset discovery and extraction
+- `Lessons 144-146`: single-binary delivery and asset policy
+- `Lessons 147-150`: `file-srv`, first-run entry, version strategy, and delivery retrospectives
 
-高级阶段不应该只停在“我会用了”。  
-还要会：
+### 4. Continuous Curriculum Evolution
 
-- 补新主题
-- 重构旧文档
-- 按层级安排学习顺序
-- 维护一条不会跳跃的增长主线
+The advanced layer should not stop at “I know how to use it”.
+You should also be able to:
 
-当前仓库里，这一层现在已经可以继续从 `Lesson 151-154` 先把四层 capstone 收出来，再用 `Lesson 155-157` 把新人、实施同学和讲师的排期接上，最后用 `Lesson 158-160` 把月度缺口复盘、每 10 次回看和下一圈扩展计划收成稳定机制。
+- add new themes
+- refactor older documents
+- arrange learning order by level
+- maintain a growth path that does not jump unpredictably
 
-## 高级阶段的交付物
+The current progression is:
 
-- 一份团队规范草案
-- 一份教程演进计划
-- 一组可交付的示例包
-- 一套“新人从哪里开始学”的推荐顺序
-- 一张“动作类别 -> 最小授权”的边界地图
-- 一份“命名、artifact、Lua / Flow 取舍”的 review checklist
-- 一份“单二进制交付 + 离线学习 + 版本策略”的发布包说明
-- 一套“capstone -> 培训 -> 复盘 -> 下一圈扩展”的持续演化方案
+- `Lessons 151-154`: capstone briefs for four levels
+- `Lessons 155-157`: onboarding plans for new hires, implementers, and trainers
+- `Lessons 158-160`: gap reviews, every-10-iteration checkpoints, and the next expansion loop
 
-## 高级阶段的退出标准
+## Deliverables
 
-- 能独立组织一套可交付教程
-- 能评审 Flow 的结构质量而不只是看它能不能跑
-- 能解释 TSPlay 的安全边界和交付边界
-- 能继续按同一逻辑把教程往下演进
+- one draft of team standards
+- one tutorial evolution plan
+- one deliverable example pack
+- one recommended “where should a new person start” path
+- one boundary map from action categories to minimum permission grants
+- one review checklist for naming, artifacts, and Lua / Flow tradeoffs
+- one release-pack explanation covering single-binary delivery, offline learning, and version strategy
+- one continuous-evolution plan connecting capstones, training, retrospectives, and the next expansion loop
 
-## 配套文档
+## Exit Criteria
 
-高级阶段建议和这两份文档一起看：
+You are ready to operate at this layer when you can:
+
+- organize a deliverable tutorial system
+- review structural quality instead of checking only whether a Flow runs
+- explain TSPlay’s security boundaries and delivery boundaries clearly
+- keep extending the curriculum using the same logic instead of starting from scratch each time
+
+## Companion Documents
+
+The advanced layer works best alongside:
 
 - [iteration-roadmap-160.md](iteration-roadmap-160.md)
 - [evolution-playbook.md](evolution-playbook.md)
