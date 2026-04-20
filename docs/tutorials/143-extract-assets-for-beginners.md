@@ -39,17 +39,14 @@ go run . -action extract-assets -extract-root ./tsplay-assets-143
 ## Step 2: 再确认释放后的关键入口
 
 ```bash
-rg -n '^(ReadMe.md|docs/tutorials/README.md|script/tutorials/01_hello_world.flow.yaml|demo/demo.html)$' <(cd tsplay-assets-143 && find . -type f | sed 's#^./##')
-```
-
-如果你不想用进程替换，也可以拆成两步：
-
-```bash
 cd tsplay-assets-143
 find . -type f | sed 's#^./##' > ../artifacts/tutorials/143-extracted-assets.txt
 cd ..
 rg -n '^(ReadMe.md|docs/tutorials/README.md|script/tutorials/01_hello_world.flow.yaml|demo/demo.html)$' artifacts/tutorials/143-extracted-assets.txt
 ```
+
+这里故意保持成两步，而不是更花的 shell 写法。  
+这一节的重点是理解“内置资源释放后会出现哪些入口”，不是第一次就把命令技巧学复杂。
 
 ## Step 3: 这一节意味着什么
 

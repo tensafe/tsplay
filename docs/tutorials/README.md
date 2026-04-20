@@ -405,7 +405,9 @@ go run . -action mcp-tool -tool tsplay.list_actions
 ./tsplay -action extract-assets -extract-root ./tsplay-assets
 ```
 
-Lesson 01、Lesson 08、Lesson 14、Lesson 24、Lesson 25、Lesson 111、Lesson 112、Lesson 121 到 Lesson 160 都可以直接开始。  
+如果你只是想先单独跑一个低依赖、容易看到结果的小例子，  
+可以从 Lesson 01、Lesson 08、Lesson 14、Lesson 24、Lesson 25、Lesson 111、Lesson 112、Lesson 121 到 Lesson 160 里挑一节开始。  
+这句话的意思是“这些章节能独立试跑”，不是“推荐第一次学习就直接跳过前面阶段”。  
 从 Lesson 02 到 Lesson 05、Lesson 09 到 Lesson 12、Lesson 16 到 Lesson 23、Lesson 26 到 Lesson 38、Lesson 42、Lesson 44 到 Lesson 57、Lesson 101 到 Lesson 120，建议另开一个终端，在仓库根目录启动 TSPlay 内置静态文件服务：
 
 ```bash

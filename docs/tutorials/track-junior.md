@@ -115,7 +115,7 @@
 9. `Lesson 40-43` 再把命名会话和 `use_session` 打通
 10. `Lesson 44-50` 再把命名会话真正接到受保护业务流程里
 11. `Lesson 51-57` 再把认证导入结果做成页面表格、导出文件和回读闭环
-12. `Lesson 06-07` 先把 Redis / Postgres 的最小动作跑顺
+12. 在进入 `Lesson 58-64` 之前，先回头补跑 `Lesson 06-07`，把 Redis / Postgres 的最小动作热身一遍
 13. `Lesson 58-60` 再把认证导出结果接进 Redis 摘要和批次 key
 14. `Lesson 61-64` 最后把同一份导出结果接进 Postgres 摘要、查询、upsert 和事务写入
 15. `Lesson 65-71` 再把 Redis 批次、Postgres 摘要/明细和三边对账真正串成一次完整外部同步链
