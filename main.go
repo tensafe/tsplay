@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	"tsplay/tsplay_core"
 
 	"github.com/c-bata/go-prompt"
@@ -68,6 +69,18 @@ func main() {
 	toolName := flag.String("tool", "", "TSPlay MCP tool name for -action mcp-tool")
 	argsJSON := flag.String("args-json", "", "JSON object arguments for -action mcp-tool")
 	argsFile := flag.String("args-file", "", "JSON file containing arguments for -action mcp-tool")
+	recordInput := flag.String("record-input", defaultScreenRecordInput, "ffmpeg avfoundation input spec for -action record-screen, for example 'Capture screen 0:none'")
+	recordOutput := flag.String("record-output", defaultScreenRecordOutput, "video output path for -action record-screen")
+	recordCommand := flag.String("record-cmd", "", "shell command to run while -action record-screen is recording")
+	recordShell := flag.String("record-shell", "/bin/zsh", "shell used to launch -record-cmd")
+	recordFrameRate := flag.Int("record-fps", 30, "frame rate for -action record-screen")
+	recordSize := flag.String("record-size", "", "optional ffmpeg video size for -action record-screen, for example 1728x1117")
+	recordCursor := flag.Bool("record-cursor", true, "whether -action record-screen should capture the mouse cursor")
+	recordWarmupMS := flag.Int("record-warmup-ms", 1200, "warmup delay in milliseconds before -record-cmd starts")
+	recordCooldownMS := flag.Int("record-cooldown-ms", 900, "cooldown delay in milliseconds after -record-cmd ends")
+	recordDurationMS := flag.Int("record-duration-ms", 0, "optional hard limit in milliseconds for ffmpeg recording duration")
+	recordCRF := flag.Int("record-crf", 23, "ffmpeg libx264 CRF for -action record-screen")
+	recordPreset := flag.String("record-preset", "veryfast", "ffmpeg encoding preset for -action record-screen")
 	sessionName := flag.String("session-name", "", "saved session name for session management actions")
 	storageStatePath := flag.String("storage-state-path", "", "storage state path for save-session actions")
 	storageStateJSON := flag.String("storage-state-json", "", "inline storage state JSON for save-session actions")
@@ -134,6 +147,35 @@ func main() {
 				log.Fatal(err)
 			}
 			fmt.Printf("Extracted %d bundled assets to %s\n", count, *extractRoot)
+		case "list-record-devices":
+			probe, err := listScreenRecordDevices()
+			if probe != nil {
+				printJSON(probe)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+		case "record-screen":
+			result, err := runScreenRecordAction(screenRecordOptions{
+				InputSpec:     *recordInput,
+				OutputPath:    *recordOutput,
+				Command:       *recordCommand,
+				Shell:         *recordShell,
+				FrameRate:     *recordFrameRate,
+				VideoSize:     *recordSize,
+				CaptureCursor: *recordCursor,
+				Warmup:        time.Duration(*recordWarmupMS) * time.Millisecond,
+				Cooldown:      time.Duration(*recordCooldownMS) * time.Millisecond,
+				MaxDuration:   time.Duration(*recordDurationMS) * time.Millisecond,
+				CRF:           *recordCRF,
+				Preset:        *recordPreset,
+			})
+			if result != nil {
+				printJSON(result)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
 		case "save-session":
 			if strings.TrimSpace(*sessionName) == "" {
 				log.Fatal("-session-name is required for -action save-session")

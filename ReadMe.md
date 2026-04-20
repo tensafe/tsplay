@@ -86,11 +86,16 @@ go mod download
 | 运行 Flow | `go run . -flow script/demo_baidu.flow.yaml` |
 | 启动内置静态文件服务 | `go run . -action file-srv -addr :8000` |
 | 直接调用一个 TSPlay MCP 工具 | `go run . -action mcp-tool -tool tsplay.list_actions` |
+| 列出 macOS 录屏设备 | `go run . -action list-record-devices` |
+| 自动录一条教程命令 | `go run . -action record-screen -record-cmd "go run . -flow script/tutorials/10_assert_page_state.flow.yaml"` |
 | 列出二进制内置资源 | `go run . -action list-assets` |
 | 释放内置 docs/script/demo | `go run . -action extract-assets -extract-root ./tsplay-assets` |
 | 启动 MCP Server | `go run . -action srv` |
 
 如果想隐藏浏览器窗口，可以追加 `-headless`。
+
+自动录屏当前先支持 macOS + `ffmpeg`。更完整的讲师用法见
+[docs/training/tutorial-video-recording.md](docs/training/tutorial-video-recording.md)。
 
 当你构建 `./tsplay` 二进制后，`ReadMe.md`、`docs/`、`script/`、`demo/` 会一并打包进二进制：
 

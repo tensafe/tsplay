@@ -26,6 +26,7 @@
 | Labs | 提供基于仓库现有素材的实验任务 | [labs.md](labs.md) |
 | Capstone | 提供结业项目场景和交付要求 | [capstone-briefs.md](capstone-briefs.md) |
 | 考核体系 | 给出评分标准、证据和晋级门槛 | [assessment.md](assessment.md) |
+| 自动录屏 | 帮讲师和维护者把教程过程稳定录成视频素材 | [tutorial-video-recording.md](tutorial-video-recording.md) |
 | 讲师手册 | 帮讲师备课、控节奏、收证据和复盘 | [trainer-playbook.md](trainer-playbook.md) |
 | 模板 | 学员提交和讲师评审的统一模板 | [templates/](templates/) |
 
