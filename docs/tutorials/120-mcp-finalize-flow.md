@@ -59,6 +59,10 @@ go run . -action mcp-tool -tool tsplay.finalize_flow -args-file script/tutorials
 可以回到：
 [track-intermediate.md](track-intermediate.md)
 
+如果你想继续进入高级阶段的安全边界模块，  
+可以继续看：
+[Lesson 121](121-allow-lua-boundary.md)
+
 如果你是按长期演化推进，  
 可以继续看：
 [iteration-roadmap-160.md](iteration-roadmap-160.md)

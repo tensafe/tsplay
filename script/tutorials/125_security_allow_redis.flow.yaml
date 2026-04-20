@@ -1,0 +1,7 @@
+schema_version: "1"
+name: lesson_125_security_allow_redis_flow
+description: Minimal Redis step for the MCP allow_redis boundary lesson.
+steps:
+  - action: redis_get
+    key: tutorials:security:checkpoint
+    save_as: redis_value

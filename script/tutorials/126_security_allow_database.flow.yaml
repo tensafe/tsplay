@@ -1,0 +1,13 @@
+schema_version: "1"
+name: lesson_126_security_allow_database_flow
+description: Minimal database step for the MCP allow_database boundary lesson.
+steps:
+  - action: db_insert
+    save_as: insert_result
+    with:
+      table: public.tutorial_security_events
+      driver: pgsql
+      row:
+        lesson: "126"
+        boundary: allow_database
+        status: ready

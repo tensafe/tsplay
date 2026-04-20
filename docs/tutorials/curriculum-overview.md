@@ -264,8 +264,18 @@
 - [Lesson 118](118-mcp-repair-flow.md)
 - [Lesson 119](119-mcp-chain-overview.md)
 - [Lesson 120](120-mcp-finalize-flow.md)
+- [Lesson 121](121-allow-lua-boundary.md)
+- [Lesson 122](122-allow-http-boundary.md)
+- [Lesson 123](123-allow-file-access-boundary.md)
+- [Lesson 124](124-allow-browser-state-boundary.md)
+- [Lesson 125](125-allow-redis-boundary.md)
+- [Lesson 126](126-allow-database-boundary.md)
+- [Lesson 127](127-compare-local-flow-and-mcp-boundaries.md)
+- [Lesson 128](128-why-security-boundaries-come-first.md)
+- [Lesson 129](129-security-preset-and-override.md)
+- [Lesson 130](130-security-boundary-learning-checkpoint.md)
 
-这 120 节是完整课程的起点，不是终点。  
+这 130 节是完整课程的起点，不是终点。  
 后续扩展的依据统一放在：
 
 - [160 次递进迭代路线图](iteration-roadmap-160.md)

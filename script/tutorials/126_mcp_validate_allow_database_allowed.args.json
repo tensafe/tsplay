@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/126_security_allow_database.flow.yaml",
+  "allow_database": true
+}

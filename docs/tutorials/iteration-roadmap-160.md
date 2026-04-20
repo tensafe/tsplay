@@ -186,16 +186,16 @@
 
 ## 模块 13：安全边界与运行边界
 
-- `[121]` 为 `allow_lua` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[122]` 为 `allow_http` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[123]` 为 `allow_file_access` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[124]` 为 `allow_browser_state` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[125]` 为 `allow_redis` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[126]` 为 `allow_database` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[127]` 写出“本地 CLI / 本地 Flow / MCP 模式”三者的边界对照。交付物：一页说明。
-- `[128]` 写出“为什么教程不能一开始就忽略授权边界”。交付物：一段说明。
-- `[129]` 为每类高风险动作整理默认教学前置。交付物：一份前置条件清单。
-- `[130]` 复盘安全边界在交付中的价值。交付物：一段交付视角说明。
+- `[121]` 跑通 `Lesson 121`，先把 `allow_lua` 的 blocked / allowed 对照跑清楚。交付物：`121-mcp-validate-allow-lua-blocked.json`、`121-mcp-validate-allow-lua-allowed.json`。
+- `[122]` 跑通 `Lesson 122`，把 `allow_http` 的 blocked / allowed 对照跑清楚。交付物：`122-mcp-validate-allow-http-blocked.json`、`122-mcp-validate-allow-http-allowed.json`。
+- `[123]` 跑通 `Lesson 123`，把 `allow_file_access` 的 blocked / allowed 对照跑清楚。交付物：`123-mcp-validate-allow-file-access-blocked.json`、`123-mcp-validate-allow-file-access-allowed.json`。
+- `[124]` 跑通 `Lesson 124`，把 `allow_browser_state` 的 blocked / allowed 对照跑清楚。交付物：`124-mcp-validate-allow-browser-state-blocked.json`、`124-mcp-validate-allow-browser-state-allowed.json`。
+- `[125]` 跑通 `Lesson 125`，把 `allow_redis` 的 blocked / allowed 对照跑清楚。交付物：`125-mcp-validate-allow-redis-blocked.json`、`125-mcp-validate-allow-redis-allowed.json`。
+- `[126]` 跑通 `Lesson 126`，把 `allow_database` 的 blocked / allowed 对照跑清楚。交付物：`126-mcp-validate-allow-database-blocked.json`、`126-mcp-validate-allow-database-allowed.json`。
+- `[127]` 跑通 `Lesson 127`，写出“本地 Flow 和 MCP”两种入口的边界对照。交付物：一页对照说明和本地 `123` Flow 运行结果。
+- `[128]` 跑通 `Lesson 128`，写出“为什么教程不能一开始就忽略授权边界”。交付物：一页说明。
+- `[129]` 跑通 `Lesson 129`，把 `security_preset` 和显式 `allow_*` 覆盖关系跑清楚。交付物：`129-mcp-validate-file-access-browser-write.json`、`129-mcp-validate-http-full-automation.json`、`129-mcp-validate-http-full-automation-override.json`。
+- `[130]` 跑通 `Lesson 130`，把安全边界模块收成第一轮 checkpoint。交付物：一页边界复盘。
 
 ## 模块 14：大型 Flow、规范、评审
 

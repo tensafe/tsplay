@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/125_security_allow_redis.flow.yaml",
+  "allow_redis": true
+}

@@ -1,0 +1,20 @@
+schema_version: "1"
+name: lesson_139_large_flow_collect_stage
+description: Collect a small list of raw items and write them into a collect-stage artifact.
+steps:
+  - action: set_var
+    save_as: raw_items
+    with:
+      value:
+        - source: tutorial
+          id: item-001
+          status: collected
+        - source: tutorial
+          id: item-002
+          status: collected
+
+  - action: write_json
+    file_path: artifacts/tutorials/139/collect/raw-items.json
+    with:
+      value: "{{raw_items}}"
+    save_as: write_result

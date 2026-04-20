@@ -1,0 +1,6 @@
+schema_version: "1"
+name: lesson_124_security_allow_browser_state_flow
+description: Minimal browser state step for the MCP allow_browser_state boundary lesson.
+steps:
+  - action: get_storage_state
+    save_as: storage_state_json

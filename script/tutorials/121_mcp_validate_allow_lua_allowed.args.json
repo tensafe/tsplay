@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/121_security_allow_lua.flow.yaml",
+  "allow_lua": true
+}
