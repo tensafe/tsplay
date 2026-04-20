@@ -1,0 +1,49 @@
+schema_version: "1"
+name: lesson_106_wait_for_delayed_release_note_flow
+description: Trigger a delayed release note, wait for it to appear, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#show-delay-note-button"
+    timeout: 5000
+
+  - action: click
+    selector: "#show-delay-note-button"
+
+  - action: wait_for_selector
+    selector: "#delayed-release-note"
+    timeout: 5000
+
+  - action: assert_visible
+    selector: "#delayed-release-note"
+    timeout: 5000
+    save_as: note_visible
+
+  - action: extract_text
+    selector: "#delayed-release-note"
+    timeout: 5000
+    save_as: note_text
+
+  - action: extract_text
+    selector: "#delay-note-status"
+    timeout: 5000
+    save_as: delay_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "106"
+        mode: flow
+        page_url: "{{page_url}}"
+        note_visible: "{{note_visible}}"
+        note_text: "{{note_text}}"
+        delay_status: "{{delay_status}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/106-wait-for-delayed-release-note-flow.json
+    value: "{{payload}}"

@@ -1,0 +1,26 @@
+schema_version: "1"
+name: lesson_146_embedded_asset_policy_flow
+description: Build a policy summary for which assets must stay embedded in the release binary.
+steps:
+  - action: set_var
+    save_as: asset_policy
+    with:
+      value:
+        lesson: "146"
+        required_embedded_assets:
+          - ReadMe.md
+          - docs/
+          - script/
+          - demo/
+        optional_embedded_assets:
+          - extra release notes copied outside the binary
+        reason:
+          - tutorial entry must be discoverable
+          - runnable examples must be bundled
+          - demo pages must stay aligned with tutorials
+
+  - action: write_json
+    file_path: artifacts/tutorials/146/embedded-asset-policy.json
+    with:
+      value: "{{asset_policy}}"
+    save_as: write_result

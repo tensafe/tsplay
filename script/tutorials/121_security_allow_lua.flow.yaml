@@ -1,0 +1,12 @@
+schema_version: "1"
+name: lesson_121_security_allow_lua_flow
+description: Minimal Lua step for the MCP allow_lua boundary lesson.
+steps:
+  - action: lua
+    save_as: payload
+    code: |
+      return {
+        lesson = "121",
+        boundary = "allow_lua",
+        status = "ready",
+      }

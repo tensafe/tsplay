@@ -1,0 +1,17 @@
+schema_version: "1"
+name: tmp_review
+description: Do the thing and write a file.
+steps:
+  - action: set_var
+    save_as: x
+    with:
+      value:
+        lesson: "131"
+        module: review_basics
+        status: ready
+
+  - action: write_json
+    file_path: artifacts/review-output.json
+    with:
+      value: "{{x}}"
+    save_as: y

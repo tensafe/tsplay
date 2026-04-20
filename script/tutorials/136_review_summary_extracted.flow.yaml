@@ -1,0 +1,18 @@
+schema_version: "1"
+name: lesson_136_review_summary_extracted_flow
+description: Rewrite a simple Lua review summary as Flow so the structure, variables, and artifacts stay reviewable.
+steps:
+  - action: set_var
+    save_as: review_summary
+    with:
+      value:
+        lesson: "136"
+        mode: flow
+        recommendation: prefer_flow
+        reason: simple_orchestration_only
+
+  - action: write_json
+    file_path: artifacts/tutorials/136/review-summary-from-flow.json
+    with:
+      value: "{{review_summary}}"
+    save_as: write_result

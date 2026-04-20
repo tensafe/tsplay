@@ -14,6 +14,7 @@
 8. [训练营课程表](training/bootcamp-plan.md)
 9. [实训实验](training/labs.md)
 10. [考核与认证](training/assessment.md)
+11. [教程自动录屏](training/tutorial-video-recording.md)
 
 ## 文档地图
 
@@ -30,6 +31,7 @@
 | 实操实验 | 结合本仓库 `demo/` 和 `script/` 的实验清单 | [training/labs.md](training/labs.md) |
 | Capstone 场景 | 结业项目说明和交付要求 | [training/capstone-briefs.md](training/capstone-briefs.md) |
 | 考核与认证 | 评分、门槛、证据和复盘机制 | [training/assessment.md](training/assessment.md) |
+| 教程自动录屏 | 用 `tsplay` + `ffmpeg` 把教程演示稳定录成视频素材 | [training/tutorial-video-recording.md](training/tutorial-video-recording.md) |
 | 讲师手册 | 讲师备课、授课、辅导和版本维护 | [training/trainer-playbook.md](training/trainer-playbook.md) |
 
 ## 仓库内可直接复用的训练素材

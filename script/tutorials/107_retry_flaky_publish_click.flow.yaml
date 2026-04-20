@@ -1,0 +1,52 @@
+schema_version: "1"
+name: lesson_107_retry_flaky_publish_click_flow
+description: Retry a flaky publish-preview click until the preview opens, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#flaky-publish-button"
+    timeout: 5000
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: retry_result
+    steps:
+      - action: click
+        selector: "#flaky-publish-button"
+      - action: assert_text
+        selector: "#flaky-publish-status"
+        text: "Publish preview opened"
+        timeout: 500
+      - action: assert_visible
+        selector: "#flaky-publish-badge"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#flaky-publish-status"
+    timeout: 5000
+    save_as: publish_status
+
+  - action: assert_visible
+    selector: "#flaky-publish-badge"
+    timeout: 5000
+    save_as: preview_visible
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "107"
+        mode: flow
+        page_url: "{{page_url}}"
+        retry_result: "{{retry_result}}"
+        publish_status: "{{publish_status}}"
+        preview_visible: "{{preview_visible}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/107-retry-flaky-publish-click-flow.json
+    value: "{{payload}}"

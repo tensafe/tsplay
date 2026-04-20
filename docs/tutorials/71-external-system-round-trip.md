@@ -91,3 +91,8 @@ go run . -flow script/tutorials/71_external_system_round_trip.flow.yaml
 - 本地对账包负责复盘
 
 这一条线已经很接近真实交付里的“最小结果同步流程”。
+
+## 下一节
+
+下一节先从运维视角继续往前走，练习“同一个批次号重跑”：
+[Lesson 72](72-rerun-shared-batch-idempotently.md)

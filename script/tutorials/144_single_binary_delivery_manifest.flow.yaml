@@ -1,0 +1,26 @@
+schema_version: "1"
+name: lesson_144_single_binary_delivery_manifest_flow
+description: Build a single-binary delivery manifest that explains what the receiver gets and how they should start.
+steps:
+  - action: set_var
+    save_as: delivery_manifest
+    with:
+      value:
+        lesson: "144"
+        delivery_mode: single_binary
+        shipped_items:
+          - tsplay
+        first_commands:
+          - ./tsplay -action list-assets
+          - ./tsplay -action extract-assets -extract-root ./tsplay-assets
+        bundled_reference_paths:
+          - ReadMe.md
+          - docs/tutorials/README.md
+          - script/tutorials/01_hello_world.flow.yaml
+          - demo/demo.html
+
+  - action: write_json
+    file_path: artifacts/tutorials/144/single-binary-delivery-manifest.json
+    with:
+      value: "{{delivery_manifest}}"
+    save_as: write_result

@@ -1,0 +1,63 @@
+schema_version: "1"
+name: lesson_109_template_release_artifact_pack_flow
+description: Capture a full-page screenshot, an element screenshot, and the page HTML from the template release lab.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+  result_path: artifacts/tutorials/109-template-release-artifact-pack-flow.json
+  full_page_path: artifacts/tutorials/109-template-release-full-page-flow.png
+  card_path: artifacts/tutorials/109-template-release-card-flow.png
+  html_path: artifacts/tutorials/109-template-release-artifact-pack-flow.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#template-release-card"
+    timeout: 5000
+
+  - action: click
+    selector: "#stage-check-button"
+
+  - action: wait_until
+    timeout: 5000
+    interval_ms: 200
+    condition:
+      action: is_visible
+      selector: "#stage-ready-badge"
+
+  - action: screenshot
+    path: "{{full_page_path}}"
+
+  - action: screenshot_element
+    selector: "#template-release-card"
+    path: "{{card_path}}"
+
+  - action: save_html
+    path: "{{html_path}}"
+
+  - action: extract_text
+    selector: "#stage-check-status"
+    timeout: 5000
+    save_as: stage_status
+
+  - action: extract_text
+    selector: "#release-summary"
+    timeout: 5000
+    save_as: release_summary
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "109"
+        mode: flow
+        page_url: "{{page_url}}"
+        stage_status: "{{stage_status}}"
+        release_summary: "{{release_summary}}"
+        full_page_path: "{{full_page_path}}"
+        card_path: "{{card_path}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"

@@ -1,0 +1,24 @@
+schema_version: "1"
+name: lesson_150_single_binary_delivery_summary_flow
+description: Build a final summary of why a single binary with bundled tutorials improves delivery and onboarding.
+steps:
+  - action: set_var
+    save_as: delivery_summary
+    with:
+      value:
+        lesson: "150"
+        headline: single binary plus bundled tutorials
+        benefits:
+          - one file is enough to ship the runtime and reference materials
+          - new users can discover docs, scripts, and demos from the same executable
+          - offline onboarding stays possible after extraction
+        bridge_to_next_module:
+          - capstone exercises
+          - training plans
+          - teaching sequences
+
+  - action: write_json
+    file_path: artifacts/tutorials/150/single-binary-delivery-summary.json
+    with:
+      value: "{{delivery_summary}}"
+    save_as: write_result

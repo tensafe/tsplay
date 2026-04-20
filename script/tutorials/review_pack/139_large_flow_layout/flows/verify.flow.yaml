@@ -1,0 +1,20 @@
+schema_version: "1"
+name: lesson_139_large_flow_verify_stage
+description: Build a verification summary that explains what the collect stage is expected to guarantee.
+steps:
+  - action: set_var
+    save_as: verification_summary
+    with:
+      value:
+        lesson: "139"
+        stage: verify
+        checks:
+          - raw_items_exist
+          - artifact_path_is_lesson_scoped
+          - output_name_is_predictable
+
+  - action: write_json
+    file_path: artifacts/tutorials/139/verify/verification-summary.json
+    with:
+      value: "{{verification_summary}}"
+    save_as: write_result

@@ -1,0 +1,7 @@
+{
+  "intent": "查看模板发布内容",
+  "url": "http://127.0.0.1:8000/demo/template_release_lab.html",
+  "observation": "@jsonfile:../../artifacts/tutorials/113-mcp-observe-page-template-release.json",
+  "flow_name": "mcp_template_release_content",
+  "security_preset": "readonly"
+}

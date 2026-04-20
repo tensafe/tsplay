@@ -1,0 +1,21 @@
+schema_version: "1"
+name: lesson_139_large_flow_publish_stage
+description: Write a publish-stage manifest that points to collect and verify outputs as a handoff bundle.
+steps:
+  - action: set_var
+    save_as: publish_manifest
+    with:
+      value:
+        lesson: "139"
+        stage: publish
+        inputs:
+          - artifacts/tutorials/139/collect/raw-items.json
+          - artifacts/tutorials/139/verify/verification-summary.json
+        output:
+          - artifacts/tutorials/139/publish/publish-manifest.json
+
+  - action: write_json
+    file_path: artifacts/tutorials/139/publish/publish-manifest.json
+    with:
+      value: "{{publish_manifest}}"
+    save_as: write_result

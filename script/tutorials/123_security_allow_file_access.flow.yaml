@@ -1,0 +1,17 @@
+schema_version: "1"
+name: lesson_123_security_allow_file_access_flow
+description: Minimal artifact write step for the MCP allow_file_access boundary lesson.
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "123"
+        boundary: allow_file_access
+        status: ready
+
+  - action: write_json
+    file_path: artifacts/tutorials/123-security-allow-file-access-flow.json
+    with:
+      value: "{{payload}}"
+    save_as: write_result

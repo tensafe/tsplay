@@ -131,6 +131,8 @@ write_csv("artifacts/tutorials/80-external-sync-lifecycle-round-trip-lua.csv", {
     {
         batch_id = batch_id,
         audit_id = audit_id,
+        input_file = input_file,
+        payload_key = payload_key,
         pre_cleanup_summary = pre_cleanup_summary.row_count,
         pre_cleanup_detail = pre_cleanup_detail.row_count,
         post_cleanup_summary = post_cleanup_summary.row_count,
@@ -138,7 +140,7 @@ write_csv("artifacts/tutorials/80-external-sync-lifecycle-round-trip-lua.csv", {
         payload_deleted = payload_deleted,
         latest_deleted = latest_deleted
     }
-}, {"batch_id", "audit_id", "pre_cleanup_summary", "pre_cleanup_detail", "post_cleanup_summary", "post_cleanup_detail", "payload_deleted", "latest_deleted"})
+}, {"batch_id", "audit_id", "input_file", "payload_key", "pre_cleanup_summary", "pre_cleanup_detail", "post_cleanup_summary", "post_cleanup_detail", "payload_deleted", "latest_deleted"})
 
 write_json("artifacts/tutorials/80-external-sync-lifecycle-round-trip-lua.json", {
     lesson = "80",

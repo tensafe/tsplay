@@ -85,6 +85,95 @@
 69. [Lesson 69: 把源 CSV 和 DB 明细行放到一起比](69-compare-source-csv-and-db-rows.md)
 70. [Lesson 70: 生成一份 CSV、Redis、Postgres 三边对账包](70-build-reconciliation-pack-from-csv-redis-db.md)
 71. [Lesson 71: 跑通一次完整的外部系统 round trip](71-external-system-round-trip.md)
+72. [Lesson 72: 用同一个批次号重跑同步，但不产生重复数据](72-rerun-shared-batch-idempotently.md)
+73. [Lesson 73: 验证重跑后没有重复行](73-verify-rerun-does-not-duplicate-rows.md)
+74. [Lesson 74: 遇到坏数据时，保留有效行并写出异常台账](74-recover-external-sync-with-anomaly-ledger.md)
+75. [Lesson 75: 给外部同步写入一条审计记录](75-write-external-sync-audit-row.md)
+76. [Lesson 76: 读回某个批次的审计历史](76-query-external-sync-audit-history.md)
+77. [Lesson 77: 把审计历史导出成 CSV](77-export-external-sync-audit-history.md)
+78. [Lesson 78: 清理最新批次的运行数据，但保留审计](78-cleanup-latest-external-batch.md)
+79. [Lesson 79: 验证批次清理后，审计仍然保留](79-verify-external-batch-cleanup.md)
+80. [Lesson 80: 跑通一条完整的外部同步生命周期](80-external-sync-lifecycle-round-trip.md)
+81. [Lesson 81: 从生命周期 CSV 里读回批次证据](81-read-lifecycle-evidence.md)
+82. [Lesson 82: 按生命周期证据回放一个新批次](82-replay-batch-from-lifecycle-evidence.md)
+83. [Lesson 83: 用生命周期证据验证回放批次](83-verify-replay-batch-against-lifecycle-evidence.md)
+84. [Lesson 84: 给回放批次补写一条审计记录](84-write-replay-audit-row.md)
+85. [Lesson 85: 把原批次和回放批次的审计导出成对照 CSV](85-export-original-and-replay-audits.md)
+86. [Lesson 86: 生成一份回放后的对账包](86-build-post-replay-reconciliation-pack.md)
+87. [Lesson 87: 生成一份交接 artifact manifest](87-build-handoff-artifact-manifest.md)
+88. [Lesson 88: 把交接 manifest 整理成交付摘要](88-build-handoff-summary.md)
+89. [Lesson 89: 生成发布前检查清单](89-build-pre-release-checklist.md)
+90. [Lesson 90: 跑通一条“生命周期证据 -> 回放 -> 交接包”的完整 round trip](90-handoff-round-trip-from-lifecycle-evidence.md)
+91. [Lesson 91: 读交接 manifest，识别每份产物的角色](91-read-handoff-manifest-roles.md)
+92. [Lesson 92: 把交接产物整理成模板目录](92-build-template-artifact-catalog.md)
+93. [Lesson 93: 把交接链整理成 Input -> Process -> Output 模板](93-build-input-process-output-template.md)
+94. [Lesson 94: 把交接链整理成 Collect -> Verify -> Save 模板](94-build-collect-verify-save-template.md)
+95. [Lesson 95: 把交接链整理成 Replay -> Audit -> Handoff 模板](95-build-replay-audit-handoff-template.md)
+96. [Lesson 96: 把几份模板整理成统一索引](96-build-template-index.md)
+97. [Lesson 97: 验证模板索引仍然覆盖完整交接链](97-verify-template-covers-handoff-chain.md)
+98. [Lesson 98: 生成一份“场景 -> 模板”的学习矩阵](98-build-template-lesson-matrix.md)
+99. [Lesson 99: 给模板包生成发布前检查清单](99-build-template-preflight-checklist.md)
+100. [Lesson 100: 跑通一条“交接产物 -> 模板包”的完整 round trip](100-template-round-trip-from-handoff-artifacts.md)
+101. [Lesson 101: 先确认模板发布卡片真的在页面上](101-assert-visible-template-release-card.md)
+102. [Lesson 102: 继续确认模板发布状态文字对不对](102-assert-text-template-release-status.md)
+103. [Lesson 103: 用 `retry` 跑通模板发布 gate](103-retry-template-release-gate.md)
+104. [Lesson 104: 用 `wait_until` 等模板发布检查完成](104-wait-until-template-release-ready.md)
+105. [Lesson 105: 用 `on_error` 接住模板发布校验失败](105-on-error-template-release-validation.md)
+106. [Lesson 106: 等一条延迟出现的发布说明项](106-wait-for-delayed-release-note.md)
+107. [Lesson 107: 用 `retry` 接住一次偶发失败点击](107-retry-flaky-publish-click.md)
+108. [Lesson 108: `reload` 之后再验证一次恢复结果](108-reload-and-retry-release-recovery.md)
+109. [Lesson 109: 给模板发布页留一份调试证据包](109-template-release-artifact-pack.md)
+110. [Lesson 110: 跑通一条完整的模板发布稳定性 round trip](110-template-release-robustness-round-trip.md)
+111. [Lesson 111: 先用 `tsplay.list_actions` 看清 MCP 到底能做什么](111-mcp-list-actions.md)
+112. [Lesson 112: 用 `flow_schema` 和 `flow_examples` 看清 Flow 长什么样](112-mcp-flow-schema-and-examples.md)
+113. [Lesson 113: 先用 `observe_page` 观察模板发布页](113-mcp-observe-page.md)
+114. [Lesson 114: 用 `draft_flow` 把 observation 变成第一份 Flow 草稿](114-mcp-draft-flow.md)
+115. [Lesson 115: 先校验草稿，再决定能不能运行](115-mcp-validate-drafted-flow.md)
+116. [Lesson 116: 运行刚刚起草并校验过的 Flow](116-mcp-run-drafted-flow.md)
+117. [Lesson 117: 先故意跑坏一次，再生成 repair context](117-mcp-repair-flow-context.md)
+118. [Lesson 118: 用 repair context 生成真正可用的修复请求](118-mcp-repair-flow.md)
+119. [Lesson 119: 把 `observe -> draft -> validate -> run -> repair` 串成一条线](119-mcp-chain-overview.md)
+120. [Lesson 120: 用 `finalize_flow` 收成一份更短的默认入口](120-mcp-finalize-flow.md)
+121. [Lesson 121: 用 `allow_lua` 放行一条最小 Lua Flow](121-allow-lua-boundary.md)
+122. [Lesson 122: 用 `allow_http` 放行一条最小 HTTP Flow](122-allow-http-boundary.md)
+123. [Lesson 123: 用 `allow_file_access` 放行一条最小文件输出 Flow](123-allow-file-access-boundary.md)
+124. [Lesson 124: 用 `allow_browser_state` 放行浏览器状态动作](124-allow-browser-state-boundary.md)
+125. [Lesson 125: 用 `allow_redis` 放行 Redis 动作](125-allow-redis-boundary.md)
+126. [Lesson 126: 用 `allow_database` 放行数据库动作](126-allow-database-boundary.md)
+127. [Lesson 127: 对比本地 Flow 和 MCP 的权限边界](127-compare-local-flow-and-mcp-boundaries.md)
+128. [Lesson 128: 为什么教程不能跳过权限边界](128-why-security-boundaries-come-first.md)
+129. [Lesson 129: 理解 `security_preset` 和显式 `allow_*` 覆盖](129-security-preset-and-override.md)
+130. [Lesson 130: 完成安全边界模块的第一轮 checkpoint](130-security-boundary-learning-checkpoint.md)
+131. [Lesson 131: 先把 Flow 名字和描述写得可 review](131-review-flow-name-and-description.md)
+132. [Lesson 132: 继续把 `save_as` 变量名写得可 review](132-review-save-as-variable-names.md)
+133. [Lesson 133: 把 artifact 目录也整理成可 review 的结构](133-review-artifact-directory-layout.md)
+134. [Lesson 134: 用一份 checklist 正式 review 教程示例](134-review-example-with-checklist.md)
+135. [Lesson 135: review 时，什么时候才允许 Lua escape hatch](135-review-when-lua-is-allowed.md)
+136. [Lesson 136: review 时，什么时候应该把 Lua 抽回 Flow](136-review-when-to-extract-lua-to-flow.md)
+137. [Lesson 137: review 时，什么时候应该新增 demo 页面](137-review-when-to-add-demo-page.md)
+138. [Lesson 138: review 时，一节教程至少该带哪些交付物](138-review-required-deliverables.md)
+139. [Lesson 139: 设计一个大型 Flow 示例包的目录骨架](139-large-flow-package-layout.md)
+140. [Lesson 140: 复盘为什么教程也需要 code review 思维](140-why-tutorials-need-code-review-thinking.md)
+141. [Lesson 141: 为什么要把 `ReadMe.md`、`docs/`、`script/`、`demo/` 一起打进二进制](141-why-embed-docs-script-demo.md)
+142. [Lesson 142: 新手怎么读懂 `list-assets`](142-list-assets-for-beginners.md)
+143. [Lesson 143: 新手怎么跑通 `extract-assets`](143-extract-assets-for-beginners.md)
+144. [Lesson 144: 设计“只发一个二进制给用户”的交付流程](144-single-binary-delivery-flow.md)
+145. [Lesson 145: 设计“离线环境也能跑基础教程”的交付流程](145-offline-learning-delivery-flow.md)
+146. [Lesson 146: 设计“哪些资源必须内置，哪些资源可以不带”的规则](146-embedded-asset-policy.md)
+147. [Lesson 147: `file-srv` 的开发态和发布态有什么区别](147-file-srv-dev-vs-release.md)
+148. [Lesson 148: 新用户第一次打开二进制时，应该先看到什么](148-first-run-entry-strategy.md)
+149. [Lesson 149: 课程包版本号和资源版本号应该怎么维护](149-release-asset-version-strategy.md)
+150. [Lesson 150: 复盘“单二进制 + 内置教程”对交付的意义](150-single-binary-delivery-summary.md)
+151. [Lesson 151: 设计一个新手结业题](151-newbie-capstone-brief.md)
+152. [Lesson 152: 设计一个初级结业题](152-junior-capstone-brief.md)
+153. [Lesson 153: 设计一个中级结业题](153-intermediate-capstone-brief.md)
+154. [Lesson 154: 设计一个高级结业题](154-advanced-capstone-brief.md)
+155. [Lesson 155: 设计一套“新人 7 天计划”](155-new-hire-7-day-plan.md)
+156. [Lesson 156: 设计一套“实施同学 2 周计划”](156-implementer-2-week-plan.md)
+157. [Lesson 157: 设计一套“讲师备课顺序”](157-trainer-prep-sequence.md)
+158. [Lesson 158: 设计一套“教程缺口复盘机制”](158-tutorial-gap-review-cycle.md)
+159. [Lesson 159: 设计一套“每 10 次迭代回看一次”的检查机制](159-every-10-iteration-review.md)
+160. [Lesson 160: 通过高级阶段检查，并为下一圈教程扩展做准备](160-curriculum-continuation-plan.md)
 
 ### 路线 B：完整进阶教程体系
 
@@ -173,6 +262,95 @@
 | 69 | 把源 CSV 和 DB 明细行放到一起比 | [../../script/tutorials/69_compare_source_csv_and_db_rows.lua](../../script/tutorials/69_compare_source_csv_and_db_rows.lua) | [../../script/tutorials/69_compare_source_csv_and_db_rows.flow.yaml](../../script/tutorials/69_compare_source_csv_and_db_rows.flow.yaml) | 从“写成功”进入“结果逐行核对” |
 | 70 | 生成一份 CSV、Redis、Postgres 三边对账包 | [../../script/tutorials/70_build_reconciliation_pack_from_csv_redis_db.lua](../../script/tutorials/70_build_reconciliation_pack_from_csv_redis_db.lua) | [../../script/tutorials/70_build_reconciliation_pack_from_csv_redis_db.flow.yaml](../../script/tutorials/70_build_reconciliation_pack_from_csv_redis_db.flow.yaml) | 把三边事实压成一份可复盘的对账结果 |
 | 71 | 跑通一次完整的外部系统 round trip | [../../script/tutorials/71_external_system_round_trip.lua](../../script/tutorials/71_external_system_round_trip.lua) | [../../script/tutorials/71_external_system_round_trip.flow.yaml](../../script/tutorials/71_external_system_round_trip.flow.yaml) | 从 CSV 出发，重新串起 Redis、Postgres 和对账输出 |
+| 72 | 用同一个批次号重跑同步，但不产生重复数据 | [../../script/tutorials/72_rerun_shared_batch_idempotently.lua](../../script/tutorials/72_rerun_shared_batch_idempotently.lua) | [../../script/tutorials/72_rerun_shared_batch_idempotently.flow.yaml](../../script/tutorials/72_rerun_shared_batch_idempotently.flow.yaml) | 从“能跑一次”继续走到“能安全重跑” |
+| 73 | 验证重跑后没有重复行 | [../../script/tutorials/73_verify_rerun_does_not_duplicate_rows.lua](../../script/tutorials/73_verify_rerun_does_not_duplicate_rows.lua) | [../../script/tutorials/73_verify_rerun_does_not_duplicate_rows.flow.yaml](../../script/tutorials/73_verify_rerun_does_not_duplicate_rows.flow.yaml) | 把幂等重跑变成可验证结果 |
+| 74 | 遇到坏数据时，保留有效行并写出异常台账 | [../../script/tutorials/74_recover_external_sync_with_anomaly_ledger.lua](../../script/tutorials/74_recover_external_sync_with_anomaly_ledger.lua) | [../../script/tutorials/74_recover_external_sync_with_anomaly_ledger.flow.yaml](../../script/tutorials/74_recover_external_sync_with_anomaly_ledger.flow.yaml) | 从正常批次进入异常恢复 |
+| 75 | 给外部同步写入一条审计记录 | [../../script/tutorials/75_write_external_sync_audit_row.lua](../../script/tutorials/75_write_external_sync_audit_row.lua) | [../../script/tutorials/75_write_external_sync_audit_row.flow.yaml](../../script/tutorials/75_write_external_sync_audit_row.flow.yaml) | 把运行态数据和审计留痕拆开 |
+| 76 | 读回某个批次的审计历史 | [../../script/tutorials/76_query_external_sync_audit_history.lua](../../script/tutorials/76_query_external_sync_audit_history.lua) | [../../script/tutorials/76_query_external_sync_audit_history.flow.yaml](../../script/tutorials/76_query_external_sync_audit_history.flow.yaml) | 从单条审计进入批次历史视角 |
+| 77 | 把审计历史导出成 CSV | [../../script/tutorials/77_export_external_sync_audit_history.lua](../../script/tutorials/77_export_external_sync_audit_history.lua) | [../../script/tutorials/77_export_external_sync_audit_history.flow.yaml](../../script/tutorials/77_export_external_sync_audit_history.flow.yaml) | 把审计结果落盘给人复盘 |
+| 78 | 清理最新批次的运行数据，但保留审计 | [../../script/tutorials/78_cleanup_latest_external_batch.lua](../../script/tutorials/78_cleanup_latest_external_batch.lua) | [../../script/tutorials/78_cleanup_latest_external_batch.flow.yaml](../../script/tutorials/78_cleanup_latest_external_batch.flow.yaml) | 引入运行数据清理 |
+| 79 | 验证批次清理后，审计仍然保留 | [../../script/tutorials/79_verify_external_batch_cleanup.lua](../../script/tutorials/79_verify_external_batch_cleanup.lua) | [../../script/tutorials/79_verify_external_batch_cleanup.flow.yaml](../../script/tutorials/79_verify_external_batch_cleanup.flow.yaml) | 验证“删运行态，不删审计” |
+| 80 | 跑通一条完整的外部同步生命周期 | [../../script/tutorials/80_external_sync_lifecycle_round_trip.lua](../../script/tutorials/80_external_sync_lifecycle_round_trip.lua) | [../../script/tutorials/80_external_sync_lifecycle_round_trip.flow.yaml](../../script/tutorials/80_external_sync_lifecycle_round_trip.flow.yaml) | 把创建、审计、清理、验证重新串成闭环 |
+| 81 | 从生命周期 CSV 里读回批次证据 | [../../script/tutorials/81_read_lifecycle_evidence.lua](../../script/tutorials/81_read_lifecycle_evidence.lua) | [../../script/tutorials/81_read_lifecycle_evidence.flow.yaml](../../script/tutorials/81_read_lifecycle_evidence.flow.yaml) | 从 `Lesson 80` 的证据重新读回原始批次事实 |
+| 82 | 按生命周期证据回放一个新批次 | [../../script/tutorials/82_replay_batch_from_lifecycle_evidence.lua](../../script/tutorials/82_replay_batch_from_lifecycle_evidence.lua) | [../../script/tutorials/82_replay_batch_from_lifecycle_evidence.flow.yaml](../../script/tutorials/82_replay_batch_from_lifecycle_evidence.flow.yaml) | 从清理后的证据重建一条 replay 批次 |
+| 83 | 用生命周期证据验证回放批次 | [../../script/tutorials/83_verify_replay_batch_against_lifecycle_evidence.lua](../../script/tutorials/83_verify_replay_batch_against_lifecycle_evidence.lua) | [../../script/tutorials/83_verify_replay_batch_against_lifecycle_evidence.flow.yaml](../../script/tutorials/83_verify_replay_batch_against_lifecycle_evidence.flow.yaml) | 对齐生命周期、Redis 和 Postgres 三边事实 |
+| 84 | 给回放批次补写一条审计记录 | [../../script/tutorials/84_write_replay_audit_row.lua](../../script/tutorials/84_write_replay_audit_row.lua) | [../../script/tutorials/84_write_replay_audit_row.flow.yaml](../../script/tutorials/84_write_replay_audit_row.flow.yaml) | 让 replay 批次拥有独立审计留痕 |
+| 85 | 把原批次和回放批次的审计导出成对照 CSV | [../../script/tutorials/85_export_original_and_replay_audits.lua](../../script/tutorials/85_export_original_and_replay_audits.lua) | [../../script/tutorials/85_export_original_and_replay_audits.flow.yaml](../../script/tutorials/85_export_original_and_replay_audits.flow.yaml) | 把原链和 replay 链的审计放在一起复盘 |
+| 86 | 生成一份回放后的对账包 | [../../script/tutorials/86_build_post_replay_reconciliation_pack.lua](../../script/tutorials/86_build_post_replay_reconciliation_pack.lua) | [../../script/tutorials/86_build_post_replay_reconciliation_pack.flow.yaml](../../script/tutorials/86_build_post_replay_reconciliation_pack.flow.yaml) | 压缩 replay 后的多边事实结果 |
+| 87 | 生成一份交接 artifact manifest | [../../script/tutorials/87_build_handoff_artifact_manifest.lua](../../script/tutorials/87_build_handoff_artifact_manifest.lua) | [../../script/tutorials/87_build_handoff_artifact_manifest.flow.yaml](../../script/tutorials/87_build_handoff_artifact_manifest.flow.yaml) | 把关键产物组织成交接目录 |
+| 88 | 把交接 manifest 整理成交付摘要 | [../../script/tutorials/88_build_handoff_summary.lua](../../script/tutorials/88_build_handoff_summary.lua) | [../../script/tutorials/88_build_handoff_summary.flow.yaml](../../script/tutorials/88_build_handoff_summary.flow.yaml) | 生成一份更适合快速扫读的 summary |
+| 89 | 生成发布前检查清单 | [../../script/tutorials/89_build_pre_release_checklist.lua](../../script/tutorials/89_build_pre_release_checklist.lua) | [../../script/tutorials/89_build_pre_release_checklist.flow.yaml](../../script/tutorials/89_build_pre_release_checklist.flow.yaml) | 把交接包变成可核对的 checklist |
+| 90 | 跑通一条“生命周期证据 -> 回放 -> 交接包”的完整 round trip | [../../script/tutorials/90_handoff_round_trip_from_lifecycle_evidence.lua](../../script/tutorials/90_handoff_round_trip_from_lifecycle_evidence.lua) | [../../script/tutorials/90_handoff_round_trip_from_lifecycle_evidence.flow.yaml](../../script/tutorials/90_handoff_round_trip_from_lifecycle_evidence.flow.yaml) | 把回放、审计、交接收成一条完整交付链 |
+| 91 | 读交接 manifest，识别每份产物的角色 | [../../script/tutorials/91_read_handoff_manifest_roles.lua](../../script/tutorials/91_read_handoff_manifest_roles.lua) | [../../script/tutorials/91_read_handoff_manifest_roles.flow.yaml](../../script/tutorials/91_read_handoff_manifest_roles.flow.yaml) | 先把交接包里的产物分清角色 |
+| 92 | 把交接产物整理成模板目录 | [../../script/tutorials/92_build_template_artifact_catalog.lua](../../script/tutorials/92_build_template_artifact_catalog.lua) | [../../script/tutorials/92_build_template_artifact_catalog.flow.yaml](../../script/tutorials/92_build_template_artifact_catalog.flow.yaml) | 给产物分配稳定槽位和环境变量入口 |
+| 93 | 把交接链整理成 Input -> Process -> Output 模板 | [../../script/tutorials/93_build_input_process_output_template.lua](../../script/tutorials/93_build_input_process_output_template.lua) | [../../script/tutorials/93_build_input_process_output_template.flow.yaml](../../script/tutorials/93_build_input_process_output_template.flow.yaml) | 从三段式视角整理模板 |
+| 94 | 把交接链整理成 Collect -> Verify -> Save 模板 | [../../script/tutorials/94_build_collect_verify_save_template.lua](../../script/tutorials/94_build_collect_verify_save_template.lua) | [../../script/tutorials/94_build_collect_verify_save_template.flow.yaml](../../script/tutorials/94_build_collect_verify_save_template.flow.yaml) | 从 review 视角整理模板 |
+| 95 | 把交接链整理成 Replay -> Audit -> Handoff 模板 | [../../script/tutorials/95_build_replay_audit_handoff_template.lua](../../script/tutorials/95_build_replay_audit_handoff_template.lua) | [../../script/tutorials/95_build_replay_audit_handoff_template.flow.yaml](../../script/tutorials/95_build_replay_audit_handoff_template.flow.yaml) | 保留业务语义重新抽模板 |
+| 96 | 把几份模板整理成统一索引 | [../../script/tutorials/96_build_template_index.lua](../../script/tutorials/96_build_template_index.lua) | [../../script/tutorials/96_build_template_index.flow.yaml](../../script/tutorials/96_build_template_index.flow.yaml) | 形成一个可浏览的模板目录 |
+| 97 | 验证模板索引仍然覆盖完整交接链 | [../../script/tutorials/97_verify_template_covers_handoff_chain.lua](../../script/tutorials/97_verify_template_covers_handoff_chain.lua) | [../../script/tutorials/97_verify_template_covers_handoff_chain.flow.yaml](../../script/tutorials/97_verify_template_covers_handoff_chain.flow.yaml) | 确认模板没有把原链路丢掉 |
+| 98 | 生成一份“场景 -> 模板”的学习矩阵 | [../../script/tutorials/98_build_template_lesson_matrix.lua](../../script/tutorials/98_build_template_lesson_matrix.lua) | [../../script/tutorials/98_build_template_lesson_matrix.flow.yaml](../../script/tutorials/98_build_template_lesson_matrix.flow.yaml) | 帮新人按场景选模板 |
+| 99 | 给模板包生成发布前检查清单 | [../../script/tutorials/99_build_template_preflight_checklist.lua](../../script/tutorials/99_build_template_preflight_checklist.lua) | [../../script/tutorials/99_build_template_preflight_checklist.flow.yaml](../../script/tutorials/99_build_template_preflight_checklist.flow.yaml) | 给模板包建立自己的发布门槛 |
+| 100 | 跑通一条“交接产物 -> 模板包”的完整 round trip | [../../script/tutorials/100_template_round_trip_from_handoff_artifacts.lua](../../script/tutorials/100_template_round_trip_from_handoff_artifacts.lua) | [../../script/tutorials/100_template_round_trip_from_handoff_artifacts.flow.yaml](../../script/tutorials/100_template_round_trip_from_handoff_artifacts.flow.yaml) | 把交接产物收成可复用模板包 |
+| 101 | 先确认模板发布卡片真的在页面上 | [../../script/tutorials/101_assert_visible_template_release_card.lua](../../script/tutorials/101_assert_visible_template_release_card.lua) | [../../script/tutorials/101_assert_visible_template_release_card.flow.yaml](../../script/tutorials/101_assert_visible_template_release_card.flow.yaml) | 把 Lesson 100 的模板包正式带进发布检查页 |
+| 102 | 继续确认模板发布状态文字对不对 | [../../script/tutorials/102_assert_text_template_release_status.lua](../../script/tutorials/102_assert_text_template_release_status.lua) | [../../script/tutorials/102_assert_text_template_release_status.flow.yaml](../../script/tutorials/102_assert_text_template_release_status.flow.yaml) | 从“在不在”继续走到“文案对不对” |
+| 103 | 用 `retry` 跑通模板发布 gate | [../../script/tutorials/103_retry_template_release_gate.lua](../../script/tutorials/103_retry_template_release_gate.lua) | [../../script/tutorials/103_retry_template_release_gate.flow.yaml](../../script/tutorials/103_retry_template_release_gate.flow.yaml) | 练习第一次不通过、第二次才通过的 gate |
+| 104 | 用 `wait_until` 等模板发布检查完成 | [../../script/tutorials/104_wait_until_template_release_ready.lua](../../script/tutorials/104_wait_until_template_release_ready.lua) | [../../script/tutorials/104_wait_until_template_release_ready.flow.yaml](../../script/tutorials/104_wait_until_template_release_ready.flow.yaml) | 练习异步 ready 而不是固定 sleep |
+| 105 | 用 `on_error` 接住模板发布校验失败 | [../../script/tutorials/105_on_error_template_release_validation.lua](../../script/tutorials/105_on_error_template_release_validation.lua) | [../../script/tutorials/105_on_error_template_release_validation.flow.yaml](../../script/tutorials/105_on_error_template_release_validation.flow.yaml) | 把失败分支正式纳入模板发布流程 |
+| 106 | 等一条延迟出现的发布说明项 | [../../script/tutorials/106_wait_for_delayed_release_note.lua](../../script/tutorials/106_wait_for_delayed_release_note.lua) | [../../script/tutorials/106_wait_for_delayed_release_note.flow.yaml](../../script/tutorials/106_wait_for_delayed_release_note.flow.yaml) | 练习等待“元素本身”晚一点出现 |
+| 107 | 用 `retry` 接住一次偶发失败点击 | [../../script/tutorials/107_retry_flaky_publish_click.lua](../../script/tutorials/107_retry_flaky_publish_click.lua) | [../../script/tutorials/107_retry_flaky_publish_click.flow.yaml](../../script/tutorials/107_retry_flaky_publish_click.flow.yaml) | 把 retry 从 gate 推进到 click 本身 |
+| 108 | `reload` 之后再验证一次恢复结果 | [../../script/tutorials/108_reload_and_retry_release_recovery.lua](../../script/tutorials/108_reload_and_retry_release_recovery.lua) | [../../script/tutorials/108_reload_and_retry_release_recovery.flow.yaml](../../script/tutorials/108_reload_and_retry_release_recovery.flow.yaml) | 把刷新页面也纳入恢复链 |
+| 109 | 给模板发布页留一份调试证据包 | [../../script/tutorials/109_template_release_artifact_pack.lua](../../script/tutorials/109_template_release_artifact_pack.lua) | [../../script/tutorials/109_template_release_artifact_pack.flow.yaml](../../script/tutorials/109_template_release_artifact_pack.flow.yaml) | 保存整页图、卡片图和 HTML |
+| 110 | 跑通一条完整的模板发布稳定性 round trip | [../../script/tutorials/110_template_release_robustness_round_trip.lua](../../script/tutorials/110_template_release_robustness_round_trip.lua) | [../../script/tutorials/110_template_release_robustness_round_trip.flow.yaml](../../script/tutorials/110_template_release_robustness_round_trip.flow.yaml) | 把断言、等待、重试、恢复和证据留存收成一条线 |
+| 111 | 先用 `tsplay.list_actions` 看清 MCP 到底能做什么 | - | - | 命令型章节，先建立 MCP 能力地图 |
+| 112 | 用 `flow_schema` 和 `flow_examples` 看清 Flow 长什么样 | - | - | 命令型章节，先建立 schema 和 example 心智模型 |
+| 113 | 先用 `observe_page` 观察模板发布页 | - | [../../script/tutorials/113_mcp_observe_page_template_release.args.json](../../script/tutorials/113_mcp_observe_page_template_release.args.json) | 这一段开始切到 `mcp-tool + args.json` 方式 |
+| 114 | 用 `draft_flow` 把 observation 变成第一份 Flow 草稿 | - | [../../script/tutorials/114_mcp_draft_flow_template_release.args.json](../../script/tutorials/114_mcp_draft_flow_template_release.args.json) | 直接复用 `Lesson 113` 的 observation 输出 |
+| 115 | 先校验草稿，再决定能不能运行 | - | [../../script/tutorials/115_mcp_validate_drafted_template_release.args.json](../../script/tutorials/115_mcp_validate_drafted_template_release.args.json) | 通过 `@jsonpathfile` 直接抽取 `draft.flow_yaml` |
+| 116 | 运行刚刚起草并校验过的 Flow | - | [../../script/tutorials/116_mcp_run_drafted_template_release.args.json](../../script/tutorials/116_mcp_run_drafted_template_release.args.json) | 把 `observe -> draft -> validate` 接进真实执行 |
+| 117 | 先故意跑坏一次，再生成 repair context | - | [../../script/tutorials/117_mcp_repair_flow_context_template_release.args.json](../../script/tutorials/117_mcp_repair_flow_context_template_release.args.json) | 会同时用到破坏版 Flow 和失败运行结果 |
+| 118 | 用 repair context 生成真正可用的修复请求 | - | [../../script/tutorials/118_mcp_repair_flow_template_release.args.json](../../script/tutorials/118_mcp_repair_flow_template_release.args.json) | 从失败上下文进入统一 repair request |
+| 119 | 把 `observe -> draft -> validate -> run -> repair` 串成一条线 | - | - | 复盘型章节，把前面 6 步重新串成完整 MCP 主线 |
+| 120 | 用 `finalize_flow` 收成一份更短的默认入口 | - | [../../script/tutorials/120_mcp_finalize_flow_template_release.args.json](../../script/tutorials/120_mcp_finalize_flow_template_release.args.json) | 从 observation 直接收成更接近交付态的结果 |
+| 121 | 用 `allow_lua` 放行一条最小 Lua Flow | - | [../../script/tutorials/121_security_allow_lua.flow.yaml](../../script/tutorials/121_security_allow_lua.flow.yaml) | 先看默认边界拦截，再只打开 `allow_lua` |
+| 122 | 用 `allow_http` 放行一条最小 HTTP Flow | - | [../../script/tutorials/122_security_allow_http.flow.yaml](../../script/tutorials/122_security_allow_http.flow.yaml) | 继续练习 blocked / allowed 对照 |
+| 123 | 用 `allow_file_access` 放行一条最小文件输出 Flow | - | [../../script/tutorials/123_security_allow_file_access.flow.yaml](../../script/tutorials/123_security_allow_file_access.flow.yaml) | 为后面的本地 Flow / MCP 对照打基础 |
+| 124 | 用 `allow_browser_state` 放行浏览器状态动作 | - | [../../script/tutorials/124_security_allow_browser_state.flow.yaml](../../script/tutorials/124_security_allow_browser_state.flow.yaml) | 把 Cookie / Storage State 单独当一类边界理解 |
+| 125 | 用 `allow_redis` 放行 Redis 动作 | - | [../../script/tutorials/125_security_allow_redis.flow.yaml](../../script/tutorials/125_security_allow_redis.flow.yaml) | 从浏览器状态推进到外部系统状态 |
+| 126 | 用 `allow_database` 放行数据库动作 | - | [../../script/tutorials/126_security_allow_database.flow.yaml](../../script/tutorials/126_security_allow_database.flow.yaml) | 把 DB 动作纳入同样的最小授权思路 |
+| 127 | 对比本地 Flow 和 MCP 的权限边界 | - | - | 命令型章节，复用 `Lesson 123` 的 Flow 和 blocked / allowed 结果 |
+| 128 | 为什么教程不能跳过权限边界 | - | - | 复盘型章节，重新解释为什么要先学边界再学放权 |
+| 129 | 理解 `security_preset` 和显式 `allow_*` 覆盖 | - | [../../script/tutorials/129_mcp_validate_file_access_browser_write.args.json](../../script/tutorials/129_mcp_validate_file_access_browser_write.args.json) | 从单个 allow 进入 preset 和 override 组合策略 |
+| 130 | 完成安全边界模块的第一轮 checkpoint | - | - | 收口型章节，把 `121-129` 重新整理成高级阶段 checkpoint |
+| 131 | 先把 Flow 名字和描述写得可 review | - | [../../script/tutorials/131_review_readability_after.flow.yaml](../../script/tutorials/131_review_readability_after.flow.yaml) | 从安全边界过渡到大型 Flow 评审的第一步 |
+| 132 | 继续把 `save_as` 变量名写得可 review | - | [../../script/tutorials/131_review_readability_after.flow.yaml](../../script/tutorials/131_review_readability_after.flow.yaml) | 继续复用 `Lesson 131` 的 before / after 样例，聚焦变量角色命名 |
+| 133 | 把 artifact 目录也整理成可 review 的结构 | - | [../../script/tutorials/133_review_artifact_layout_after.flow.yaml](../../script/tutorials/133_review_artifact_layout_after.flow.yaml) | 从变量命名继续走到 lesson 级 artifact 布局 |
+| 134 | 用一份 checklist 正式 review 教程示例 | - | - | 复用 review checklist，把 `Lesson 131` 和 `Lesson 133` 收成统一评审入口 |
+| 135 | review 时，什么时候才允许 Lua escape hatch | [../../script/tutorials/135_review_summary_escape_hatch.lua](../../script/tutorials/135_review_summary_escape_hatch.lua) | - | 把 `allow_lua` 的安全边界继续推进到结构评审边界 |
+| 136 | review 时，什么时候应该把 Lua 抽回 Flow | - | [../../script/tutorials/136_review_summary_extracted.flow.yaml](../../script/tutorials/136_review_summary_extracted.flow.yaml) | 用同类示例把“简单编排优先 Flow”讲清楚 |
+| 137 | review 时，什么时候应该新增 demo 页面 | - | - | 从代码结构继续推进到教程资源边界 |
+| 138 | review 时，一节教程至少该带哪些交付物 | - | - | 把文档、脚本、命令、预期输出统一纳入交付检查 |
+| 139 | 设计一个大型 Flow 示例包的目录骨架 | - | [../../script/tutorials/review_pack/139_large_flow_layout/flows/collect.flow.yaml](../../script/tutorials/review_pack/139_large_flow_layout/flows/collect.flow.yaml) | 用 `collect -> verify -> publish` 建立大型教程包骨架 |
+| 140 | 复盘为什么教程也需要 code review 思维 | - | - | 收口 `121-139`，把安全边界和结构评审重新连起来 |
+| 141 | 为什么要把 `ReadMe.md`、`docs/`、`script/`、`demo/` 一起打进二进制 | - | - | 从 review 和组织正式进入发布包与内置资产主题 |
+| 142 | 新手怎么读懂 `list-assets` | - | - | 用最小命令先建立“资源地图”心智模型 |
+| 143 | 新手怎么跑通 `extract-assets` | - | - | 把二进制内置资源释放到本地目录，建立可阅读副本 |
+| 144 | 设计“只发一个二进制给用户”的交付流程 | - | [../../script/tutorials/144_single_binary_delivery_manifest.flow.yaml](../../script/tutorials/144_single_binary_delivery_manifest.flow.yaml) | 把 `list-assets -> extract-assets -> 教程入口` 收成交付 manifest |
+| 145 | 设计“离线环境也能跑基础教程”的交付流程 | - | [../../script/tutorials/145_offline_learning_manifest.flow.yaml](../../script/tutorials/145_offline_learning_manifest.flow.yaml) | 明确离线可先跑的 lesson 顺序 |
+| 146 | 设计“哪些资源必须内置，哪些资源可以不带”的规则 | - | [../../script/tutorials/146_embedded_asset_policy.flow.yaml](../../script/tutorials/146_embedded_asset_policy.flow.yaml) | 把发布包边界写成稳定策略 |
+| 147 | `file-srv` 的开发态和发布态有什么区别 | - | - | 对照 `-serve-root` 和内置资源服务模式 |
+| 148 | 新用户第一次打开二进制时，应该先看到什么 | - | [../../script/tutorials/148_first_run_entry_manifest.flow.yaml](../../script/tutorials/148_first_run_entry_manifest.flow.yaml) | 把 first-run 顺序收成固定 onboarding 入口 |
+| 149 | 课程包版本号和资源版本号应该怎么维护 | - | [../../script/tutorials/149_release_asset_version_strategy.flow.yaml](../../script/tutorials/149_release_asset_version_strategy.flow.yaml) | 建立二进制版本和资源版本两层策略 |
+| 150 | 复盘“单二进制 + 内置教程”对交付的意义 | - | [../../script/tutorials/150_single_binary_delivery_summary.flow.yaml](../../script/tutorials/150_single_binary_delivery_summary.flow.yaml) | 收口 `141-149`，为 `151+` 的培训与 capstone 模块铺路 |
+| 151 | 设计一个新手结业题 | - | [../../script/tutorials/151_newbie_capstone_brief.flow.yaml](../../script/tutorials/151_newbie_capstone_brief.flow.yaml) | 把“资源发现 -> 资源释放 -> 第一条 Flow”收成新手收口题 |
+| 152 | 设计一个初级结业题 | - | [../../script/tutorials/152_junior_capstone_brief.flow.yaml](../../script/tutorials/152_junior_capstone_brief.flow.yaml) | 把本地 demo、文件、控制流和 artifact 收成初级项目 |
+| 153 | 设计一个中级结业题 | - | [../../script/tutorials/153_intermediate_capstone_brief.flow.yaml](../../script/tutorials/153_intermediate_capstone_brief.flow.yaml) | 把 MCP 草拟、执行、修复链收成中级结业题 |
+| 154 | 设计一个高级结业题 | - | [../../script/tutorials/154_advanced_capstone_brief.flow.yaml](../../script/tutorials/154_advanced_capstone_brief.flow.yaml) | 把边界、review 和交付策略收成团队级结业题 |
+| 155 | 设计一套“新人 7 天计划” | - | [../../script/tutorials/155_new_hire_7_day_plan.flow.yaml](../../script/tutorials/155_new_hire_7_day_plan.flow.yaml) | 从 capstone 继续过渡到 onboarding 排期 |
+| 156 | 设计一套“实施同学 2 周计划” | - | [../../script/tutorials/156_implementer_2_week_plan.flow.yaml](../../script/tutorials/156_implementer_2_week_plan.flow.yaml) | 把教程熟练度继续接到真实业务试点 |
+| 157 | 设计一套“讲师备课顺序” | - | [../../script/tutorials/157_trainer_prep_sequence.flow.yaml](../../script/tutorials/157_trainer_prep_sequence.flow.yaml) | 正式把教程主线和 training 资料接起来 |
+| 158 | 设计一套“教程缺口复盘机制” | - | [../../script/tutorials/158_tutorial_gap_review_cycle.flow.yaml](../../script/tutorials/158_tutorial_gap_review_cycle.flow.yaml) | 把月度缺口复盘写成稳定模板 |
+| 159 | 设计一套“每 10 次迭代回看一次”的检查机制 | - | [../../script/tutorials/159_every_10_iteration_review.flow.yaml](../../script/tutorials/159_every_10_iteration_review.flow.yaml) | 把结构回看节奏固定下来 |
+| 160 | 通过高级阶段检查，并为下一圈教程扩展做准备 | - | [../../script/tutorials/160_curriculum_continuation_plan.flow.yaml](../../script/tutorials/160_curriculum_continuation_plan.flow.yaml) | 收口 `151-159`，把 `160` 变成下一圈的起点 |
 
 ## 完整课程体系地图
 
@@ -205,6 +383,7 @@ go build -o tsplay .
 ./tsplay -flow script/tutorials/01_hello_world.flow.yaml
 ./tsplay -action cli
 ./tsplay -action file-srv -addr :8000
+./tsplay -action mcp-tool -tool tsplay.list_actions
 ```
 
 如果你暂时不想构建二进制，也可以继续用：
@@ -212,6 +391,7 @@ go build -o tsplay .
 ```bash
 go run . -script script/tutorials/01_hello_world.lua
 go run . -flow script/tutorials/01_hello_world.flow.yaml
+go run . -action mcp-tool -tool tsplay.list_actions
 ```
 
 补充说明：
@@ -225,8 +405,10 @@ go run . -flow script/tutorials/01_hello_world.flow.yaml
 ./tsplay -action extract-assets -extract-root ./tsplay-assets
 ```
 
-Lesson 01、Lesson 08、Lesson 14、Lesson 24 和 Lesson 25 可以直接开始。  
-从 Lesson 02 到 Lesson 05、Lesson 09 到 Lesson 12、Lesson 16 到 Lesson 23、Lesson 26 到 Lesson 38、Lesson 42、Lesson 44 到 Lesson 57，建议另开一个终端，在仓库根目录启动 TSPlay 内置静态文件服务：
+如果你只是想先单独跑一个低依赖、容易看到结果的小例子，  
+可以从 Lesson 01、Lesson 08、Lesson 14、Lesson 24、Lesson 25、Lesson 111、Lesson 112、Lesson 121 到 Lesson 160 里挑一节开始。  
+这句话的意思是“这些章节能独立试跑”，不是“推荐第一次学习就直接跳过前面阶段”。  
+从 Lesson 02 到 Lesson 05、Lesson 09 到 Lesson 12、Lesson 16 到 Lesson 23、Lesson 26 到 Lesson 38、Lesson 42、Lesson 44 到 Lesson 57、Lesson 101 到 Lesson 120，建议另开一个终端，在仓库根目录启动 TSPlay 内置静态文件服务：
 
 ```bash
 # 方式 A：直接运行源码
@@ -254,6 +436,7 @@ go run . -action file-srv -addr :8000
 - `http://127.0.0.1:8000/demo/session_lab.html`
 - `http://127.0.0.1:8000/demo/session_import_workflow.html`
 - `http://127.0.0.1:8000/demo/debug_artifacts.html`
+- `http://127.0.0.1:8000/demo/template_release_lab.html`
 - `http://127.0.0.1:8000/demo/data/order_summary.json`
 
 如果你不是在仓库根目录启动服务，可以显式指定：
@@ -269,8 +452,9 @@ go run . -action file-srv -addr :8000
 - Postgres 环境变量示例：[../../script/tutorials/env/07_reporting_pg_example.sh](../../script/tutorials/env/07_reporting_pg_example.sh)
 - Postgres 初始化 SQL：[../../script/tutorials/sql/07_reporting_pg.sql](../../script/tutorials/sql/07_reporting_pg.sql)
 - 导出结果同步到 Postgres 的初始化 SQL：[../../script/tutorials/sql/61_reporting_import_sync.sql](../../script/tutorials/sql/61_reporting_import_sync.sql)
+- 外部同步审计表 SQL：[../../script/tutorials/sql/75_reporting_import_audit.sql](../../script/tutorials/sql/75_reporting_import_audit.sql)
 
-从 Lesson 58 到 Lesson 71，默认会继续复用 `Lesson 57` 产出的导出 CSV。  
+从 Lesson 58 到 Lesson 80，默认会继续复用 `Lesson 57` 产出的导出 CSV。  
 如果你在前一节跑的是 Lua 版本，记得先把：
 
 ```bash
@@ -279,11 +463,73 @@ export TSPLAY_IMPORTED_REPORT=artifacts/tutorials/57-use-session-import-export-r
 
 切到对应路径再继续。
 
+从 Lesson 81 到 Lesson 90，默认会继续复用 `Lesson 80` 产出的生命周期 CSV。  
+如果你在前一节跑的是 Lua 版本，记得先把：
+
+```bash
+export TSPLAY_LIFECYCLE_FILE=artifacts/tutorials/80-external-sync-lifecycle-round-trip-lua.csv
+```
+
+切到对应路径再继续。  
+其中 `Lesson 83-89` 还会继续复用前一节输出的 replay / audit / manifest CSV，如果你跑的是 Lua 版本，也记得把：
+
+```bash
+export TSPLAY_REPLAY_FILE=artifacts/tutorials/82-replay-batch-from-lifecycle-evidence-lua.csv
+export TSPLAY_AUDIT_COMPARE_FILE=artifacts/tutorials/85-export-original-and-replay-audits-lua.csv
+export TSPLAY_RECONCILIATION_FILE=artifacts/tutorials/86-build-post-replay-reconciliation-pack-lua.csv
+export TSPLAY_MANIFEST_FILE=artifacts/tutorials/87-build-handoff-artifact-manifest-lua.csv
+```
+
+切到对应路径再继续。
+
+从 Lesson 91 到 Lesson 100，默认会继续复用 `Lesson 87`、`Lesson 89`、`Lesson 90` 产出的 CSV。  
+如果你在前一节跑的是 Lua 版本，记得先把：
+
+```bash
+export TSPLAY_MANIFEST_FILE=artifacts/tutorials/87-build-handoff-artifact-manifest-lua.csv
+export TSPLAY_HANDOFF_FILE=artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-lua.csv
+export TSPLAY_ROLE_FILE=artifacts/tutorials/91-read-handoff-manifest-roles-lua.csv
+export TSPLAY_TEMPLATE_CATALOG_FILE=artifacts/tutorials/92-build-template-artifact-catalog-lua.csv
+export TSPLAY_RUNTIME_CHECKLIST_FILE=artifacts/tutorials/89-build-pre-release-checklist-lua.csv
+export TSPLAY_INPUT_PROCESS_OUTPUT_FILE=artifacts/tutorials/93-build-input-process-output-template-lua.csv
+export TSPLAY_COLLECT_VERIFY_SAVE_FILE=artifacts/tutorials/94-build-collect-verify-save-template-lua.csv
+export TSPLAY_REPLAY_AUDIT_HANDOFF_FILE=artifacts/tutorials/95-build-replay-audit-handoff-template-lua.csv
+export TSPLAY_TEMPLATE_INDEX_FILE=artifacts/tutorials/96-build-template-index-lua.csv
+export TSPLAY_TEMPLATE_VERIFICATION_FILE=artifacts/tutorials/97-verify-template-covers-handoff-chain-lua.csv
+export TSPLAY_TEMPLATE_LESSON_MATRIX_FILE=artifacts/tutorials/98-build-template-lesson-matrix-lua.csv
+export TSPLAY_TEMPLATE_PREFLIGHT_FILE=artifacts/tutorials/99-build-template-preflight-checklist-lua.csv
+```
+
+切到对应路径再继续。
+
+从 Lesson 101 到 Lesson 110，默认会继续复用同一张本地模板发布练习页。  
+如果你想显式覆盖地址，可以先切一下：
+
+```bash
+export TSPLAY_TEMPLATE_RELEASE_URL=http://127.0.0.1:8000/demo/template_release_lab.html
+```
+
+从 Lesson 113 到 Lesson 120，默认还会继续复用同一张模板发布练习页，并把 MCP 输出写进 `artifacts/tutorials/`。  
+如果你准备按 lesson 顺序推进，建议先把这个目录建好：
+
+```bash
+mkdir -p artifacts/tutorials
+```
+
 补充说明：
 
 - `Lesson 58-60` 主要需要 Redis
 - `Lesson 61-64` 主要需要 Postgres
-- `Lesson 65-71` 需要 Redis 和 Postgres 同时准备好
+- `Lesson 65-73` 需要 Redis 和 Postgres 同时准备好
+- `Lesson 74` 主要需要 Postgres
+- `Lesson 75-90` 需要 Redis 和 Postgres 同时准备好，并执行过审计表 SQL
+- `Lesson 91-100` 主要继续消费本地 CSV 产物；如果前一段已经跑完，通常不需要再新开 Redis / Postgres 连接
+- `Lesson 101-110` 主要继续复用本地静态文件服务和 `demo/template_release_lab.html`，通常不再需要新开 Redis / Postgres 连接
+- `Lesson 111-120` 主要继续复用同一张模板发布练习页，但切到 `mcp-tool` 路径，重点练习 observation、draft、validate、run、repair 和 finalize
+- `Lesson 121-130` 主要继续练习 `validate_flow`、`security_preset` 和边界对照，通常不需要本地静态文件服务，也不要求真的起 Redis / Postgres / DB 服务
+- `Lesson 131-140` 主要练习 review、命名、artifact 布局、Lua / Flow 取舍和大型 Flow 目录组织，通常也不需要本地静态文件服务
+- `Lesson 141-150` 主要练习内置资源、`list-assets`、`extract-assets`、单二进制交付、离线学习和发布包策略，通常也不需要本地静态文件服务；只有 `Lesson 147` 会对照 `file-srv`
+- `Lesson 151-160` 主要练习结业题、培训排期、讲师备课、缺口复盘和迭代检查，通常也不需要本地静态文件服务
 
 从 Lesson 13 起，开始接本地文件输入输出。  
 如果你只有单个 `./tsplay` 二进制，记得先执行：

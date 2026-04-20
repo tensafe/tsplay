@@ -1,0 +1,17 @@
+schema_version: "1"
+name: review_layout_before
+description: Write a file.
+steps:
+  - action: set_var
+    save_as: result
+    with:
+      value:
+        lesson: "133"
+        layout: flat
+        status: ready
+
+  - action: write_json
+    file_path: artifacts/output.json
+    with:
+      value: "{{result}}"
+    save_as: write_result

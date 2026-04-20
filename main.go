@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	"tsplay/tsplay_core"
 
 	"github.com/c-bata/go-prompt"
@@ -55,9 +56,13 @@ func createReadlineCompleter() *readline.PrefixCompleter {
 
 var g_headless = false
 var g_artifactRoot = tsplay_core.DefaultFlowArtifactRoot
+var g_browserVideoOutput = ""
+var g_browserVideoWidth = 0
+var g_browserVideoHeight = 0
+var g_browserVideoCooldownMS = 1200
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | File Server")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
@@ -65,6 +70,25 @@ func main() {
 	artifactRoot := flag.String("artifact-root", tsplay_core.DefaultMCPArtifactRoot, "allowed root directory for MCP file input/output paths")
 	serveRoot := flag.String("serve-root", "", "optional local root directory for built-in static file server; when omitted tsplay serves bundled assets from the binary")
 	extractRoot := flag.String("extract-root", "tsplay-assets", "target directory for extracting bundled docs/demo/script assets")
+	toolName := flag.String("tool", "", "TSPlay MCP tool name for -action mcp-tool")
+	argsJSON := flag.String("args-json", "", "JSON object arguments for -action mcp-tool")
+	argsFile := flag.String("args-file", "", "JSON file containing arguments for -action mcp-tool")
+	recordInput := flag.String("record-input", defaultScreenRecordInput, "ffmpeg avfoundation input spec for -action record-screen, for example 'Capture screen 0:none'")
+	recordOutput := flag.String("record-output", defaultScreenRecordOutput, "video output path for -action record-screen")
+	recordCommand := flag.String("record-cmd", "", "shell command to run while -action record-screen is recording")
+	recordShell := flag.String("record-shell", "/bin/zsh", "shell used to launch -record-cmd")
+	recordFrameRate := flag.Int("record-fps", 30, "frame rate for -action record-screen")
+	recordSize := flag.String("record-size", "", "optional ffmpeg video size for -action record-screen, for example 1728x1117")
+	recordCursor := flag.Bool("record-cursor", true, "whether -action record-screen should capture the mouse cursor")
+	recordWarmupMS := flag.Int("record-warmup-ms", 1200, "warmup delay in milliseconds before -record-cmd starts")
+	recordCooldownMS := flag.Int("record-cooldown-ms", 900, "cooldown delay in milliseconds after -record-cmd ends")
+	recordDurationMS := flag.Int("record-duration-ms", 0, "optional hard limit in milliseconds for ffmpeg recording duration")
+	recordCRF := flag.Int("record-crf", 23, "ffmpeg libx264 CRF for -action record-screen")
+	recordPreset := flag.String("record-preset", "veryfast", "ffmpeg encoding preset for -action record-screen")
+	browserVideoOutput := flag.String("browser-video-output", "", "save Playwright page video to this path when running -flow or -script; use .webm for the cleanest result")
+	browserVideoWidth := flag.Int("browser-video-width", 0, "optional browser video width in pixels when using -browser-video-output")
+	browserVideoHeight := flag.Int("browser-video-height", 0, "optional browser video height in pixels when using -browser-video-output")
+	browserVideoCooldownMS := flag.Int("browser-video-cooldown-ms", 1200, "keep the page open for this many milliseconds before saving -browser-video-output")
 	sessionName := flag.String("session-name", "", "saved session name for session management actions")
 	storageStatePath := flag.String("storage-state-path", "", "storage state path for save-session actions")
 	storageStateJSON := flag.String("storage-state-json", "", "inline storage state JSON for save-session actions")
@@ -78,6 +102,10 @@ func main() {
 
 	g_headless = *isheadless
 	g_artifactRoot = *artifactRoot
+	g_browserVideoOutput = strings.TrimSpace(*browserVideoOutput)
+	g_browserVideoWidth = *browserVideoWidth
+	g_browserVideoHeight = *browserVideoHeight
+	g_browserVideoCooldownMS = *browserVideoCooldownMS
 
 	if len(*flowfile) != 0 {
 		flow, err := loadFlowDefinition(*flowfile)
@@ -109,6 +137,10 @@ func main() {
 				FlowPathRoot: *flowRoot,
 				ArtifactRoot: *artifactRoot,
 			})
+		case "mcp-tool":
+			if err := runMCPToolAction(*toolName, *argsJSON, *argsFile, *flowRoot, *artifactRoot); err != nil {
+				log.Fatal(err)
+			}
 		case "file-srv", "demo-srv":
 			if err := serveStaticFiles(*addr, *serveRoot); err != nil {
 				log.Fatal(err)
@@ -127,6 +159,35 @@ func main() {
 				log.Fatal(err)
 			}
 			fmt.Printf("Extracted %d bundled assets to %s\n", count, *extractRoot)
+		case "list-record-devices":
+			probe, err := listScreenRecordDevices()
+			if probe != nil {
+				printJSON(probe)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+		case "record-screen":
+			result, err := runScreenRecordAction(screenRecordOptions{
+				InputSpec:     *recordInput,
+				OutputPath:    *recordOutput,
+				Command:       *recordCommand,
+				Shell:         *recordShell,
+				FrameRate:     *recordFrameRate,
+				VideoSize:     *recordSize,
+				CaptureCursor: *recordCursor,
+				Warmup:        time.Duration(*recordWarmupMS) * time.Millisecond,
+				Cooldown:      time.Duration(*recordCooldownMS) * time.Millisecond,
+				MaxDuration:   time.Duration(*recordDurationMS) * time.Millisecond,
+				CRF:           *recordCRF,
+				Preset:        *recordPreset,
+			})
+			if result != nil {
+				printJSON(result)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
 		case "save-session":
 			if strings.TrimSpace(*sessionName) == "" {
 				log.Fatal("-session-name is required for -action save-session")
@@ -201,8 +262,12 @@ func printJSON(value any) {
 
 func run_flow(flow *tsplay_core.Flow) {
 	result, err := tsplay_core.RunFlow(flow, tsplay_core.FlowRunOptions{
-		Headless:     g_headless,
-		ArtifactRoot: g_artifactRoot,
+		Headless:               g_headless,
+		ArtifactRoot:           g_artifactRoot,
+		BrowserVideoOutputPath: g_browserVideoOutput,
+		BrowserVideoWidth:      g_browserVideoWidth,
+		BrowserVideoHeight:     g_browserVideoHeight,
+		BrowserVideoCooldownMS: g_browserVideoCooldownMS,
 	})
 	if result != nil {
 		encoded, marshalErr := json.MarshalIndent(result, "", "  ")
@@ -443,6 +508,7 @@ func run_script(script string) {
 	var pw *playwright.Playwright
 	var browser playwright.Browser
 	var page playwright.Page
+	var browserVideo *tsplay_core.BrowserVideoRecording
 	setPlaywrightGlobals := func() {
 		ud_b := L.NewUserData()
 		ud_b.Value = browser
@@ -497,8 +563,17 @@ func run_script(script string) {
 		if err != nil {
 			log.Fatalf("could not launch browser: %v", err)
 		}
-
-		page, err = browser.NewPage()
+		browserVideo, err = tsplay_core.PrepareBrowserVideoRecording(g_browserVideoOutput, g_browserVideoWidth, g_browserVideoHeight)
+		if err != nil {
+			log.Fatalf("could not prepare browser video: %v", err)
+		}
+		if browserVideo != nil {
+			page, err = browser.NewPage(playwright.BrowserNewPageOptions{
+				RecordVideo: browserVideo.RecordVideo,
+			})
+		} else {
+			page, err = browser.NewPage()
+		}
 		if err != nil {
 			log.Fatalf("could not create page: %v", err)
 		}
@@ -510,6 +585,19 @@ func run_script(script string) {
 	}
 
 	if !usage.NeedsBrowser() {
+		return
+	}
+
+	if browserVideo != nil && page != nil {
+		if g_browserVideoCooldownMS > 0 {
+			time.Sleep(time.Duration(g_browserVideoCooldownMS) * time.Millisecond)
+		}
+		savedPath, err := tsplay_core.SaveBrowserVideo(page, browserVideo.OutputPath)
+		if err != nil {
+			log.Fatalf("could not save browser video: %v", err)
+		}
+		fmt.Printf("saved browser video: %s\n", savedPath)
+		page = nil
 		return
 	}
 

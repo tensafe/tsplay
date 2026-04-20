@@ -1,0 +1,29 @@
+schema_version: "1"
+name: mcp_template_release_summary_broken
+description: Intentionally broken MCP repair training flow for the template release lab.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#template-release-card"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#release-title"
+    timeout: 5000
+    save_as: release_title
+
+  - action: extract_text
+    selector: "#release-status-missing"
+    timeout: 1500
+    save_as: release_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        release_title: "{{release_title}}"
+        release_status: "{{release_status}}"

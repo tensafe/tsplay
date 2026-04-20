@@ -1,0 +1,78 @@
+schema_version: "1"
+name: lesson_96_build_template_index_flow
+description: Summarize the reusable handoff templates into one index CSV for easier discovery.
+vars:
+  input_process_output_file: artifacts/tutorials/93-build-input-process-output-template-flow.csv
+  collect_verify_save_file: artifacts/tutorials/94-build-collect-verify-save-template-flow.csv
+  replay_audit_handoff_file: artifacts/tutorials/95-build-replay-audit-handoff-template-flow.csv
+  index_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{input_process_output_file}}"
+    save_as: input_process_output_rows
+
+  - action: read_csv
+    file_path: "{{collect_verify_save_file}}"
+    save_as: collect_verify_save_rows
+
+  - action: read_csv
+    file_path: "{{replay_audit_handoff_file}}"
+    save_as: replay_audit_handoff_rows
+
+  - action: lua
+    save_as: counts
+    code: |
+      return {
+        input_process_output = tostring(#(input_process_output_rows or {})),
+        collect_verify_save = tostring(#(collect_verify_save_rows or {})),
+        replay_audit_handoff = tostring(#(replay_audit_handoff_rows or {})),
+      }
+
+  - action: append_var
+    save_as: index_rows
+    with:
+      value:
+        template_name: handoff_input_process_output
+        focus_area: stage_design
+        step_row_count: "{{counts.input_process_output}}"
+        source_file: "{{input_process_output_file}}"
+        recommended_when: you need a stable input -> process -> output skeleton
+
+  - action: append_var
+    save_as: index_rows
+    with:
+      value:
+        template_name: handoff_collect_verify_save
+        focus_area: review_design
+        step_row_count: "{{counts.collect_verify_save}}"
+        source_file: "{{collect_verify_save_file}}"
+        recommended_when: you need to separate collection, verification, and output
+
+  - action: append_var
+    save_as: index_rows
+    with:
+      value:
+        template_name: handoff_replay_audit_handoff
+        focus_area: delivery_design
+        step_row_count: "{{counts.replay_audit_handoff}}"
+        source_file: "{{replay_audit_handoff_file}}"
+        recommended_when: you need replay, audit, and handoff blocks in one chain
+
+  - action: write_csv
+    file_path: artifacts/tutorials/96-build-template-index-flow.csv
+    with:
+      value: "{{index_rows}}"
+      headers:
+        - template_name
+        - focus_area
+        - step_row_count
+        - source_file
+        - recommended_when
+
+  - action: write_json
+    file_path: artifacts/tutorials/96-build-template-index-flow.json
+    with:
+      value:
+        lesson: "96"
+        mode: flow
+        index_rows: "{{index_rows}}"

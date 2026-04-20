@@ -1,0 +1,5 @@
+{
+  "flow_path": "tutorials/117_mcp_template_release_summary_broken.flow.yaml",
+  "security_preset": "readonly",
+  "headless": true
+}

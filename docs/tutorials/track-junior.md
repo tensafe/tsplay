@@ -89,6 +89,15 @@
 - [Lesson 69: 把源 CSV 和 DB 明细行放到一起比](69-compare-source-csv-and-db-rows.md)
 - [Lesson 70: 生成一份 CSV、Redis、Postgres 三边对账包](70-build-reconciliation-pack-from-csv-redis-db.md)
 - [Lesson 71: 跑通一次完整的外部系统 round trip](71-external-system-round-trip.md)
+- [Lesson 72: 用同一个批次号重跑同步，但不产生重复数据](72-rerun-shared-batch-idempotently.md)
+- [Lesson 73: 验证重跑后没有重复行](73-verify-rerun-does-not-duplicate-rows.md)
+- [Lesson 74: 遇到坏数据时，保留有效行并写出异常台账](74-recover-external-sync-with-anomaly-ledger.md)
+- [Lesson 75: 给外部同步写入一条审计记录](75-write-external-sync-audit-row.md)
+- [Lesson 76: 读回某个批次的审计历史](76-query-external-sync-audit-history.md)
+- [Lesson 77: 把审计历史导出成 CSV](77-export-external-sync-audit-history.md)
+- [Lesson 78: 清理最新批次的运行数据，但保留审计](78-cleanup-latest-external-batch.md)
+- [Lesson 79: 验证批次清理后，审计仍然保留](79-verify-external-batch-cleanup.md)
+- [Lesson 80: 跑通一条完整的外部同步生命周期](80-external-sync-lifecycle-round-trip.md)
 - [Lesson 06: Redis 基础读写和计数](06-redis-round-trip.md)
 - [Lesson 07: Postgres 基础查询与写入](07-db-postgres-basics.md)
 
@@ -106,11 +115,14 @@
 9. `Lesson 40-43` 再把命名会话和 `use_session` 打通
 10. `Lesson 44-50` 再把命名会话真正接到受保护业务流程里
 11. `Lesson 51-57` 再把认证导入结果做成页面表格、导出文件和回读闭环
-12. `Lesson 06-07` 先把 Redis / Postgres 的最小动作跑顺
+12. 在进入 `Lesson 58-64` 之前，先回头补跑 `Lesson 06-07`，把 Redis / Postgres 的最小动作热身一遍
 13. `Lesson 58-60` 再把认证导出结果接进 Redis 摘要和批次 key
 14. `Lesson 61-64` 最后把同一份导出结果接进 Postgres 摘要、查询、upsert 和事务写入
-15. `Lesson 65-70` 再把 Redis 批次和 Postgres 摘要/明细真正接成一次三边对账链
-16. `Lesson 71` 最后重新跑一遍完整的外部系统 round trip
+15. `Lesson 65-71` 再把 Redis 批次、Postgres 摘要/明细和三边对账真正串成一次完整外部同步链
+16. `Lesson 72-73` 再把这条链推进到“幂等重跑”和“无重复验证”
+17. `Lesson 74` 再补一条异常输入恢复链，学会保留异常台账
+18. `Lesson 75-77` 再把外部同步接进审计留痕和审计导出
+19. `Lesson 78-80` 最后把清理、验证和完整生命周期闭环补齐
 
 ## 初级阶段必须形成的能力
 
@@ -154,6 +166,7 @@
 - 能把认证页面里的“页面表格结果”和“导出文件结果”同时保存下来做复盘
 - 能把认证导出的 CSV 继续接进 Redis 和 Postgres，理解“浏览器结果 -> 外部系统摘要/持久化”的递进关系
 - 能说明“共享 batch id”为什么重要，并能把同一个批次从 Redis 一路接到 Postgres 摘要、Postgres 明细和本地对账包
+- 能解释“运行态数据”和“审计留痕”为什么要分开，并能完成一次重跑、审计、清理、验证的最小生命周期
 - 能解释为什么某一步放在 `Lua`，某一步放在 `Flow`
 - 能至少接通一个外部系统
 - 能说明一个流程失败后应该看哪里，并知道什么时候要留截图 / HTML / JSON 证据

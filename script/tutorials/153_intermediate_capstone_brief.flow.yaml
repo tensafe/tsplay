@@ -1,0 +1,40 @@
+schema_version: "1"
+name: lesson_153_intermediate_capstone_brief_flow
+description: Build an intermediate capstone brief that connects template release robustness with the MCP draft and repair chain.
+steps:
+  - action: set_var
+    save_as: capstone_brief
+    with:
+      value:
+        lesson: "153"
+        target_role: intermediate
+        required_lessons:
+          - "101"
+          - "109"
+          - "110"
+          - "113"
+          - "114"
+          - "115"
+          - "116"
+          - "117"
+          - "118"
+          - "119"
+          - "120"
+        assignment:
+          - observe a page or release lab
+          - draft a flow
+          - validate and run the drafted flow
+          - demonstrate one broken run and one repair cycle
+          - retain artifacts that explain the repair
+        deliverables:
+          - observation output
+          - draft flow
+          - validate result
+          - run result
+          - repair context or repair request
+
+  - action: write_json
+    file_path: artifacts/tutorials/153/intermediate-capstone-brief.json
+    with:
+      value: "{{capstone_brief}}"
+    save_as: write_result

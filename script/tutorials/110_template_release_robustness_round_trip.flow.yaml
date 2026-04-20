@@ -1,0 +1,210 @@
+schema_version: "1"
+name: lesson_110_template_release_robustness_round_trip_flow
+description: Run the template release lab end to end with assertions, retries, waits, recovery, reload, and artifacts.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+  invalid_ticket: BAD-TICKET
+  error_branch: unknown
+  failure_status: ""
+  reset_status: ""
+  last_error_text: ""
+  screenshot_path: artifacts/tutorials/110-template-release-robustness-round-trip-flow.png
+  html_path: artifacts/tutorials/110-template-release-robustness-round-trip-flow.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#template-release-card"
+    timeout: 5000
+
+  - action: assert_visible
+    selector: "#template-release-card"
+    timeout: 5000
+    save_as: card_visible
+
+  - action: assert_text
+    selector: "#release-status"
+    text: "Draft checks complete"
+    timeout: 5000
+    save_as: base_status_ok
+
+  - action: click
+    selector: "#stage-check-button"
+
+  - action: wait_until
+    timeout: 5000
+    interval_ms: 200
+    condition:
+      action: is_visible
+      selector: "#stage-ready-badge"
+    save_as: stage_wait_result
+
+  - action: extract_text
+    selector: "#stage-check-status"
+    timeout: 5000
+    save_as: stage_status
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: gate_retry_result
+    steps:
+      - action: click
+        selector: "#retry-gate-button"
+      - action: assert_text
+        selector: "#retry-gate-status"
+        text: "Gate passed"
+        timeout: 500
+      - action: assert_visible
+        selector: "#retry-gate-badge"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#retry-gate-status"
+    timeout: 5000
+    save_as: gate_status
+
+  - action: assert_visible
+    selector: "#retry-gate-badge"
+    timeout: 5000
+    save_as: gate_badge_visible
+
+  - action: click
+    selector: "#show-delay-note-button"
+
+  - action: wait_for_selector
+    selector: "#delayed-release-note"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#delayed-release-note"
+    timeout: 5000
+    save_as: delayed_note
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: publish_retry_result
+    steps:
+      - action: click
+        selector: "#flaky-publish-button"
+      - action: assert_text
+        selector: "#flaky-publish-status"
+        text: "Publish preview opened"
+        timeout: 500
+      - action: assert_visible
+        selector: "#flaky-publish-badge"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#flaky-publish-status"
+    timeout: 5000
+    save_as: publish_status
+
+  - action: assert_visible
+    selector: "#flaky-publish-badge"
+    timeout: 5000
+    save_as: publish_preview_visible
+
+  - action: on_error
+    steps:
+      - action: type_text
+        selector: "#release-ticket"
+        text: "{{invalid_ticket}}"
+      - action: click
+        selector: "#finalize-release-button"
+      - action: assert_text
+        selector: "#finalize-status"
+        text: "Release finalized"
+        timeout: 500
+      - action: set_var
+        save_as: error_branch
+        with:
+          value: unexpected_success
+    on_error:
+      - action: extract_text
+        selector: "#finalize-status"
+        timeout: 5000
+        save_as: failure_status
+      - action: set_var
+        save_as: error_branch
+        with:
+          value: handled_error
+      - action: set_var
+        save_as: last_error_text
+        with:
+          value: "{{last_error}}"
+      - action: click
+        selector: "#reset-finalize"
+
+  - action: extract_text
+    selector: "#finalize-status"
+    timeout: 5000
+    save_as: reset_status
+
+  - action: click
+    selector: "#reload-recovery-button"
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: recovery_retry_result
+    steps:
+      - action: reload
+      - action: assert_text
+        selector: "#reload-status"
+        text: "Recovered after reload"
+        timeout: 500
+      - action: assert_visible
+        selector: "#reload-badge"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#reload-status"
+    timeout: 5000
+    save_as: reload_status
+
+  - action: assert_visible
+    selector: "#reload-badge"
+    timeout: 5000
+    save_as: reload_recovered
+
+  - action: screenshot
+    path: "{{screenshot_path}}"
+
+  - action: save_html
+    path: "{{html_path}}"
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "110"
+        mode: flow
+        page_url: "{{page_url}}"
+        invalid_ticket: "{{invalid_ticket}}"
+        card_visible: "{{card_visible}}"
+        base_status_ok: "{{base_status_ok}}"
+        stage_wait_result: "{{stage_wait_result}}"
+        stage_status: "{{stage_status}}"
+        gate_retry_result: "{{gate_retry_result}}"
+        gate_status: "{{gate_status}}"
+        gate_badge_visible: "{{gate_badge_visible}}"
+        delayed_note: "{{delayed_note}}"
+        publish_retry_result: "{{publish_retry_result}}"
+        publish_status: "{{publish_status}}"
+        publish_preview_visible: "{{publish_preview_visible}}"
+        error_branch: "{{error_branch}}"
+        failure_status: "{{failure_status}}"
+        reset_status: "{{reset_status}}"
+        last_error_text: "{{last_error_text}}"
+        recovery_retry_result: "{{recovery_retry_result}}"
+        reload_status: "{{reload_status}}"
+        reload_recovered: "{{reload_recovered}}"
+        screenshot_path: "{{screenshot_path}}"
+        html_path: "{{html_path}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/110-template-release-robustness-round-trip-flow.json
+    value: "{{payload}}"

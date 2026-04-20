@@ -1,0 +1,53 @@
+schema_version: "1"
+name: lesson_104_wait_until_template_release_ready_flow
+description: Start the staged template release check, wait until the ready badge appears, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#stage-check-button"
+    timeout: 5000
+
+  - action: click
+    selector: "#stage-check-button"
+
+  - action: wait_until
+    timeout: 5000
+    interval_ms: 200
+    condition:
+      action: is_visible
+      selector: "#stage-ready-badge"
+    save_as: wait_result
+
+  - action: assert_text
+    selector: "#stage-check-status"
+    text: "Ready for publish"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#stage-check-status"
+    timeout: 5000
+    save_as: stage_status
+
+  - action: assert_visible
+    selector: "#stage-ready-badge"
+    timeout: 5000
+    save_as: ready_visible
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "104"
+        mode: flow
+        page_url: "{{page_url}}"
+        wait_result: "{{wait_result}}"
+        ready_visible: "{{ready_visible}}"
+        stage_status: "{{stage_status}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/104-wait-until-template-release-ready-flow.json
+    value: "{{payload}}"

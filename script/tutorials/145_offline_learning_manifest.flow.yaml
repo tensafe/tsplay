@@ -1,0 +1,29 @@
+schema_version: "1"
+name: lesson_145_offline_learning_manifest_flow
+description: Build an offline learning manifest that highlights which tutorial lessons can start without external services.
+steps:
+  - action: set_var
+    save_as: offline_manifest
+    with:
+      value:
+        lesson: "145"
+        mode: offline_learning
+        start_lessons:
+          - "01"
+          - "08"
+          - "14"
+          - "24"
+          - "25"
+          - "111"
+          - "112"
+          - "121-150"
+        required_commands:
+          - ./tsplay -action list-assets
+          - ./tsplay -action extract-assets -extract-root ./tsplay-assets-offline
+        note: start with lessons that do not require a local server, Redis, or Postgres
+
+  - action: write_json
+    file_path: artifacts/tutorials/145/offline-learning-manifest.json
+    with:
+      value: "{{offline_manifest}}"
+    save_as: write_result

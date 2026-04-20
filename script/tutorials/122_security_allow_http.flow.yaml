@@ -1,0 +1,7 @@
+schema_version: "1"
+name: lesson_122_security_allow_http_flow
+description: Minimal HTTP step for the MCP allow_http boundary lesson.
+steps:
+  - action: http_request
+    url: https://example.com/api/tutorial-security
+    save_as: response

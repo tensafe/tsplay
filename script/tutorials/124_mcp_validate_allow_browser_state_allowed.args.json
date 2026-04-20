@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/124_security_allow_browser_state.flow.yaml",
+  "allow_browser_state": true
+}

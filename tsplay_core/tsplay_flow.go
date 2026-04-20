@@ -105,6 +105,7 @@ type FlowResult struct {
 	RunID        string           `json:"run_id,omitempty"`
 	RunRoot      string           `json:"run_root,omitempty"`
 	SessionID    string           `json:"session_id,omitempty"`
+	BrowserVideo string           `json:"browser_video,omitempty"`
 	Playwright   *PlaywrightUsage `json:"playwright,omitempty"`
 }
 
@@ -173,6 +174,10 @@ type FlowRunOptions struct {
 	SessionID     string
 	ClientName    string
 	ClientVersion string
+	BrowserVideoOutputPath string
+	BrowserVideoWidth      int
+	BrowserVideoHeight     int
+	BrowserVideoCooldownMS int
 }
 
 type FlowSecurityPolicy struct {
@@ -1775,23 +1780,51 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	var browser playwright.Browser
 	var context playwright.BrowserContext
 	var page playwright.Page
-	closePlaywright := sync.OnceFunc(func() {
+	var browserVideo *BrowserVideoRecording
+	var browserVideoPath string
+	closePlaywright := sync.OnceValue(func() error {
+		var closeErr error
 		if page != nil {
-			_ = page.Close()
+			if browserVideo != nil {
+				if options.BrowserVideoCooldownMS > 0 {
+					time.Sleep(time.Duration(options.BrowserVideoCooldownMS) * time.Millisecond)
+				}
+				if savedPath, err := SaveBrowserVideo(page, browserVideo.OutputPath); err != nil {
+					closeErr = err
+				} else {
+					browserVideoPath = savedPath
+				}
+			} else if err := page.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+			page = nil
 		}
 		if context != nil {
-			_ = context.Close()
+			if err := context.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+			context = nil
 		}
 		if browser != nil {
-			_ = browser.Close()
+			if err := browser.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+			browser = nil
 		}
 		if pw != nil {
-			_ = pw.Stop()
+			if err := pw.Stop(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+			pw = nil
 		}
+		return closeErr
 	})
-	defer closePlaywright()
 	stopWatcher := func() {}
 	if needsPlaywright {
+		browserVideo, err = PrepareBrowserVideoRecording(options.BrowserVideoOutputPath, options.BrowserVideoWidth, options.BrowserVideoHeight)
+		if err != nil {
+			return nil, err
+		}
 		pw, err = StartPlaywright()
 		if err != nil {
 			summary := playwrightUsage.Summary(3)
@@ -1801,22 +1834,37 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 			return nil, err
 		}
 		if browserConfig.wantsPersistentContext() {
-			context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options))
+			context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options), browserVideo)
 			if err != nil {
+				_ = closePlaywright()
 				return nil, err
 			}
 		} else {
-			browser, context, page, err = launchFlowBrowser(pw, browserConfig, options)
+			browser, context, page, err = launchFlowBrowser(pw, browserConfig, options, browserVideo)
 			if err != nil {
+				_ = closePlaywright()
 				return nil, err
 			}
 		}
-		stopWatcher = watchContextCancel(options.Context, closePlaywright)
+		stopWatcher = watchContextCancel(options.Context, func() {
+			_ = closePlaywright()
+		})
 		setFlowBrowserGlobals(L, browser, context, page)
 	}
 	defer stopWatcher()
 
-	return RunFlowInStateWithOptions(L, flow, options)
+	result, runErr := RunFlowInStateWithOptions(L, flow, options)
+	closeErr := closePlaywright()
+	if result != nil && browserVideoPath != "" {
+		result.BrowserVideo = browserVideoPath
+	}
+	if runErr != nil {
+		return result, runErr
+	}
+	if closeErr != nil {
+		return result, closeErr
+	}
+	return result, nil
 }
 
 func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserConfig, error) {
@@ -1869,7 +1917,7 @@ func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserCo
 	return config, nil
 }
 
-func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, options FlowRunOptions) (playwright.Browser, playwright.BrowserContext, playwright.Page, error) {
+func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, options FlowRunOptions, browserVideo *BrowserVideoRecording) (playwright.Browser, playwright.BrowserContext, playwright.Page, error) {
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(config.headlessValue()),
 	})
@@ -1878,7 +1926,7 @@ func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, opti
 	}
 
 	contextOptions := playwright.BrowserNewContextOptions{}
-	if err := applyFlowBrowserContextOptions(&contextOptions, config, options.Security); err != nil {
+	if err := applyFlowBrowserContextOptions(&contextOptions, config, options.Security, browserVideo); err != nil {
 		browser.Close()
 		return nil, nil, nil, err
 	}
@@ -1897,7 +1945,7 @@ func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, opti
 	return browser, context, page, nil
 }
 
-func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, stateRoot string) (playwright.BrowserContext, playwright.Page, error) {
+func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, stateRoot string, browserVideo *BrowserVideoRecording) (playwright.BrowserContext, playwright.Page, error) {
 	loadPath, err := config.loadStorageStatePath()
 	if err != nil {
 		return nil, nil, err
@@ -1921,6 +1969,9 @@ func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserCo
 	if config.Timeout > 0 {
 		contextOptions.Timeout = playwright.Float(float64(config.Timeout))
 	}
+	if browserVideo != nil {
+		contextOptions.RecordVideo = browserVideo.RecordVideo
+	}
 	context, err := pw.Chromium.LaunchPersistentContext(userDataDir, contextOptions)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not launch persistent browser context: %w", err)
@@ -1940,7 +1991,7 @@ func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserCo
 	return context, page, nil
 }
 
-func applyFlowBrowserContextOptions(options *playwright.BrowserNewContextOptions, config FlowBrowserConfig, security *FlowSecurityPolicy) error {
+func applyFlowBrowserContextOptions(options *playwright.BrowserNewContextOptions, config FlowBrowserConfig, security *FlowSecurityPolicy, browserVideo *BrowserVideoRecording) error {
 	if options == nil {
 		return nil
 	}
@@ -1956,6 +2007,9 @@ func applyFlowBrowserContextOptions(options *playwright.BrowserNewContextOptions
 	}
 	if loadPath != "" {
 		options.StorageStatePath = playwright.String(loadPath)
+	}
+	if browserVideo != nil {
+		options.RecordVideo = browserVideo.RecordVideo
 	}
 	return nil
 }

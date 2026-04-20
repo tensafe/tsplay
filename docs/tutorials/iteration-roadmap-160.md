@@ -10,7 +10,7 @@
 
 补充说明：
 
-- 当前仓库里已经直接落地、可运行的是 `Lesson 01-71`
+- 当前仓库里已经直接落地、可运行的是 `Lesson 01-110`
 - 这份路线图负责把完整课程继续往前推进，避免后续文档生长失去顺序
 
 总结构：
@@ -117,7 +117,7 @@
 
 ## 模块 08：会话、产物、复盘机制
 
-- `[071]` 结合 `Lesson 28-30`、`Lesson 36-71` 学会根据输出 JSON 回看浏览器状态结果。交付物：指出一条状态快照里的关键字段。
+- `[071]` 结合 `Lesson 28-30`、`Lesson 36-80` 学会根据输出 JSON 回看浏览器状态结果。交付物：指出一条状态快照里的关键字段。
 - `[072]` 学会从 `artifact_root` 和 `run_root` 理解一次运行的上下文。交付物：一段说明。
 - `[073]` 结合 `Lesson 31-35` 为教程补“失败时先看哪里”的统一说明。交付物：一段通用排障话术。
 - `[074]` 学会记录“我改了什么，结果怎么变了”。交付物：一条结构化复盘记录。
@@ -130,111 +130,111 @@
 
 ## 中级教程
 
-## 模块 09：模板化与可复用结构
+## 模块 09：证据回放、交接与发布前检查
 
-- `[081]` 识别哪些脚本只是一次性试验，哪些值得沉淀成模板。交付物：一个分类清单。
-- `[082]` 为一个已有 lesson 写出“模板版目标”。交付物：主题重构说明。
-- `[083]` 统一 Flow 顶层结构。交付物：一套推荐字段顺序。
-- `[084]` 统一步骤命名规则。交付物：一份步骤命名规范。
-- `[085]` 统一变量命名规则。交付物：一份变量命名规范。
-- `[086]` 统一输出文件命名规则。交付物：一份文件命名规范。
-- `[087]` 为“输入、处理、输出”三段式流程设计模板。交付物：模板草案。
-- `[088]` 为“采集、断言、保存”三段式流程设计模板。交付物：模板草案。
-- `[089]` 为“请求、解析、落盘”三段式流程设计模板。交付物：模板草案。
-- `[090]` 复盘为什么模板化比“示例越多越好”更重要。交付物：一段说明。
+- `[081]` 跑通 `Lesson 81`，从 `Lesson 80` 的生命周期 CSV 里重新读回批次证据。交付物：`81-read-lifecycle-evidence-*.json`。
+- `[082]` 跑通 `Lesson 82`，根据生命周期证据回放一条新批次。交付物：`82-replay-batch-from-lifecycle-evidence-*.csv/json`。
+- `[083]` 跑通 `Lesson 83`，验证回放批次和生命周期证据仍然一致。交付物：`83-verify-replay-batch-against-lifecycle-evidence-*.json`。
+- `[084]` 跑通 `Lesson 84`，为 replay 批次补一条独立审计记录。交付物：`84-write-replay-audit-row-*.json`。
+- `[085]` 跑通 `Lesson 85`，把原批次和 replay 批次的审计导出成一份对照 CSV。交付物：`85-export-original-and-replay-audits-*.csv/json`。
+- `[086]` 跑通 `Lesson 86`，把生命周期、Redis、Postgres、审计对照压成一份回放对账包。交付物：`86-build-post-replay-reconciliation-pack-*.csv/json`。
+- `[087]` 跑通 `Lesson 87`，把关键产物整理成交接 manifest。交付物：`87-build-handoff-artifact-manifest-*.csv/json`。
+- `[088]` 跑通 `Lesson 88`，把 manifest 再压成一份交付摘要。交付物：`88-build-handoff-summary-*.json`。
+- `[089]` 跑通 `Lesson 89`，把交接包整理成发布前检查清单。交付物：`89-build-pre-release-checklist-*.csv/json`。
+- `[090]` 跑通 `Lesson 90`，把“生命周期证据 -> 回放 -> 交接包”重新串成一条完整 round trip。交付物：`90-handoff-round-trip-from-lifecycle-evidence-*.csv/json`。
 
-## 模块 10：数据驱动与批量处理
+## 模块 10：模板目录、模板索引与模板发布前检查
 
-- `[091]` 规划 `read_csv` 入门 lesson。交付物：主题说明。
-- `[092]` 规划 `write_csv` 入门 lesson。交付物：主题说明。
-- `[093]` 规划 `read_excel` 入门 lesson。交付物：主题说明。
-- `[094]` 规划 `foreach` 基础 lesson。交付物：主题说明。
-- `[095]` 把“单条数据处理”改造成“列表处理”的流程草案。交付物：一条 Flow 草稿。
-- `[096]` 设计“输入 CSV，输出 JSON 报告”的最小课题。交付物：课题说明。
-- `[097]` 设计“输入 Excel，遍历上传”的最小课题。交付物：课题说明。
-- `[098]` 设计“批量 HTTP 请求后汇总结果”的最小课题。交付物：课题说明。
-- `[099]` 设计“批量数据库写入”的最小课题。交付物：课题说明。
-- `[100]` 复盘批量处理为什么需要比单步示例更强的结构感。交付物：一段说明。
+- `[091]` 跑通 `Lesson 91`，从交接 manifest 里识别每份产物的角色。交付物：`91-read-handoff-manifest-roles-*.csv/json`。
+- `[092]` 跑通 `Lesson 92`，把交接产物整理成模板目录。交付物：`92-build-template-artifact-catalog-*.csv/json`。
+- `[093]` 跑通 `Lesson 93`，把交接链整理成 `Input -> Process -> Output` 模板。交付物：`93-build-input-process-output-template-*.csv/json`。
+- `[094]` 跑通 `Lesson 94`，把交接链整理成 `Collect -> Verify -> Save` 模板。交付物：`94-build-collect-verify-save-template-*.csv/json`。
+- `[095]` 跑通 `Lesson 95`，把交接链整理成 `Replay -> Audit -> Handoff` 模板。交付物：`95-build-replay-audit-handoff-template-*.csv/json`。
+- `[096]` 跑通 `Lesson 96`，把几份模板整理成统一索引。交付物：`96-build-template-index-*.csv/json`。
+- `[097]` 跑通 `Lesson 97`，验证模板索引仍然覆盖完整交接链。交付物：`97-verify-template-covers-handoff-chain-*.csv/json`。
+- `[098]` 跑通 `Lesson 98`，生成一份“场景 -> 模板”的学习矩阵。交付物：`98-build-template-lesson-matrix-*.csv/json`。
+- `[099]` 跑通 `Lesson 99`，给模板包生成发布前检查清单。交付物：`99-build-template-preflight-checklist-*.csv/json`。
+- `[100]` 跑通 `Lesson 100`，把交接产物重新收成一份模板包 round trip。交付物：`100-template-round-trip-from-handoff-artifacts-*.csv/json`。
 
 ## 模块 11：健壮性、等待、恢复
 
-- `[101]` 系统补 `assert_visible` lesson。交付物：lesson 草稿。
-- `[102]` 系统补 `assert_text` lesson。交付物：lesson 草稿。
-- `[103]` 系统补 `retry` lesson。交付物：lesson 草稿。
-- `[104]` 系统补 `wait_until` lesson。交付物：lesson 草稿。
-- `[105]` 系统补 `on_error` lesson。交付物：lesson 草稿。
-- `[106]` 设计“延迟出现的元素”场景。交付物：一页 demo / 需求说明。
-- `[107]` 设计“偶发失败点击”场景。交付物：一页 demo / 需求说明。
-- `[108]` 设计“失败后 reload 再重试”场景。交付物：一页 Flow 草稿。
-- `[109]` 整理 artifact、截图、HTML、DOM snapshot 的教学顺序。交付物：一页讲解提纲。
-- `[110]` 复盘“健壮性设计不是多写几个 sleep”。交付物：一段反例说明。
+- `[101]` 跑通 `Lesson 101`，先确认模板发布卡片和关键 badge 真的在页面上。交付物：`101-assert-visible-template-release-card-*.json`。
+- `[102]` 跑通 `Lesson 102`，继续确认模板发布状态和摘要文字是对的。交付物：`102-assert-text-template-release-status-*.json`。
+- `[103]` 跑通 `Lesson 103`，用 `retry` 处理模板发布 gate 的临时不一致。交付物：`103-retry-template-release-gate-*.json`。
+- `[104]` 跑通 `Lesson 104`，用 `wait_until` 等待异步 stage check 变成 ready。交付物：`104-wait-until-template-release-ready-*.json`。
+- `[105]` 跑通 `Lesson 105`，故意触发一次 ticket 校验失败并在错误分支里恢复。交付物：`105-on-error-template-release-validation-*.json`。
+- `[106]` 跑通 `Lesson 106`，等待一条延迟出现的发布说明项。交付物：`106-wait-for-delayed-release-note-*.json`。
+- `[107]` 跑通 `Lesson 107`，用 `retry` 接住一次偶发失败点击。交付物：`107-retry-flaky-publish-click-*.json`。
+- `[108]` 跑通 `Lesson 108`，通过 `reload + retry` 验证恢复状态已经真正生效。交付物：`108-reload-and-retry-release-recovery-*.json`。
+- `[109]` 跑通 `Lesson 109`，给模板发布页保存整页图、元素图和 HTML。交付物：`109-template-release-artifact-pack-*.png/html/json`。
+- `[110]` 跑通 `Lesson 110`，把断言、等待、重试、恢复和证据留存重新串成一条完整 round trip。交付物：`110-template-release-robustness-round-trip-*.png/html/json`。
 
 ## 模块 12：MCP 基础链路与 repair 入门
 
-- `[111]` 解释 `tsplay.list_actions` 的作用。交付物：一段工具定位说明。
-- `[112]` 解释 `tsplay.flow_schema` 和 `tsplay.flow_examples` 的作用。交付物：一段说明。
-- `[113]` 设计 `observe_page` 入门 lesson。交付物：lesson 草稿。
-- `[114]` 设计 `draft_flow` 入门 lesson。交付物：lesson 草稿。
-- `[115]` 设计 `validate_flow` 入门 lesson。交付物：lesson 草稿。
-- `[116]` 设计 `run_flow` 入门 lesson。交付物：lesson 草稿。
-- `[117]` 设计 `repair_flow_context` 入门 lesson。交付物：lesson 草稿。
-- `[118]` 设计 `repair_flow` 入门 lesson。交付物：lesson 草稿。
-- `[119]` 写出“observe -> draft -> validate -> run -> repair”的一页总图。交付物：流程总览。
-- `[120]` 通过中级阶段检查。交付物：能解释 TSPlay 从脚本、Flow 到 MCP 的主线关系。
+- `[111]` 跑通 `Lesson 111`，先用 `tsplay.list_actions` 建立 MCP 能力地图。交付物：`111-mcp-list-actions.json`。
+- `[112]` 跑通 `Lesson 112`，把 `flow_schema` 和 `flow_examples` 都留成本地参考。交付物：`112-mcp-flow-schema.json`、`112-mcp-flow-examples.json`。
+- `[113]` 跑通 `Lesson 113`，对模板发布页生成第一份 observation。交付物：`113-mcp-observe-page-template-release.json`。
+- `[114]` 跑通 `Lesson 114`，把 observation 变成第一份 `draft.flow_yaml`。交付物：`114-mcp-draft-flow-template-release.json`。
+- `[115]` 跑通 `Lesson 115`，先校验 draft 再进入运行。交付物：`115-mcp-validate-drafted-template-release.json`。
+- `[116]` 跑通 `Lesson 116`，执行 draft flow 并拿到结果 trace。交付物：`116-mcp-run-drafted-template-release.json`。
+- `[117]` 跑通 `Lesson 117`，先记录一次失败运行，再生成 repair context。交付物：`117-mcp-run-broken-template-release.json`、`117-mcp-repair-flow-context-template-release.json`。
+- `[118]` 跑通 `Lesson 118`，把 repair context 收成统一 repair request。交付物：`118-mcp-repair-flow-template-release.json`。
+- `[119]` 跑通 `Lesson 119`，把 `observe -> draft -> validate -> run -> repair` 串成完整心智模型。交付物：一页 MCP 基础链路复盘。
+- `[120]` 跑通 `Lesson 120`，用 `finalize_flow` 收成更短的默认入口。交付物：`120-mcp-finalize-flow-template-release.json`。
 
 ## 高级教程
 
 ## 模块 13：安全边界与运行边界
 
-- `[121]` 为 `allow_lua` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[122]` 为 `allow_http` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[123]` 为 `allow_file_access` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[124]` 为 `allow_browser_state` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[125]` 为 `allow_redis` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[126]` 为 `allow_database` 设计一条专门 lesson。交付物：lesson 草稿。
-- `[127]` 写出“本地 CLI / 本地 Flow / MCP 模式”三者的边界对照。交付物：一页说明。
-- `[128]` 写出“为什么教程不能一开始就忽略授权边界”。交付物：一段说明。
-- `[129]` 为每类高风险动作整理默认教学前置。交付物：一份前置条件清单。
-- `[130]` 复盘安全边界在交付中的价值。交付物：一段交付视角说明。
+- `[121]` 跑通 `Lesson 121`，先把 `allow_lua` 的 blocked / allowed 对照跑清楚。交付物：`121-mcp-validate-allow-lua-blocked.json`、`121-mcp-validate-allow-lua-allowed.json`。
+- `[122]` 跑通 `Lesson 122`，把 `allow_http` 的 blocked / allowed 对照跑清楚。交付物：`122-mcp-validate-allow-http-blocked.json`、`122-mcp-validate-allow-http-allowed.json`。
+- `[123]` 跑通 `Lesson 123`，把 `allow_file_access` 的 blocked / allowed 对照跑清楚。交付物：`123-mcp-validate-allow-file-access-blocked.json`、`123-mcp-validate-allow-file-access-allowed.json`。
+- `[124]` 跑通 `Lesson 124`，把 `allow_browser_state` 的 blocked / allowed 对照跑清楚。交付物：`124-mcp-validate-allow-browser-state-blocked.json`、`124-mcp-validate-allow-browser-state-allowed.json`。
+- `[125]` 跑通 `Lesson 125`，把 `allow_redis` 的 blocked / allowed 对照跑清楚。交付物：`125-mcp-validate-allow-redis-blocked.json`、`125-mcp-validate-allow-redis-allowed.json`。
+- `[126]` 跑通 `Lesson 126`，把 `allow_database` 的 blocked / allowed 对照跑清楚。交付物：`126-mcp-validate-allow-database-blocked.json`、`126-mcp-validate-allow-database-allowed.json`。
+- `[127]` 跑通 `Lesson 127`，写出“本地 Flow 和 MCP”两种入口的边界对照。交付物：一页对照说明和本地 `123` Flow 运行结果。
+- `[128]` 跑通 `Lesson 128`，写出“为什么教程不能一开始就忽略授权边界”。交付物：一页说明。
+- `[129]` 跑通 `Lesson 129`，把 `security_preset` 和显式 `allow_*` 覆盖关系跑清楚。交付物：`129-mcp-validate-file-access-browser-write.json`、`129-mcp-validate-http-full-automation.json`、`129-mcp-validate-http-full-automation-override.json`。
+- `[130]` 跑通 `Lesson 130`，把安全边界模块收成第一轮 checkpoint。交付物：一页边界复盘。
 
 ## 模块 14：大型 Flow、规范、评审
 
-- `[131]` 制定步骤命名评审规则。交付物：规则草案。
-- `[132]` 制定变量命名评审规则。交付物：规则草案。
-- `[133]` 制定 artifact 目录评审规则。交付物：规则草案。
-- `[134]` 制定教程示例代码评审规则。交付物：规则草案。
-- `[135]` 制定“什么时候允许 Lua escape hatch”的评审规则。交付物：规则草案。
-- `[136]` 制定“什么时候必须抽成 Flow”的评审规则。交付物：规则草案。
-- `[137]` 制定“什么时候应该新增 demo 页面”的评审规则。交付物：规则草案。
-- `[138]` 制定“示例必须带什么交付物”的评审规则。交付物：规则草案。
-- `[139]` 设计一个大型 Flow 示例目录结构。交付物：目录草图。
-- `[140]` 复盘教程为什么也需要 code review 思维。交付物：一段说明。
+- `[131]` 跑通 `Lesson 131`，对比一条 before / after Flow，先把 `name` 和 `description` 的 review 入口立起来。交付物：`artifacts/review-output.json`、`artifacts/tutorials/131/review-summary.json`。
+- `[132]` 跑通 `Lesson 132`，继续复用 `Lesson 131` 的样例，把 `save_as` 命名规则收成最小标准。交付物：一页变量命名复盘。
+- `[133]` 跑通 `Lesson 133`，把 artifact 平铺输出改成 lesson 级目录输出。交付物：`artifacts/output.json`、`artifacts/tutorials/133/review-layout/output.json`、`artifacts/tutorials/133/review-layout/manifest.json`。
+- `[134]` 跑通 `Lesson 134`，用统一 checklist review `Lesson 131` 和 `Lesson 133`。交付物：一页 review checklist 复盘。
+- `[135]` 跑通 `Lesson 135`，先运行一个最小 Lua escape hatch，再判断它是不是结构上应该保留。交付物：`artifacts/tutorials/135/review-summary-from-lua.json`。
+- `[136]` 跑通 `Lesson 136`，把上一节的简单 Lua 编排抽回 Flow。交付物：`artifacts/tutorials/136/review-summary-from-flow.json`。
+- `[137]` 跑通 `Lesson 137`，先盘点现有 demo，再判断什么时候才该新增页面。交付物：`artifacts/tutorials/137-list-assets.txt` 和一页 demo 决策复盘。
+- `[138]` 跑通 `Lesson 138`，把教程最小交付物收成一份稳定 checklist。交付物：一页交付物清单复盘。
+- `[139]` 跑通 `Lesson 139`，把大型 Flow 包拆成 `collect -> verify -> publish` 三段目录骨架。交付物：`artifacts/tutorials/139/collect/raw-items.json`、`artifacts/tutorials/139/verify/verification-summary.json`、`artifacts/tutorials/139/publish/publish-manifest.json`。
+- `[140]` 跑通 `Lesson 140`，把安全边界和 review 思维重新收成一张高级阶段心智图。交付物：一页复盘说明。
 
 ## 模块 15：发布包、内置资产、交付体验
 
-- `[141]` 解释为什么把 `docs/`、`script/`、`demo/` 一起打包到二进制里。交付物：一段说明。
-- `[142]` 为 `list-assets` 写一条面向新人的使用说明。交付物：一页帮助文案。
-- `[143]` 为 `extract-assets` 写一条面向新人的使用说明。交付物：一页帮助文案。
-- `[144]` 设计“只发一个二进制给用户”的交付流程。交付物：交付说明。
-- `[145]` 设计“离线环境也能跑基础教程”的交付流程。交付物：交付说明。
-- `[146]` 设计“发布包里哪些资源必须带，哪些可以不带”的规则。交付物：清单。
-- `[147]` 为 `file-srv` 写一条“开发态”和“发布态”的对照说明。交付物：一页说明。
-- `[148]` 设计“新用户第一次打开二进制时怎么找到教程”的入口策略。交付物：入口草案。
-- `[149]` 设计“课程包版本号与资源版本号”的维护策略。交付物：版本策略草案。
-- `[150]` 复盘“单二进制 + 内置教程”对交付的意义。交付物：一段总结。
+- `[141]` 跑通 `Lesson 141`，先用 `list-assets` 证明二进制里真的带着 `ReadMe.md`、`docs/`、`script/`、`demo/`。交付物：`artifacts/tutorials/141-bundled-assets.txt`。
+- `[142]` 跑通 `Lesson 142`，把 `list-assets` 输出重新整理成“教程 / 脚本 / demo”三类入口心智模型。交付物：一页 `list-assets` 复盘。
+- `[143]` 跑通 `Lesson 143`，把内置资源真正释放到本地目录并核对关键入口。交付物：`./tsplay-assets-143` 和 `artifacts/tutorials/143-extracted-assets.txt`。
+- `[144]` 跑通 `Lesson 144`，把单二进制交付流程收成稳定 manifest。交付物：`artifacts/tutorials/144/single-binary-delivery-manifest.json`。
+- `[145]` 跑通 `Lesson 145`，把离线学习路径收成 manifest。交付物：`artifacts/tutorials/145/offline-learning-manifest.json`。
+- `[146]` 跑通 `Lesson 146`，把必须内置和可选资源收成策略 JSON。交付物：`artifacts/tutorials/146/embedded-asset-policy.json`。
+- `[147]` 跑通 `Lesson 147`，把 `file-srv` 的开发态和发布态对照说明写清楚。交付物：一页 dev / release 模式说明。
+- `[148]` 跑通 `Lesson 148`，把新用户 first-run 路径收成固定入口 manifest。交付物：`artifacts/tutorials/148/first-run-entry-manifest.json`。
+- `[149]` 跑通 `Lesson 149`，把二进制版本和资源版本拆成两层维护策略。交付物：`artifacts/tutorials/149/release-asset-version-strategy.json`。
+- `[150]` 跑通 `Lesson 150`，把“单二进制 + 内置教程”收成完整交付复盘。交付物：`artifacts/tutorials/150/single-binary-delivery-summary.json`。
 
 ## 模块 16：Capstone、培训、持续演化
 
-- `[151]` 设计一个新手结业题。交付物：题目说明。
-- `[152]` 设计一个初级结业题。交付物：题目说明。
-- `[153]` 设计一个中级结业题。交付物：题目说明。
-- `[154]` 设计一个高级结业题。交付物：题目说明。
-- `[155]` 设计一套“新人 7 天计划”。交付物：7 天排期。
-- `[156]` 设计一套“实施同学 2 周计划”。交付物：2 周排期。
-- `[157]` 设计一套“讲师备课顺序”。交付物：备课提纲。
-- `[158]` 设计一套“教程缺口复盘机制”。交付物：月度复盘模板。
-- `[159]` 设计一套“每 10 次迭代回看一次”的检查机制。交付物：检查清单。
-- `[160]` 通过高级阶段检查。交付物：能继续沿同一逻辑再扩 40 次以上而不失去结构。
+- `[151]` 跑通 `Lesson 151`，把新手阶段收成一份 capstone brief。交付物：`artifacts/tutorials/151/newbie-capstone-brief.json`。
+- `[152]` 跑通 `Lesson 152`，把初级阶段收成一份本地 demo 与文件能力的 capstone brief。交付物：`artifacts/tutorials/152/junior-capstone-brief.json`。
+- `[153]` 跑通 `Lesson 153`，把 MCP 草拟、执行、修复链收成一份中级 capstone brief。交付物：`artifacts/tutorials/153/intermediate-capstone-brief.json`。
+- `[154]` 跑通 `Lesson 154`，把安全边界、review 和交付策略收成一份高级 capstone brief。交付物：`artifacts/tutorials/154/advanced-capstone-brief.json`。
+- `[155]` 跑通 `Lesson 155`，把新人的第一周收成固定 onboarding 节奏。交付物：`artifacts/tutorials/155/new-hire-7-day-plan.json`。
+- `[156]` 跑通 `Lesson 156`，把实施同学的前两周收成“教程 -> 试点 -> handoff”节奏。交付物：`artifacts/tutorials/156/implementer-2-week-plan.json`。
+- `[157]` 跑通 `Lesson 157`，把教程、Bootcamp、Capstone、评审和讲师手册接成备课顺序。交付物：`artifacts/tutorials/157/trainer-prep-sequence.json`。
+- `[158]` 跑通 `Lesson 158`，把月度教程缺口复盘收成稳定模板。交付物：`artifacts/tutorials/158/tutorial-gap-review-cycle.json`。
+- `[159]` 跑通 `Lesson 159`，把“每 10 次迭代回看一次”的检查机制写成稳定 checklist。交付物：`artifacts/tutorials/159/every-10-iteration-review.json`。
+- `[160]` 跑通 `Lesson 160`，把下一圈教程扩展计划收成 continuation plan。交付物：`artifacts/tutorials/160/curriculum-continuation-plan.json`。
 
 ## 怎么继续往后生长
 

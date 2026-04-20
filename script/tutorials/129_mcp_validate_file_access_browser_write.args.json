@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/123_security_allow_file_access.flow.yaml",
+  "security_preset": "browser_write"
+}

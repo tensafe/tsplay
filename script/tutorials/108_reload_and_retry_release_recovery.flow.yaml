@@ -1,0 +1,54 @@
+schema_version: "1"
+name: lesson_108_reload_and_retry_release_recovery_flow
+description: Trigger a release recovery that only completes after reload, then retry the recovery check and write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#reload-recovery-button"
+    timeout: 5000
+
+  - action: click
+    selector: "#reload-recovery-button"
+
+  - action: extract_text
+    selector: "#reload-status"
+    timeout: 5000
+    save_as: status_before_reload
+
+  - action: retry
+    times: 3
+    interval_ms: 200
+    save_as: recovery_result
+    steps:
+      - action: reload
+      - action: assert_text
+        selector: "#reload-status"
+        text: "Recovered after reload"
+        timeout: 500
+      - action: assert_visible
+        selector: "#reload-badge"
+        timeout: 500
+
+  - action: extract_text
+    selector: "#reload-status"
+    timeout: 5000
+    save_as: status_after_reload
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "108"
+        mode: flow
+        page_url: "{{page_url}}"
+        status_before_reload: "{{status_before_reload}}"
+        status_after_reload: "{{status_after_reload}}"
+        recovery_result: "{{recovery_result}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/108-reload-and-retry-release-recovery-flow.json
+    value: "{{payload}}"

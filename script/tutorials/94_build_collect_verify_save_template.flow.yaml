@@ -1,0 +1,85 @@
+schema_version: "1"
+name: lesson_94_build_collect_verify_save_template_flow
+description: Reframe the handoff chain as a collect-verify-save template using artifact roles and the runtime checklist.
+vars:
+  role_file: artifacts/tutorials/91-read-handoff-manifest-roles-flow.csv
+  runtime_checklist_file: artifacts/tutorials/89-build-pre-release-checklist-flow.csv
+  template_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{role_file}}"
+    save_as: role_rows
+
+  - action: read_csv
+    file_path: "{{runtime_checklist_file}}"
+    save_as: checklist_rows
+
+  - action: foreach
+    items: "{{role_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: role_scan
+    steps:
+      - action: lua
+        save_as: template_row
+        code: |
+          local phase = tostring(row.phase or "")
+          local step_group = "collect"
+          local focus_action = "read_csv"
+          if phase == "verify" then
+            step_group = "verify"
+          elseif phase == "deliver" then
+            step_group = "save"
+            focus_action = "write_csv,write_json"
+          end
+          return {
+            step_group = step_group,
+            source_key = tostring(row.artifact_key or ""),
+            source_file = tostring(row.file_path or ""),
+            focus_action = focus_action,
+            status_hint = "ready",
+            note = tostring(row.note or ""),
+          }
+      - action: append_var
+        save_as: template_rows
+        with:
+          value: "{{template_row}}"
+
+  - action: foreach
+    items: "{{checklist_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: checklist_scan
+    steps:
+      - action: append_var
+        save_as: template_rows
+        with:
+          value:
+            step_group: verify
+            source_key: "{{row.artifact_key}}"
+            source_file: "{{runtime_checklist_file}}"
+            focus_action: read_csv
+            status_hint: "{{row.status}}"
+            note: "{{row.note}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/94-build-collect-verify-save-template-flow.csv
+    with:
+      value: "{{template_rows}}"
+      headers:
+        - step_group
+        - source_key
+        - source_file
+        - focus_action
+        - status_hint
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/94-build-collect-verify-save-template-flow.json
+    with:
+      value:
+        lesson: "94"
+        mode: flow
+        role_file: "{{role_file}}"
+        runtime_checklist_file: "{{runtime_checklist_file}}"
+        template_rows: "{{template_rows}}"

@@ -1,0 +1,50 @@
+schema_version: "1"
+name: lesson_88_build_handoff_summary_flow
+description: Turn the handoff manifest into a compact JSON summary that is easier to review and pass around.
+vars:
+  manifest_file: artifacts/tutorials/87-build-handoff-artifact-manifest-flow.csv
+  original_batch_id: ""
+  replay_batch_id: ""
+  artifact_keys: []
+  file_paths: []
+steps:
+  - action: read_csv
+    file_path: "{{manifest_file}}"
+    save_as: manifest_rows
+
+  - action: foreach
+    items: "{{manifest_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: manifest_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: replay_batch_id
+        with:
+          value: "{{row.related_batch_id}}"
+      - action: append_var
+        save_as: artifact_keys
+        with:
+          value: "{{row.artifact_key}}"
+      - action: append_var
+        save_as: file_paths
+        with:
+          value: "{{row.file_path}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/88-build-handoff-summary-flow.json
+    with:
+      value:
+        lesson: "88"
+        mode: flow
+        manifest_file: "{{manifest_file}}"
+        item_count: "{{manifest_scan.iterations}}"
+        original_batch_id: "{{original_batch_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        artifact_keys: "{{artifact_keys}}"
+        file_paths: "{{file_paths}}"
+        manifest_rows: "{{manifest_rows}}"

@@ -1,0 +1,70 @@
+schema_version: "1"
+name: lesson_105_on_error_template_release_validation_flow
+description: Intentionally fail template release validation, recover in the on_error branch, and write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+  invalid_ticket: BAD-TICKET
+  recovery_path: unknown
+  failure_status: ""
+  final_status: ""
+  last_error_text: ""
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#release-ticket"
+    timeout: 5000
+
+  - action: on_error
+    steps:
+      - action: type_text
+        selector: "#release-ticket"
+        text: "{{invalid_ticket}}"
+      - action: click
+        selector: "#finalize-release-button"
+      - action: assert_text
+        selector: "#finalize-status"
+        text: "Release finalized"
+        timeout: 500
+      - action: set_var
+        save_as: recovery_path
+        with:
+          value: unexpected_success
+    on_error:
+      - action: extract_text
+        selector: "#finalize-status"
+        timeout: 5000
+        save_as: failure_status
+      - action: set_var
+        save_as: recovery_path
+        with:
+          value: handled_error
+      - action: set_var
+        save_as: last_error_text
+        with:
+          value: "{{last_error}}"
+      - action: click
+        selector: "#reset-finalize"
+
+  - action: extract_text
+    selector: "#finalize-status"
+    timeout: 5000
+    save_as: final_status
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "105"
+        mode: flow
+        page_url: "{{page_url}}"
+        invalid_ticket: "{{invalid_ticket}}"
+        recovery_path: "{{recovery_path}}"
+        failure_status: "{{failure_status}}"
+        final_status: "{{final_status}}"
+        last_error_text: "{{last_error_text}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/105-on-error-template-release-validation-flow.json
+    value: "{{payload}}"

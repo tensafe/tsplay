@@ -1,0 +1,27 @@
+schema_version: "1"
+name: lesson_156_implementer_2_week_plan_flow
+description: Build a two-week plan for implementation teammates moving from tutorial fluency to real business pilot work.
+steps:
+  - action: set_var
+    save_as: two_week_plan
+    with:
+      value:
+        lesson: "156"
+        audience: implementer
+        weeks:
+          - week: 1
+            focus:
+              - flow structure and review
+              - local demo and artifact discipline
+              - capstone rehearsal
+          - week: 2
+            focus:
+              - real business pilot
+              - mcp repair loop
+              - session reuse and release handoff
+
+  - action: write_json
+    file_path: artifacts/tutorials/156/implementer-2-week-plan.json
+    with:
+      value: "{{two_week_plan}}"
+    save_as: write_result

@@ -1,0 +1,93 @@
+schema_version: "1"
+name: lesson_97_verify_template_covers_handoff_chain_flow
+description: Verify the template index still covers the complete handoff chain from lesson 90.
+vars:
+  template_index_file: artifacts/tutorials/96-build-template-index-flow.csv
+  handoff_file: artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-flow.csv
+  verification_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{template_index_file}}"
+    save_as: index_rows
+
+  - action: read_csv
+    file_path: "{{handoff_file}}"
+    save_as: handoff_rows
+
+  - action: lua
+    save_as: checks
+    code: |
+      local seen = {}
+      for _, row in ipairs(index_rows or {}) do
+        seen[tostring(row.template_name or "")] = true
+      end
+      local handoff_status = ""
+      for _, row in ipairs(handoff_rows or {}) do
+        handoff_status = tostring(row.status or handoff_status)
+      end
+      return {
+        handoff_status_is_ok = handoff_status == "ok" and "ready" or "blocked",
+        has_input_process_output_template = seen["handoff_input_process_output"] and "ready" or "blocked",
+        has_collect_verify_save_template = seen["handoff_collect_verify_save"] and "ready" or "blocked",
+        has_replay_audit_handoff_template = seen["handoff_replay_audit_handoff"] and "ready" or "blocked",
+        template_count_is_three_or_more = (#index_rows >= 3) and "ready" or "blocked",
+      }
+
+  - action: append_var
+    save_as: verification_rows
+    with:
+      value:
+        check_name: handoff_status_is_ok
+        status: "{{checks.handoff_status_is_ok}}"
+        detail: handoff summary from lesson 90 must be ok
+
+  - action: append_var
+    save_as: verification_rows
+    with:
+      value:
+        check_name: has_input_process_output_template
+        status: "{{checks.has_input_process_output_template}}"
+        detail: template index must contain the stage-based template
+
+  - action: append_var
+    save_as: verification_rows
+    with:
+      value:
+        check_name: has_collect_verify_save_template
+        status: "{{checks.has_collect_verify_save_template}}"
+        detail: template index must contain the review-oriented template
+
+  - action: append_var
+    save_as: verification_rows
+    with:
+      value:
+        check_name: has_replay_audit_handoff_template
+        status: "{{checks.has_replay_audit_handoff_template}}"
+        detail: template index must contain the delivery-oriented template
+
+  - action: append_var
+    save_as: verification_rows
+    with:
+      value:
+        check_name: template_count_is_three_or_more
+        status: "{{checks.template_count_is_three_or_more}}"
+        detail: template index should keep the three core template families
+
+  - action: write_csv
+    file_path: artifacts/tutorials/97-verify-template-covers-handoff-chain-flow.csv
+    with:
+      value: "{{verification_rows}}"
+      headers:
+        - check_name
+        - status
+        - detail
+
+  - action: write_json
+    file_path: artifacts/tutorials/97-verify-template-covers-handoff-chain-flow.json
+    with:
+      value:
+        lesson: "97"
+        mode: flow
+        template_index_file: "{{template_index_file}}"
+        handoff_file: "{{handoff_file}}"
+        verification_rows: "{{verification_rows}}"

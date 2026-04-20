@@ -1,0 +1,50 @@
+schema_version: "1"
+name: lesson_102_assert_text_template_release_status_flow
+description: Assert the text on the template release status block, then write the result to JSON.
+vars:
+  page_url: http://127.0.0.1:8000/demo/template_release_lab.html
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#release-status"
+    timeout: 5000
+
+  - action: assert_text
+    selector: "#release-status"
+    text: "Draft checks complete"
+    timeout: 5000
+    save_as: status_ready
+
+  - action: assert_text
+    selector: "#release-badge"
+    text: "Ready for staged checks"
+    timeout: 5000
+    save_as: badge_ready
+
+  - action: extract_text
+    selector: "#release-title"
+    timeout: 5000
+    save_as: release_title
+
+  - action: extract_text
+    selector: "#release-summary"
+    timeout: 5000
+    save_as: release_summary
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        lesson: "102"
+        mode: flow
+        page_url: "{{page_url}}"
+        status_ready: "{{status_ready}}"
+        badge_ready: "{{badge_ready}}"
+        release_title: "{{release_title}}"
+        release_summary: "{{release_summary}}"
+
+  - action: write_json
+    file_path: artifacts/tutorials/102-assert-text-template-release-status-flow.json
+    value: "{{payload}}"

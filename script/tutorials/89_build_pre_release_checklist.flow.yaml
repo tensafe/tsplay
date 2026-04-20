@@ -1,0 +1,88 @@
+schema_version: "1"
+name: lesson_89_build_pre_release_checklist_flow
+description: Generate a release checklist from the handoff manifest so the final delivery review is repeatable.
+vars:
+  manifest_file: artifacts/tutorials/87-build-handoff-artifact-manifest-flow.csv
+  checklist_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{manifest_file}}"
+    save_as: manifest_rows
+
+  - action: lua
+    save_as: check_flags
+    code: |
+      local seen = {
+        lifecycle_evidence = "missing",
+        replay_result = "missing",
+        audit_comparison = "missing",
+        reconciliation_pack = "missing",
+      }
+      for _, row in ipairs(manifest_rows or {}) do
+        local key = tostring(row.artifact_key or "")
+        if seen[key] ~= nil then
+          seen[key] = "ready"
+        end
+      end
+      return seen
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: lifecycle_evidence
+        status: "{{check_flags.lifecycle_evidence}}"
+        note: lifecycle evidence is available
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: replay_result
+        status: "{{check_flags.replay_result}}"
+        note: replay batch export is available
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: audit_comparison
+        status: "{{check_flags.audit_comparison}}"
+        note: audit comparison export is available
+
+  - action: append_var
+    save_as: checklist_rows
+    with:
+      value:
+        artifact_key: reconciliation_pack
+        status: "{{check_flags.reconciliation_pack}}"
+        note: reconciliation pack is available
+
+  - action: lua
+    save_as: overall_status
+    code: |
+      for _, row in ipairs(checklist_rows or {}) do
+        if tostring(row.status or "") ~= "ready" then
+          return "blocked"
+        end
+      end
+      return "ready"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/89-build-pre-release-checklist-flow.csv
+    with:
+      value: "{{checklist_rows}}"
+      headers:
+        - artifact_key
+        - status
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/89-build-pre-release-checklist-flow.json
+    with:
+      value:
+        lesson: "89"
+        mode: flow
+        manifest_file: "{{manifest_file}}"
+        overall_status: "{{overall_status}}"
+        checklist_rows: "{{checklist_rows}}"

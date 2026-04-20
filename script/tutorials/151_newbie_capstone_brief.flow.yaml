@@ -1,0 +1,33 @@
+schema_version: "1"
+name: lesson_151_newbie_capstone_brief_flow
+description: Build a newbie capstone brief that turns the first successful tsplay runs into a small end-of-track assignment.
+steps:
+  - action: set_var
+    save_as: capstone_brief
+    with:
+      value:
+        lesson: "151"
+        target_role: newbie
+        required_lessons:
+          - "01"
+          - "08"
+          - "14"
+          - "141"
+          - "142"
+          - "143"
+        assignment:
+          - inspect bundled assets
+          - extract bundled assets
+          - run the hello world flow
+          - produce one local csv output
+        deliverables:
+          - bundled assets inventory
+          - extracted assets directory
+          - hello world json
+          - first csv artifact
+
+  - action: write_json
+    file_path: artifacts/tutorials/151/newbie-capstone-brief.json
+    with:
+      value: "{{capstone_brief}}"
+    save_as: write_result

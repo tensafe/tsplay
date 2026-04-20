@@ -1,0 +1,4 @@
+{
+  "flow_path": "tutorials/122_security_allow_http.flow.yaml",
+  "allow_http": true
+}

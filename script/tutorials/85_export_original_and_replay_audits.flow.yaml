@@ -1,0 +1,127 @@
+schema_version: "1"
+name: lesson_85_export_original_and_replay_audits_flow
+description: Export the original lifecycle audit rows and the replay audit rows into one comparison CSV.
+vars:
+  lifecycle_file: artifacts/tutorials/80-external-sync-lifecycle-round-trip-flow.csv
+  replay_file: artifacts/tutorials/82-replay-batch-from-lifecycle-evidence-flow.csv
+  original_batch_id: ""
+  replay_batch_id: ""
+  comparison_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{lifecycle_file}}"
+    save_as: lifecycle_rows
+
+  - action: foreach
+    items: "{{lifecycle_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: lifecycle_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.batch_id}}"
+
+  - action: read_csv
+    file_path: "{{replay_file}}"
+    save_as: replay_rows
+
+  - action: foreach
+    items: "{{replay_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: replay_scan
+    steps:
+      - action: set_var
+        save_as: replay_batch_id
+        with:
+          value: "{{row.replay_batch_id}}"
+
+  - action: db_query
+    connection: reporting
+    save_as: original_audits
+    with:
+      sql: SELECT audit_id, batch_id, event_type, status, detail, success_count, failure_count, source_lesson FROM public.tutorial_import_audits WHERE batch_id = $1 ORDER BY audit_id
+      args:
+        - "{{original_batch_id}}"
+
+  - action: db_query
+    connection: reporting
+    save_as: replay_audits
+    with:
+      sql: SELECT audit_id, batch_id, event_type, status, detail, success_count, failure_count, source_lesson FROM public.tutorial_import_audits WHERE batch_id = $1 ORDER BY audit_id
+      args:
+        - "{{replay_batch_id}}"
+
+  - action: foreach
+    items: "{{original_audits}}"
+    item_var: row
+    index_var: row_index
+    save_as: original_audit_scan
+    steps:
+      - action: append_var
+        save_as: comparison_rows
+        with:
+          value:
+            group: original
+            linked_batch_id: "{{replay_batch_id}}"
+            audit_id: "{{row.audit_id}}"
+            batch_id: "{{row.batch_id}}"
+            event_type: "{{row.event_type}}"
+            status: "{{row.status}}"
+            detail: "{{row.detail}}"
+            success_count: "{{row.success_count}}"
+            failure_count: "{{row.failure_count}}"
+            source_lesson: "{{row.source_lesson}}"
+
+  - action: foreach
+    items: "{{replay_audits}}"
+    item_var: row
+    index_var: row_index
+    save_as: replay_audit_scan
+    steps:
+      - action: append_var
+        save_as: comparison_rows
+        with:
+          value:
+            group: replay
+            linked_batch_id: "{{original_batch_id}}"
+            audit_id: "{{row.audit_id}}"
+            batch_id: "{{row.batch_id}}"
+            event_type: "{{row.event_type}}"
+            status: "{{row.status}}"
+            detail: "{{row.detail}}"
+            success_count: "{{row.success_count}}"
+            failure_count: "{{row.failure_count}}"
+            source_lesson: "{{row.source_lesson}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/85-export-original-and-replay-audits-flow.csv
+    with:
+      value: "{{comparison_rows}}"
+      headers:
+        - group
+        - linked_batch_id
+        - audit_id
+        - batch_id
+        - event_type
+        - status
+        - detail
+        - success_count
+        - failure_count
+        - source_lesson
+
+  - action: write_json
+    file_path: artifacts/tutorials/85-export-original-and-replay-audits-flow.json
+    with:
+      value:
+        lesson: "85"
+        mode: flow
+        lifecycle_file: "{{lifecycle_file}}"
+        replay_file: "{{replay_file}}"
+        original_batch_id: "{{original_batch_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        original_audit_row_count: "{{original_audit_scan.iterations}}"
+        replay_audit_row_count: "{{replay_audit_scan.iterations}}"
+        comparison_rows: "{{comparison_rows}}"

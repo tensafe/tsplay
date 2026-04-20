@@ -1,0 +1,32 @@
+schema_version: "1"
+name: lesson_133_review_artifact_layout_after_flow
+description: Write a lesson-specific review output and its manifest into a stable tutorial artifact folder.
+steps:
+  - action: set_var
+    save_as: review_output
+    with:
+      value:
+        lesson: "133"
+        layout: tutorial_scoped
+        status: ready
+
+  - action: write_json
+    file_path: artifacts/tutorials/133/review-layout/output.json
+    with:
+      value: "{{review_output}}"
+    save_as: output_write_result
+
+  - action: set_var
+    save_as: artifact_manifest
+    with:
+      value:
+        lesson: "133"
+        artifact_dir: artifacts/tutorials/133/review-layout
+        primary_output: artifacts/tutorials/133/review-layout/output.json
+        owner: lesson_133_review_artifact_layout_after_flow
+
+  - action: write_json
+    file_path: artifacts/tutorials/133/review-layout/manifest.json
+    with:
+      value: "{{artifact_manifest}}"
+    save_as: manifest_write_result

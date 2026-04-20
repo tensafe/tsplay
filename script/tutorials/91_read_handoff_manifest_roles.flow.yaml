@@ -1,0 +1,100 @@
+schema_version: "1"
+name: lesson_91_read_handoff_manifest_roles_flow
+description: Read the handoff manifest and classify each artifact into an input, process, verify, or deliver role.
+vars:
+  manifest_file: artifacts/tutorials/87-build-handoff-artifact-manifest-flow.csv
+  handoff_file: artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-flow.csv
+  original_batch_id: ""
+  replay_batch_id: ""
+  role_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{manifest_file}}"
+    save_as: manifest_rows
+
+  - action: read_csv
+    file_path: "{{handoff_file}}"
+    save_as: handoff_rows
+
+  - action: foreach
+    items: "{{handoff_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: handoff_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.original_batch_id}}"
+      - action: set_var
+        save_as: replay_batch_id
+        with:
+          value: "{{row.replay_batch_id}}"
+
+  - action: foreach
+    items: "{{manifest_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: manifest_scan
+    steps:
+      - action: lua
+        save_as: role_row
+        code: |
+          local artifact_key = tostring(row.artifact_key or "")
+          local phase = "other"
+          local owner_batch_id = tostring(replay_batch_id or "")
+          local template_goal = "review"
+          if artifact_key == "lifecycle_evidence" then
+            phase = "input"
+            owner_batch_id = tostring(original_batch_id or "")
+            template_goal = "rebuild"
+          elseif artifact_key == "replay_result" then
+            phase = "process"
+            template_goal = "replay"
+          elseif artifact_key == "audit_comparison" then
+            phase = "verify"
+            template_goal = "compare"
+          elseif artifact_key == "reconciliation_pack" then
+            phase = "deliver"
+            template_goal = "handoff"
+          end
+          return {
+            phase = phase,
+            artifact_key = artifact_key,
+            file_path = tostring(row.file_path or ""),
+            owner_batch_id = owner_batch_id,
+            related_batch_id = tostring(row.related_batch_id or ""),
+            row_count = tostring(row.row_count or "0"),
+            template_goal = template_goal,
+            note = tostring(row.note or ""),
+          }
+      - action: append_var
+        save_as: role_rows
+        with:
+          value: "{{role_row}}"
+
+  - action: write_csv
+    file_path: artifacts/tutorials/91-read-handoff-manifest-roles-flow.csv
+    with:
+      value: "{{role_rows}}"
+      headers:
+        - phase
+        - artifact_key
+        - file_path
+        - owner_batch_id
+        - related_batch_id
+        - row_count
+        - template_goal
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/91-read-handoff-manifest-roles-flow.json
+    with:
+      value:
+        lesson: "91"
+        mode: flow
+        manifest_file: "{{manifest_file}}"
+        handoff_file: "{{handoff_file}}"
+        original_batch_id: "{{original_batch_id}}"
+        replay_batch_id: "{{replay_batch_id}}"
+        role_rows: "{{role_rows}}"

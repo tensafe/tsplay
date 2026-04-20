@@ -1,0 +1,82 @@
+schema_version: "1"
+name: lesson_100_template_round_trip_from_handoff_artifacts_flow
+description: Build a final template package summary from the handoff artifacts and the template checklists.
+vars:
+  template_catalog_file: artifacts/tutorials/92-build-template-artifact-catalog-flow.csv
+  template_index_file: artifacts/tutorials/96-build-template-index-flow.csv
+  template_preflight_file: artifacts/tutorials/99-build-template-preflight-checklist-flow.csv
+  handoff_file: artifacts/tutorials/90-handoff-round-trip-from-lifecycle-evidence-flow.csv
+steps:
+  - action: read_csv
+    file_path: "{{template_catalog_file}}"
+    save_as: catalog_rows
+
+  - action: read_csv
+    file_path: "{{template_index_file}}"
+    save_as: index_rows
+
+  - action: read_csv
+    file_path: "{{template_preflight_file}}"
+    save_as: preflight_rows
+
+  - action: read_csv
+    file_path: "{{handoff_file}}"
+    save_as: handoff_rows
+
+  - action: lua
+    save_as: final_summary
+    code: |
+      local handoff_row = {}
+      for _, row in ipairs(handoff_rows or {}) do
+        handoff_row = row
+      end
+      local ready_count = 0
+      local blocked_count = 0
+      for _, row in ipairs(preflight_rows or {}) do
+        if tostring(row.status or "") == "ready" then
+          ready_count = ready_count + 1
+        else
+          blocked_count = blocked_count + 1
+        end
+      end
+      return {
+        original_batch_id = tostring(handoff_row.original_batch_id or ""),
+        replay_batch_id = tostring(handoff_row.replay_batch_id or ""),
+        template_count = tostring(#index_rows),
+        catalog_slot_count = tostring(#catalog_rows),
+        ready_check_count = tostring(ready_count),
+        blocked_check_count = tostring(blocked_count),
+        final_status = blocked_count == 0 and "ready" or "blocked",
+      }
+
+  - action: write_csv
+    file_path: artifacts/tutorials/100-template-round-trip-from-handoff-artifacts-flow.csv
+    with:
+      value:
+        - original_batch_id: "{{final_summary.original_batch_id}}"
+          replay_batch_id: "{{final_summary.replay_batch_id}}"
+          template_count: "{{final_summary.template_count}}"
+          catalog_slot_count: "{{final_summary.catalog_slot_count}}"
+          ready_check_count: "{{final_summary.ready_check_count}}"
+          blocked_check_count: "{{final_summary.blocked_check_count}}"
+          final_status: "{{final_summary.final_status}}"
+      headers:
+        - original_batch_id
+        - replay_batch_id
+        - template_count
+        - catalog_slot_count
+        - ready_check_count
+        - blocked_check_count
+        - final_status
+
+  - action: write_json
+    file_path: artifacts/tutorials/100-template-round-trip-from-handoff-artifacts-flow.json
+    with:
+      value:
+        lesson: "100"
+        mode: flow
+        handoff_file: "{{handoff_file}}"
+        template_catalog_file: "{{template_catalog_file}}"
+        template_index_file: "{{template_index_file}}"
+        template_preflight_file: "{{template_preflight_file}}"
+        final_summary: "{{final_summary}}"

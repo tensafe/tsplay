@@ -1,0 +1,155 @@
+schema_version: "1"
+name: lesson_87_build_handoff_artifact_manifest_flow
+description: Collect the lifecycle, replay, audit, and reconciliation artifacts into one handoff manifest CSV.
+vars:
+  lifecycle_file: artifacts/tutorials/80-external-sync-lifecycle-round-trip-flow.csv
+  replay_file: artifacts/tutorials/82-replay-batch-from-lifecycle-evidence-flow.csv
+  audit_compare_file: artifacts/tutorials/85-export-original-and-replay-audits-flow.csv
+  reconciliation_file: artifacts/tutorials/86-build-post-replay-reconciliation-pack-flow.csv
+  original_batch_id: ""
+  replay_batch_id: ""
+  source_batch_id: ""
+  expected_row_count: "0"
+  replay_row_count: "0"
+  db_row_count: "0"
+  manifest_rows: []
+steps:
+  - action: read_csv
+    file_path: "{{lifecycle_file}}"
+    save_as: lifecycle_rows
+
+  - action: foreach
+    items: "{{lifecycle_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: lifecycle_scan
+    steps:
+      - action: set_var
+        save_as: original_batch_id
+        with:
+          value: "{{row.batch_id}}"
+      - action: set_var
+        save_as: expected_row_count
+        with:
+          value: "{{row.pre_cleanup_detail}}"
+
+  - action: read_csv
+    file_path: "{{replay_file}}"
+    save_as: replay_rows
+
+  - action: foreach
+    items: "{{replay_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: replay_scan
+    steps:
+      - action: set_var
+        save_as: replay_batch_id
+        with:
+          value: "{{row.replay_batch_id}}"
+      - action: set_var
+        save_as: source_batch_id
+        with:
+          value: "{{row.source_batch_id}}"
+      - action: set_var
+        save_as: replay_row_count
+        with:
+          value: "{{row.row_count}}"
+
+  - action: read_csv
+    file_path: "{{audit_compare_file}}"
+    save_as: audit_rows
+
+  - action: foreach
+    items: "{{audit_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: audit_scan
+    steps:
+      - action: set_var
+        save_as: last_audit_id
+        with:
+          value: "{{row.audit_id}}"
+
+  - action: read_csv
+    file_path: "{{reconciliation_file}}"
+    save_as: reconciliation_rows
+
+  - action: foreach
+    items: "{{reconciliation_rows}}"
+    item_var: row
+    index_var: row_index
+    save_as: reconciliation_scan
+    steps:
+      - action: set_var
+        save_as: db_row_count
+        with:
+          value: "{{row.db_row_count}}"
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: lifecycle_evidence
+        file_path: "{{lifecycle_file}}"
+        batch_id: "{{original_batch_id}}"
+        related_batch_id: "{{original_batch_id}}"
+        row_count: "{{expected_row_count}}"
+        note: original lifecycle evidence exported from lesson 80
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: replay_result
+        file_path: "{{replay_file}}"
+        batch_id: "{{replay_batch_id}}"
+        related_batch_id: "{{source_batch_id}}"
+        row_count: "{{replay_row_count}}"
+        note: replayed batch created from lifecycle evidence
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: audit_comparison
+        file_path: "{{audit_compare_file}}"
+        batch_id: "{{original_batch_id}}"
+        related_batch_id: "{{replay_batch_id}}"
+        row_count: "{{audit_scan.iterations}}"
+        note: combined original and replay audit history
+
+  - action: append_var
+    save_as: manifest_rows
+    with:
+      value:
+        artifact_key: reconciliation_pack
+        file_path: "{{reconciliation_file}}"
+        batch_id: "{{original_batch_id}}"
+        related_batch_id: "{{replay_batch_id}}"
+        row_count: "{{db_row_count}}"
+        note: post-replay reconciliation summary
+
+  - action: write_csv
+    file_path: artifacts/tutorials/87-build-handoff-artifact-manifest-flow.csv
+    with:
+      value: "{{manifest_rows}}"
+      headers:
+        - artifact_key
+        - file_path
+        - batch_id
+        - related_batch_id
+        - row_count
+        - note
+
+  - action: write_json
+    file_path: artifacts/tutorials/87-build-handoff-artifact-manifest-flow.json
+    with:
+      value:
+        lesson: "87"
+        mode: flow
+        lifecycle_file: "{{lifecycle_file}}"
+        replay_file: "{{replay_file}}"
+        audit_compare_file: "{{audit_compare_file}}"
+        reconciliation_file: "{{reconciliation_file}}"
+        manifest_rows: "{{manifest_rows}}"
