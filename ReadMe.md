@@ -87,14 +87,18 @@ go mod download
 | 启动内置静态文件服务 | `go run . -action file-srv -addr :8000` |
 | 直接调用一个 TSPlay MCP 工具 | `go run . -action mcp-tool -tool tsplay.list_actions` |
 | 列出 macOS 录屏设备 | `go run . -action list-record-devices` |
-| 自动录一条教程命令 | `go run . -action record-screen -record-cmd "go run . -flow script/tutorials/10_assert_page_state.flow.yaml"` |
+| 录整个桌面屏幕 | `go run . -action record-screen -record-cmd "go run . -flow script/tutorials/10_assert_page_state.flow.yaml"` |
+| 只录浏览器页面内容 | `go run . -flow script/tutorials/10_assert_page_state.flow.yaml -browser-video-output artifacts/recordings/lesson-10-assert-page-state.webm` |
 | 列出二进制内置资源 | `go run . -action list-assets` |
 | 释放内置 docs/script/demo | `go run . -action extract-assets -extract-root ./tsplay-assets` |
 | 启动 MCP Server | `go run . -action srv` |
 
 如果想隐藏浏览器窗口，可以追加 `-headless`。
 
-自动录屏当前先支持 macOS + `ffmpeg`。更完整的讲师用法见
+`record-screen` 录的是整个 macOS 屏幕，适合录桌面演示。  
+`-browser-video-output` 录的是 Playwright 页面内容，更适合浏览器教程。  
+默认还会额外保留一小段页面停留时间，避免视频短到来不及看。  
+更完整的讲师用法见
 [docs/training/tutorial-video-recording.md](docs/training/tutorial-video-recording.md)。
 
 当你构建 `./tsplay` 二进制后，`ReadMe.md`、`docs/`、`script/`、`demo/` 会一并打包进二进制：

@@ -3,12 +3,12 @@
 这份说明给讲师、Enablement 同学和教程维护者使用。  
 目标不是做影视级后期，而是稳定地把“教程动作 + 讲解画面”录成可复用素材。
 
-当前这套能力先支持：
+当前这套能力先支持两种录制方式：
 
 - macOS
 - 本机已安装 `ffmpeg`
-- 用 `tsplay` 自动跑教程命令
-- 在命令开始前自动开录，命令结束后自动收尾
+- 方式 A：录整个桌面屏幕
+- 方式 B：只录浏览器页面内容
 
 ## 什么时候适合用它
 
@@ -16,6 +16,13 @@
 
 - 你已经有一条稳定可跑的 `Lua` / `Flow`，现在想把演示过程录下来
 - 你要批量录教程，不想每次手动开、手动停录屏
+
+这里要先分清楚：
+
+- `record-screen` 录的是整个桌面，包括桌面、窗口、鼠标
+- `-browser-video-output` 录的是浏览器页面本身，不会把桌面背景一起录进去
+
+如果你的目标是录浏览器教程，优先推荐 `-browser-video-output`。
 
 如果是需要大量旁白、剪辑、字幕和镜头切换的正式课程，  
 更推荐把这里的自动录屏当成“原始素材采集层”，再交给 OBS、Screen Studio、Descript 等工具做后期。
@@ -71,7 +78,39 @@ go run . -action list-record-devices
 - 会生成 `artifacts/recordings/lesson-10-assert-page-state.mp4`
 - 终端还会输出一份 JSON，总结这次录屏的输入、输出、fps、命令退出状态
 
-## Step 3: 如果你只想手动演示，但不想手动开关录屏
+这条路径录的是“整个桌面屏幕”。  
+如果你发现录到了桌面背景而不是页面本身，这不是 bug，而是这条模式本来的行为。
+
+## Step 3: 如果你只想录浏览器页面内容
+
+对浏览器教程，更推荐直接在 `-flow` 或 `-script` 上追加页面视频输出：
+
+```bash
+./tsplay -flow script/tutorials/10_assert_page_state.flow.yaml \
+  -browser-video-output artifacts/recordings/lesson-10-assert-page-state.webm
+```
+
+或者：
+
+```bash
+./tsplay -script script/tutorials/10_assert_page_state.lua \
+  -browser-video-output artifacts/recordings/lesson-10-assert-page-state-lua.webm
+```
+
+这条路径的特点是：
+
+- 只录 Playwright 页面内容
+- 不会把桌面背景一起录进去
+- 更适合页面选择、断言、上传下载这类教程
+
+补充说明：
+
+- 建议用 `.webm` 作为输出后缀，最稳妥
+- 这条模式只对真的打开了浏览器页面的教程有效
+- 像 `Lesson 01` 这种不打开页面的教程，不适合用页面视频模式
+- 默认会多留一小段页面停留时间，避免视频短得几乎看不清
+
+## Step 4: 如果你只想手动演示，但不想手动开关录屏
 
 也可以不传 `-record-cmd`：
 
@@ -87,7 +126,7 @@ go run . -action list-record-devices
 - 你可以自己手动操作页面、终端、讲解步骤
 - 结束时按 `Ctrl-C`，录屏会自动收尾
 
-## Step 4: 常用参数怎么调
+## Step 5: 常用参数怎么调
 
 - `-record-fps 30`
   默认 30 帧，教程演示通常已经够用
@@ -101,6 +140,10 @@ go run . -action list-record-devices
   让录屏比命令晚一点结束，避免结尾太急
 - `-record-duration-ms 300000`
   需要硬性限制最大时长时再加
+- `-browser-video-width 1280 -browser-video-height 720`
+  需要固定页面视频尺寸时再加
+- `-browser-video-cooldown-ms 1800`
+  如果你的教程步骤很短，想让结尾多停一会儿，可以把这个值调大
 
 ## 一条更适合教学出片的建议
 
@@ -111,6 +154,7 @@ go run . -action list-record-devices
 - 一条视频只讲一类动作，不要一口气跨太多 lesson
 - 浏览器类视频尽量提前起好 `file-srv`
 - 数据类、Redis、DB 类视频更适合后期补字幕或旁白
+- 浏览器教程优先用 `-browser-video-output`，只有在确实要展示桌面操作时才用 `record-screen`
 
 ## 推荐的第一批录制对象
 
