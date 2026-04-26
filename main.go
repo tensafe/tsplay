@@ -62,7 +62,7 @@ var g_browserVideoHeight = 0
 var g_browserVideoCooldownMS = 1200
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server | Workbench API")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
@@ -132,6 +132,11 @@ func main() {
 				FlowPathRoot: *flowRoot,
 				ArtifactRoot: *artifactRoot,
 			})
+		case "workbench-api":
+			fmt.Println("Start As Workbench.")
+			if err := serveWorkbenchApp(*addr, *serveRoot, *artifactRoot); err != nil {
+				log.Fatal(err)
+			}
 		case "mcp-stdio":
 			tsplay_core.McpServerStdio(tsplay_core.TSPlayMCPServerOptions{
 				FlowPathRoot: *flowRoot,
