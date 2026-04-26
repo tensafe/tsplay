@@ -378,25 +378,87 @@ func (s *workbenchServer) handleTaskPlan(w http.ResponseWriter, r *http.Request)
 	}
 	payload.ArtifactRoot = firstNonEmpty(payload.ArtifactRoot, s.artifactRoot)
 	log.Printf(
-		"workbench plan request site=%s intent=%q",
+		"workbench plan request site=%s provider_id=%s intent=%q",
 		payload.SiteID,
+		payload.ProviderID,
 		workbenchCleanText(payload.Intent, 120),
 	)
-	plan, err := BuildWorkbenchTaskPlan(payload)
+	plan, err := s.buildWorkbenchTaskPlan(payload)
 	if err != nil {
 		writeWorkbenchError(w, http.StatusBadRequest, err)
 		return
 	}
 	log.Printf(
-		"workbench plan response site=%s strategy=%s matched_pages=%d matched_apis=%d flow_name=%s requires_confirm=%v",
+		"workbench plan response site=%s strategy=%s generation=%s matched_pages=%d matched_apis=%d flow_name=%s requires_confirm=%v warnings=%d",
 		plan.SiteID,
 		plan.Strategy,
+		plan.GenerationMode,
 		len(plan.MatchedPages),
 		len(plan.MatchedAPIs),
 		plan.FlowName,
 		plan.RequiresUserConfirm,
+		len(plan.Warnings),
 	)
 	writeWorkbenchResponse(w, http.StatusOK, plan)
+}
+
+func (s *workbenchServer) buildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPlan, error) {
+	options.ArtifactRoot = firstNonEmpty(strings.TrimSpace(options.ArtifactRoot), s.artifactRoot)
+	plan, err := BuildWorkbenchTaskPlan(options)
+	if err != nil {
+		return nil, err
+	}
+
+	siteProviderID := ""
+	if site, loadErr := LoadWorkbenchSiteConfig(options.SiteID, options.ArtifactRoot); loadErr == nil && site != nil {
+		siteProviderID = strings.TrimSpace(site.ProviderID)
+	}
+	providerRequested := strings.TrimSpace(options.ProviderID) != "" || siteProviderID != ""
+
+	providerConfig, providerView, err := s.resolveWorkbenchProvider(options.ProviderID, options.SiteID)
+	if err != nil {
+		if providerRequested {
+			if providerView.ProviderID != "" {
+				plan.Provider = &providerView
+			}
+			plan.GenerationMode = "local_fallback"
+			addWorkbenchPlanWarning(plan, fmt.Sprintf("AI provider is not ready: %s. Using the local planner instead.", err.Error()))
+		}
+		return plan, nil
+	}
+
+	aiPlan, runtimeProviderView, modelOutput, err := BuildWorkbenchProviderTaskPlan(options, plan, providerConfig)
+	if err != nil {
+		plan.Provider = &runtimeProviderView
+		plan.ModelOutput = strings.TrimSpace(modelOutput)
+		plan.ValidationError = err.Error()
+		if plan.Flow != nil {
+			plan.GenerationMode = "local_fallback"
+			addWorkbenchPlanWarning(plan, fmt.Sprintf("AI-generated flow did not pass validation: %s. Using the local planner instead.", err.Error()))
+		} else {
+			plan.GenerationMode = "provider_failed"
+			addWorkbenchPlanWarning(plan, fmt.Sprintf("AI-generated flow did not pass validation: %s.", err.Error()))
+		}
+		return plan, nil
+	}
+
+	return aiPlan, nil
+}
+
+func addWorkbenchPlanWarning(plan *WorkbenchTaskPlan, warning string) {
+	if plan == nil {
+		return
+	}
+	warning = strings.TrimSpace(warning)
+	if warning == "" {
+		return
+	}
+	for _, existing := range plan.Warnings {
+		if existing == warning {
+			return
+		}
+	}
+	plan.Warnings = append(plan.Warnings, warning)
 }
 
 func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) {
@@ -409,6 +471,7 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 		ArtifactRoot string `json:"artifact_root,omitempty"`
 		Intent       string `json:"intent,omitempty"`
 		FlowYAML     string `json:"flow_yaml,omitempty"`
+		ProviderID   string `json:"provider_id,omitempty"`
 		Headless     *bool  `json:"headless,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -441,11 +504,12 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	} else {
-		log.Printf("workbench run planning_inline site=%s", payload.SiteID)
-		plan, err = BuildWorkbenchTaskPlan(WorkbenchTaskPlanOptions{
+		log.Printf("workbench run planning_inline site=%s provider_id=%s", payload.SiteID, payload.ProviderID)
+		plan, err = s.buildWorkbenchTaskPlan(WorkbenchTaskPlanOptions{
 			SiteID:       payload.SiteID,
 			ArtifactRoot: artifactRoot,
 			Intent:       payload.Intent,
+			ProviderID:   payload.ProviderID,
 		})
 		if err != nil {
 			log.Printf("workbench run planning_failed site=%s err=%v", payload.SiteID, err)
@@ -619,7 +683,7 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	providerConfig, providerView, err := s.resolveWorkbenchRepairProvider(payload.ProviderID, payload.SiteID)
+	providerConfig, providerView, err := s.resolveWorkbenchProvider(payload.ProviderID, payload.SiteID)
 	if err != nil {
 		log.Printf("workbench repair_auto resolve_provider_failed site=%s provider_id=%s err=%v", payload.SiteID, payload.ProviderID, err)
 		writeWorkbenchResponse(w, http.StatusOK, map[string]any{
@@ -733,7 +797,7 @@ func (s *workbenchServer) buildWorkbenchRepairData(payload workbenchRepairReques
 	}, nil
 }
 
-func (s *workbenchServer) resolveWorkbenchRepairProvider(providerID string, siteID string) (WorkbenchProviderConfig, WorkbenchProviderView, error) {
+func (s *workbenchServer) resolveWorkbenchProvider(providerID string, siteID string) (WorkbenchProviderConfig, WorkbenchProviderView, error) {
 	loadByID := func(id string) (WorkbenchProviderConfig, WorkbenchProviderView, error) {
 		config, err := LoadWorkbenchProviderConfig(id, s.artifactRoot)
 		if err != nil {

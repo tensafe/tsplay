@@ -84,6 +84,87 @@ func TestRunWorkbenchProviderPromptWithOllama(t *testing.T) {
 	}
 }
 
+func TestRunWorkbenchProviderPromptWithOllamaCompatibleChoicesResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{\n" +
+			"  \"choices\": [\n" +
+			"    {\n" +
+			"      \"message\": {\n" +
+			"        \"content\": \"schema_version: \\\"1\\\"\\nname: repaired_from_choices\\nsteps:\\n  - action: wait_for_selector\\n    selector: \\\".submit-button\\\"\\n\"\n" +
+			"      }\n" +
+			"    }\n" +
+			"  ]\n" +
+			"}"))
+	}))
+	defer server.Close()
+
+	output, view, err := RunWorkbenchProviderPrompt(WorkbenchProviderConfig{
+		ProviderID: "ollama_gateway",
+		Name:       "Ollama Gateway",
+		Type:       WorkbenchProviderTypeOllama,
+		BaseURL:    server.URL,
+		Model:      "deepseek",
+		Enabled:    true,
+	}, "", "repair this flow")
+	if err != nil {
+		t.Fatalf("RunWorkbenchProviderPrompt(ollama choices) error = %v", err)
+	}
+	if !view.Ready {
+		t.Fatalf("expected ready provider view: %#v", view)
+	}
+	if !strings.Contains(output, "repaired_from_choices") {
+		t.Fatalf("unexpected output: %q", output)
+	}
+}
+
+func TestRunWorkbenchProviderPromptWithOllamaGenerateFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/chat":
+			_, _ = w.Write([]byte("{\n" +
+				"  \"message\": {\n" +
+				"    \"role\": \"assistant\",\n" +
+				"    \"content\": \"\"\n" +
+				"  },\n" +
+				"  \"done\": true\n" +
+				"}"))
+		case "/api/generate":
+			_, _ = w.Write([]byte("{\n" +
+				"  \"data\": {\n" +
+				"    \"response\": \"schema_version: \\\"1\\\"\\nname: repaired_from_generate\\nsteps:\\n  - action: wait_for_selector\\n    selector: \\\".submit-button\\\"\\n\"\n" +
+				"  },\n" +
+				"  \"status\": \"success\"\n" +
+				"}"))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	output, view, err := RunWorkbenchProviderPrompt(WorkbenchProviderConfig{
+		ProviderID: "ollama_generate",
+		Name:       "Ollama Generate",
+		Type:       WorkbenchProviderTypeOllama,
+		BaseURL:    server.URL,
+		Model:      "deepseek",
+		Enabled:    true,
+	}, "", "repair this flow")
+	if err != nil {
+		t.Fatalf("RunWorkbenchProviderPrompt(ollama generate fallback) error = %v", err)
+	}
+	if !view.Ready {
+		t.Fatalf("expected ready provider view: %#v", view)
+	}
+	if !strings.Contains(output, "repaired_from_generate") {
+		t.Fatalf("unexpected output: %q", output)
+	}
+}
+
 func TestBuildWorkbenchProviderViewIncludesAutoProvider(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-env-12345678")
 	t.Setenv("OPENAI_MODEL", "gpt-4.1-mini")

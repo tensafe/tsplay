@@ -356,21 +356,57 @@ func runWorkbenchOllamaPrompt(resolved workbenchResolvedProvider, messages []wor
 	}
 	urlValue := workbenchOllamaChatEndpoint(resolved.BaseURL)
 	body, err := workbenchProviderPOST(urlValue, requestBody, nil)
+	if err == nil {
+		var response any
+		if err := json.Unmarshal(body, &response); err != nil {
+			return "", fmt.Errorf("decode ollama response: %w", err)
+		}
+		content := workbenchProviderResponseContent(response)
+		if strings.TrimSpace(content) != "" {
+			return strings.TrimSpace(content), nil
+		}
+	}
+
+	content, generateErr := runWorkbenchOllamaGeneratePrompt(resolved, messages)
+	if strings.TrimSpace(content) != "" && generateErr == nil {
+		return strings.TrimSpace(content), nil
+	}
+	if err != nil {
+		if generateErr != nil {
+			return "", fmt.Errorf("ollama chat request failed: %v; ollama generate fallback failed: %v", err, generateErr)
+		}
+		return "", err
+	}
+	if generateErr != nil {
+		return "", fmt.Errorf("ollama response does not contain message content; generate fallback failed: %v", generateErr)
+	}
+	return "", fmt.Errorf("ollama response does not contain message content")
+}
+
+func runWorkbenchOllamaGeneratePrompt(resolved workbenchResolvedProvider, messages []workbenchProviderMessage) (string, error) {
+	requestBody := map[string]any{
+		"model":  resolved.Model,
+		"prompt": workbenchMessagesToPrompt(messages),
+		"stream": false,
+		"options": map[string]any{
+			"temperature": defaultWorkbenchProviderTemperature,
+			"max_tokens":  defaultWorkbenchProviderMaxTokens,
+		},
+	}
+	urlValue := workbenchOllamaGenerateEndpoint(resolved.BaseURL)
+	body, err := workbenchProviderPOST(urlValue, requestBody, nil)
 	if err != nil {
 		return "", err
 	}
-	var response struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	}
+	var response any
 	if err := json.Unmarshal(body, &response); err != nil {
-		return "", fmt.Errorf("decode ollama response: %w", err)
+		return "", fmt.Errorf("decode ollama generate response: %w", err)
 	}
-	if strings.TrimSpace(response.Message.Content) == "" {
-		return "", fmt.Errorf("ollama response does not contain message content")
+	content := workbenchProviderResponseContent(response)
+	if strings.TrimSpace(content) == "" {
+		return "", fmt.Errorf("ollama generate response does not contain content")
 	}
-	return strings.TrimSpace(response.Message.Content), nil
+	return strings.TrimSpace(content), nil
 }
 
 func workbenchProviderPOST(urlValue string, bodyValue any, customize func(*http.Request)) ([]byte, error) {
@@ -422,6 +458,18 @@ func workbenchOllamaChatEndpoint(baseURL string) string {
 	return baseURL + "/api/chat"
 }
 
+func workbenchOllamaGenerateEndpoint(baseURL string) string {
+	baseURL = normalizeWorkbenchProviderBaseURL(baseURL)
+	switch {
+	case strings.HasSuffix(baseURL, "/api/generate"):
+		return baseURL
+	case strings.HasSuffix(baseURL, "/api/chat"):
+		return strings.TrimSuffix(baseURL, "/api/chat") + "/api/generate"
+	default:
+		return baseURL + "/api/generate"
+	}
+}
+
 func workbenchMessageContentString(value any) string {
 	switch typed := value.(type) {
 	case string:
@@ -445,6 +493,51 @@ func workbenchMessageContentString(value any) string {
 	default:
 		return strings.TrimSpace(fmt.Sprint(value))
 	}
+}
+
+func workbenchProviderResponseContent(value any) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, key := range []string{"message", "data", "response", "content", "output_text", "text", "completion", "result"} {
+			if nested, ok := typed[key]; ok {
+				if content := workbenchProviderResponseContent(nested); content != "" {
+					return content
+				}
+			}
+		}
+		if choices, ok := typed["choices"]; ok {
+			if content := workbenchProviderResponseContent(choices); content != "" {
+				return content
+			}
+		}
+		return ""
+	case []any:
+		parts := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if content := workbenchProviderResponseContent(item); content != "" {
+				parts = append(parts, content)
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
+	default:
+		return workbenchMessageContentString(value)
+	}
+}
+
+func workbenchMessagesToPrompt(messages []workbenchProviderMessage) string {
+	parts := make([]string, 0, len(messages))
+	for _, message := range messages {
+		content := strings.TrimSpace(message.Content)
+		if content == "" {
+			continue
+		}
+		role := strings.TrimSpace(message.Role)
+		if role == "" {
+			role = "user"
+		}
+		parts = append(parts, fmt.Sprintf("%s:\n%s", strings.ToUpper(role), content))
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
 func maskWorkbenchSecret(value string) string {

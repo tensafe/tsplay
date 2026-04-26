@@ -48,10 +48,11 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 		workbenchCandidateDebugLabel(firstWorkbenchCandidate(apiCandidates)),
 	)
 	plan := &WorkbenchTaskPlan{
-		SiteID:       siteID,
-		Intent:       intent,
-		MatchedPages: pageCandidates,
-		MatchedAPIs:  apiCandidates,
+		SiteID:         siteID,
+		Intent:         intent,
+		MatchedPages:   pageCandidates,
+		MatchedAPIs:    apiCandidates,
+		GenerationMode: "local",
 	}
 
 	var flow *Flow

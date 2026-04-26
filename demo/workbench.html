@@ -12,36 +12,44 @@
         <div class="wb-brand">
           <p class="wb-eyebrow">TSPlay Workbench</p>
           <h1>TSPlay Workbench</h1>
-          <p class="wb-subtitle">识别页面、接口和数据线索，生成可执行 Flow。</p>
+          <p class="wb-subtitle">本地识别页面、接口和数据线索，生成可执行 Flow。</p>
         </div>
 
         <div class="wb-topbar-side">
-          <div class="wb-topbar-status">
-            <div class="wb-topbar-item">
-              <span>当前站点</span>
-              <strong id="currentSiteHeader">未选择</strong>
-            </div>
-            <div class="wb-topbar-item">
-              <span>状态</span>
-              <strong id="currentSiteStatus">等待选择站点</strong>
-            </div>
+          <div class="wb-topbar-inline">
+            <span>当前站点：<strong id="currentSiteHeader">未选择</strong></span>
+            <span>状态：<strong id="currentSiteStatus">未选择</strong></span>
+          </div>
+
+          <div class="wb-inline wb-inline-wrap wb-topbar-actions">
+            <button id="refreshAllButton" class="wb-button wb-button-ghost wb-developer-only" type="button">刷新</button>
+            <button class="wb-button" form="exploreForm" type="submit">重新探索</button>
+            <button id="openSiteConfigButton" class="wb-button wb-button-ghost" type="button">切换站点</button>
           </div>
 
           <div class="wb-view-switch" role="tablist" aria-label="视图模式">
             <button id="modeNoviceButton" class="wb-view-button is-active" data-view-mode="novice" type="button">
-              新手模式
+              工作台视图
             </button>
             <button id="modeDeveloperButton" class="wb-view-button" data-view-mode="developer" type="button">
-              开发者模式
+              开发者详情
             </button>
-          </div>
-
-          <div class="wb-inline wb-inline-wrap">
-            <button id="refreshAllButton" class="wb-button wb-button-ghost" type="button">刷新</button>
-            <button id="newSiteHeaderButton" class="wb-button wb-button-secondary" type="button">新建站点</button>
           </div>
         </div>
       </header>
+
+      <section class="wb-overview" aria-label="系统概览">
+        <div class="wb-overview-main">
+          <h2>系统概览</h2>
+          <p>先识别当前站点的页面、接口和数据线索，再按任务需求生成可执行 Flow。</p>
+        </div>
+
+        <div class="wb-overview-points">
+          <span>识别当前站点</span>
+          <span>沉淀页面 / API / 实体</span>
+          <span>生成可执行 Flow</span>
+        </div>
+      </section>
 
       <section class="wb-progress" aria-label="任务进度">
         <article id="stepSiteCard" class="wb-progress-step is-active">
@@ -74,13 +82,7 @@
           <div class="wb-panel-header wb-panel-header-compact">
             <div>
               <h2>当前站点</h2>
-              <p>默认只展示当前最该看的上下文，接入和开发者配置按需展开。</p>
-            </div>
-
-            <div class="wb-inline wb-inline-wrap">
-              <button class="wb-button" form="exploreForm" type="submit">重新探索</button>
-              <button id="openSiteConfigButton" class="wb-button wb-button-ghost" type="button">切换站点</button>
-              <button id="openSiteAdvancedButton" class="wb-button wb-button-ghost wb-developer-only" type="button">高级配置</button>
+              <p>只展示当前站点摘要，其它信息按需展开。</p>
             </div>
           </div>
 
@@ -125,7 +127,7 @@
 
                 <div class="wb-inline wb-inline-wrap">
                   <button class="wb-button" type="submit">保存站点</button>
-                  <button id="newSiteButton" class="wb-button wb-button-ghost" type="button">清空表单</button>
+                  <button id="newSiteButton" class="wb-button wb-button-ghost" type="button">新建站点</button>
                 </div>
 
                 <details class="wb-details wb-details-subtle">
@@ -158,7 +160,7 @@
                     </label>
 
                     <div id="providerSummary" class="wb-note">
-                      未显式选择 provider 时，自动修复会优先尝试已就绪的默认 provider。
+                      未显式选择 provider 时，系统会优先尝试已就绪的默认 provider 来自动生成或修复 Flow。
                     </div>
                   </div>
                 </details>
@@ -187,7 +189,7 @@
           </details>
 
           <details id="siteAdvancedDetails" class="wb-details wb-details-subtle wb-developer-only">
-            <summary>开发者配置</summary>
+            <summary>开发者详情：接入配置</summary>
             <div class="wb-details-stack">
               <form id="sessionForm" class="wb-form wb-form-compact">
                 <div class="wb-detail-heading">
@@ -230,7 +232,7 @@
               <form id="providerForm" class="wb-form wb-form-compact wb-form-divider">
                 <div class="wb-detail-heading">
                   <h3>保存 AI Provider</h3>
-                  <p>只有在你想用自动修复，或者后面要接模型编排时才需要。</p>
+                  <p>需要让系统自动生成 Flow、自动修复，或者后面接模型编排时再配置。</p>
                 </div>
 
                 <div class="wb-field-grid">
@@ -280,7 +282,7 @@
                     class="wb-textarea"
                     rows="4"
                     name="system_prompt"
-                    placeholder="例如：你是一个 TSPlay Flow 修复助手，只返回 YAML。"
+                    placeholder="例如：你是一个只返回 YAML 的 TSPlay 助手。"
                   ></textarea>
                 </label>
 
@@ -329,7 +331,7 @@
 
           <div id="exploreLifecycle" class="wb-summary">
             <h3>运行结论</h3>
-            <p>开始探索后，这里会先展示简要结果，详细请求和运行信息放到“运行详情”里。</p>
+            <p>开始探索后，这里会先展示结论，运行细节放到折叠区里。</p>
           </div>
         </section>
 
@@ -413,16 +415,23 @@
 
           <div id="planCandidates" class="wb-candidate-list"></div>
 
-          <details class="wb-details wb-details-subtle wb-developer-only">
-            <summary>高级：查看 / 编辑 Flow YAML</summary>
-            <div class="wb-code-block">
+          <div class="wb-flow-dev-grid wb-developer-only">
+            <section class="wb-code-block">
               <div class="wb-code-header">
-                <span>Flow YAML</span>
-                <button id="copyFlowButton" class="wb-button wb-button-ghost" type="button">复制</button>
+                <span>Original Flow YAML</span>
+                <button id="copyOriginalFlowButton" class="wb-button wb-button-ghost" type="button">复制原文</button>
+              </div>
+              <textarea id="originalFlowViewer" class="wb-code-editor" spellcheck="false" readonly># 还没有生成原始 Flow</textarea>
+            </section>
+
+            <section class="wb-code-block">
+              <div class="wb-code-header">
+                <span>Current Flow YAML</span>
+                <button id="copyFlowButton" class="wb-button wb-button-ghost" type="button">复制当前版</button>
               </div>
               <textarea id="flowEditor" class="wb-code-editor" spellcheck="false"># 还没有生成 Flow</textarea>
-            </div>
-          </details>
+            </section>
+          </div>
 
           <div id="runResultPanel" class="wb-summary">
             <h3>执行结果</h3>
@@ -430,7 +439,7 @@
           </div>
 
           <details class="wb-details wb-details-subtle wb-developer-only">
-            <summary>高级：执行 Trace 与 Repair</summary>
+            <summary>开发者详情：执行 Trace 与 Repair</summary>
 
             <div class="wb-inline wb-inline-wrap wb-result-actions">
               <button id="replayFlowButton" class="wb-button wb-button-ghost" type="button">回放当前 Flow</button>

@@ -103,6 +103,65 @@ steps:
 	}
 }
 
+func TestParseFlowRejectsBooleanBrowserUseSessionYAML(t *testing.T) {
+	_, err := ParseFlow([]byte(`
+schema_version: "1"
+name: bad_browser_session_type
+browser:
+  use_session: true
+steps:
+  - action: navigate
+    url: https://example.com
+`), "yaml")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Code != "invalid_type" {
+		t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+	}
+	if parseErr.Issue.Field != "use_session" {
+		t.Fatalf("unexpected field: %#v", parseErr.Issue)
+	}
+	if !strings.Contains(parseErr.Issue.Message, "must be a string, got boolean") {
+		t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+	}
+}
+
+func TestParseFlowRejectsBooleanBrowserUseSessionJSON(t *testing.T) {
+	_, err := ParseFlow([]byte(`{
+  "schema_version": "1",
+  "name": "bad_browser_session_type_json",
+  "browser": {
+    "use_session": true
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`), "json")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Code != "invalid_type" {
+		t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+	}
+	if parseErr.Issue.Field != "use_session" {
+		t.Fatalf("unexpected field: %#v", parseErr.Issue)
+	}
+}
+
 func TestBuildActionArgsResolvesVars(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()

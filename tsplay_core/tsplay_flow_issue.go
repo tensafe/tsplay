@@ -295,6 +295,9 @@ func validateGenericObject(context flowDocumentContext, object map[string]any, p
 		if !allowedFields[key] {
 			return buildUnknownFieldIssue(context, key, joinDocPath(path, key), stepPath, currentAction, 0, 0), nil
 		}
+		if issue := validateGenericFieldType(context, key, value, joinDocPath(path, key), stepPath, currentAction); issue != nil {
+			return issue, nil
+		}
 		switch context {
 		case flowContextRoot:
 			switch key {
@@ -385,6 +388,9 @@ func validateYAMLObject(context flowDocumentContext, node *yaml.Node, path strin
 		if !allowedFields[key] {
 			return buildUnknownFieldIssue(context, key, joinDocPath(path, key), stepPath, currentAction, keyNode.Line, keyNode.Column), nil
 		}
+		if issue := validateYAMLFieldType(context, key, valueNode, joinDocPath(path, key), stepPath, currentAction); issue != nil {
+			return issue, nil
+		}
 		switch context {
 		case flowContextRoot:
 			switch key {
@@ -459,6 +465,55 @@ func buildUnknownFieldIssue(context flowDocumentContext, field string, path stri
 	}
 
 	issue.Message = buildUnknownFieldMessage(context, issue)
+	return issue
+}
+
+func validateGenericFieldType(context flowDocumentContext, field string, value any, path string, stepPath string, action string) *FlowIssue {
+	if context == flowContextBrowser && field == "use_session" {
+		if _, ok := value.(string); !ok {
+			return buildFieldTypeMismatchIssue(context, field, "string", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+	}
+	return nil
+}
+
+func validateYAMLFieldType(context flowDocumentContext, field string, node *yaml.Node, path string, stepPath string, action string) *FlowIssue {
+	if context == flowContextBrowser && field == "use_session" {
+		if !yamlNodeIsString(node) {
+			line, column := 0, 0
+			if node != nil {
+				line = node.Line
+				column = node.Column
+			}
+			return buildFieldTypeMismatchIssue(context, field, "string", describeYAMLFieldType(node), path, stepPath, action, line, column)
+		}
+	}
+	return nil
+}
+
+func buildFieldTypeMismatchIssue(context flowDocumentContext, field string, expected string, actual string, path string, stepPath string, action string, line int, column int) *FlowIssue {
+	if actual == "" {
+		actual = "unknown"
+	}
+	issue := &FlowIssue{
+		Code:     "invalid_type",
+		Path:     path,
+		StepPath: stepPath,
+		Action:   action,
+		Field:    field,
+		Line:     line,
+		Column:   column,
+	}
+	switch context {
+	case flowContextBrowser:
+		issue.Message = fmt.Sprintf("flow.browser field %q must be a %s, got %s", field, expected, actual)
+	default:
+		issue.Message = fmt.Sprintf("flow field %q must be a %s, got %s", field, expected, actual)
+	}
+	if context == flowContextBrowser && field == "use_session" {
+		issue.Suggestion = `Use a saved session name string, for example: use_session: "admin". Remove "use_session" when the flow should start without a saved session.`
+		issue.Message += ". " + issue.Suggestion
+	}
 	return issue
 }
 
@@ -694,6 +749,65 @@ func yamlObjectStringValue(node *yaml.Node, key string) string {
 		}
 	}
 	return ""
+}
+
+func describeGenericFieldType(value any) string {
+	switch value.(type) {
+	case nil:
+		return "null"
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case json.Number, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return "number"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "object"
+	default:
+		return reflect.TypeOf(value).String()
+	}
+}
+
+func yamlNodeIsString(node *yaml.Node) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind == yaml.AliasNode {
+		return yamlNodeIsString(node.Alias)
+	}
+	return node.Kind == yaml.ScalarNode && (node.Tag == "" || node.Tag == "!!str")
+}
+
+func describeYAMLFieldType(node *yaml.Node) string {
+	if node == nil {
+		return "null"
+	}
+	if node.Kind == yaml.AliasNode {
+		return describeYAMLFieldType(node.Alias)
+	}
+	switch node.Kind {
+	case yaml.MappingNode:
+		return "object"
+	case yaml.SequenceNode:
+		return "array"
+	case yaml.ScalarNode:
+		switch node.Tag {
+		case "", "!!str":
+			return "string"
+		case "!!bool":
+			return "boolean"
+		case "!!int", "!!float":
+			return "number"
+		case "!!null":
+			return "null"
+		default:
+			return strings.TrimPrefix(node.Tag, "!!")
+		}
+	default:
+		return "unknown"
+	}
 }
 
 func sortedMapKeys(m map[string]any) []string {

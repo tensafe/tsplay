@@ -475,6 +475,42 @@ func TestBuildWorkbenchKeyElements(t *testing.T) {
 	}
 }
 
+func TestBuildWorkbenchPageFlowHints(t *testing.T) {
+	hints := buildWorkbenchPageFlowHints(
+		"百度",
+		[]WorkbenchFieldCard{
+			{Name: "keyword", Label: "搜索框", Selector: "#kw"},
+		},
+		[]WorkbenchActionCard{
+			{Label: "百度一下", Selector: "#su", Risk: "read"},
+			{Label: "登录", Selector: ".login", Risk: "write_low"},
+		},
+		[]WorkbenchTableCard{
+			{Name: "结果列表", Selector: ".result-table"},
+		},
+		[]string{"百度一下，你就知道", "搜索新闻资讯视频地图贴吧文库"},
+		[]WorkbenchPageAPIHit{
+			{Method: "GET", PathTemplate: "/s", OperationType: "read", Risk: "read", Status: 200, ContentType: "application/json"},
+			{Method: "POST", PathTemplate: "/track", OperationType: "write", Risk: "write_low", Status: 204},
+		},
+	)
+	if hints == nil {
+		t.Fatalf("expected flow hints")
+	}
+	if len(hints.PrimaryInputs) == 0 || !strings.Contains(hints.PrimaryInputs[0], "搜索框") {
+		t.Fatalf("expected primary input hint, got %#v", hints.PrimaryInputs)
+	}
+	if len(hints.PrimaryActions) == 0 || !strings.Contains(hints.PrimaryActions[0], "百度一下") {
+		t.Fatalf("expected primary action hint, got %#v", hints.PrimaryActions)
+	}
+	if len(hints.WaitConditions) == 0 || !strings.Contains(strings.Join(hints.WaitConditions, " "), "等待") {
+		t.Fatalf("expected wait conditions, got %#v", hints.WaitConditions)
+	}
+	if len(hints.APIPriority) == 0 || !strings.Contains(hints.APIPriority[0], "GET /s") {
+		t.Fatalf("expected prioritized API hint, got %#v", hints.APIPriority)
+	}
+}
+
 func TestWorkbenchPageCardSummaryUsesSemanticContext(t *testing.T) {
 	shape := &workbenchPageShape{
 		Title: "百度",
@@ -544,6 +580,9 @@ func TestBuildWorkbenchPageCardPromotesSnippetToTitle(t *testing.T) {
 	}
 	if !strings.Contains(card.Summary, "页面内容：连接企业业务系统与飞书能力") {
 		t.Fatalf("expected semantic summary to include text snippet, got %q", card.Summary)
+	}
+	if card.FlowHints == nil || len(card.FlowHints.WaitConditions) == 0 {
+		t.Fatalf("expected flow hints to be generated, got %#v", card.FlowHints)
 	}
 }
 

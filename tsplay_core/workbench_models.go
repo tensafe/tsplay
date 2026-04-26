@@ -212,6 +212,7 @@ type WorkbenchTaskPlanOptions struct {
 	SiteID       string `json:"site_id"`
 	ArtifactRoot string `json:"artifact_root,omitempty"`
 	Intent       string `json:"intent"`
+	ProviderID   string `json:"provider_id,omitempty"`
 }
 
 type WorkbenchTaskCandidate struct {
@@ -234,6 +235,11 @@ type WorkbenchTaskPlan struct {
 	FlowName            string                   `json:"flow_name,omitempty"`
 	FlowYAML            string                   `json:"flow_yaml,omitempty"`
 	Flow                *Flow                    `json:"flow,omitempty"`
+	GenerationMode      string                   `json:"generation_mode,omitempty"`
+	Provider            *WorkbenchProviderView   `json:"provider,omitempty"`
+	ModelOutput         string                   `json:"model_output,omitempty"`
+	ValidationError     string                   `json:"validation_error,omitempty"`
+	Warnings            []string                 `json:"warnings,omitempty"`
 	RequiresUserConfirm bool                     `json:"requires_user_confirm,omitempty"`
 }
 

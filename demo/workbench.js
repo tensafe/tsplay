@@ -14,6 +14,7 @@
     entities: [],
     lastExplore: null,
     lastPlan: null,
+    currentFlowYAML: "",
     lastRun: null,
     lastRepair: null,
   };
@@ -44,9 +45,7 @@
     refs.stepPlanCopy = document.getElementById("stepPlanCopy");
     refs.statusBar = document.getElementById("statusBar");
     refs.refreshAllButton = document.getElementById("refreshAllButton");
-    refs.newSiteHeaderButton = document.getElementById("newSiteHeaderButton");
     refs.openSiteConfigButton = document.getElementById("openSiteConfigButton");
-    refs.openSiteAdvancedButton = document.getElementById("openSiteAdvancedButton");
     refs.siteConfigDetails = document.getElementById("siteConfigDetails");
     refs.siteAdvancedDetails = document.getElementById("siteAdvancedDetails");
     refs.sitePicker = document.getElementById("sitePicker");
@@ -95,7 +94,9 @@
     refs.planSummary = document.getElementById("planSummary");
     refs.flowStoryboard = document.getElementById("flowStoryboard");
     refs.planCandidates = document.getElementById("planCandidates");
+    refs.originalFlowViewer = document.getElementById("originalFlowViewer");
     refs.flowEditor = document.getElementById("flowEditor");
+    refs.copyOriginalFlowButton = document.getElementById("copyOriginalFlowButton");
     refs.copyFlowButton = document.getElementById("copyFlowButton");
     refs.runResultPanel = document.getElementById("runResultPanel");
     refs.replayFlowButton = document.getElementById("replayFlowButton");
@@ -108,7 +109,6 @@
 
   function bindEvents() {
     refs.refreshAllButton.addEventListener("click", () => runAction("刷新数据", refreshAll));
-    refs.newSiteHeaderButton.addEventListener("click", openNewSiteFlow);
     refs.modeButtons.forEach((button) => {
       button.addEventListener("click", () => {
         setViewMode(button.dataset.viewMode || "novice");
@@ -116,9 +116,6 @@
     });
     refs.openSiteConfigButton.addEventListener("click", () => {
       openDetails(refs.siteConfigDetails);
-    });
-    refs.openSiteAdvancedButton.addEventListener("click", () => {
-      openDetails(refs.siteAdvancedDetails);
     });
     refs.loadSiteButton.addEventListener("click", () => runAction("加载站点", () => selectSite(refs.sitePicker.value)));
     refs.sitePicker.addEventListener("change", () => runAction("切换站点", () => selectSite(refs.sitePicker.value)));
@@ -147,11 +144,13 @@
       event.preventDefault();
       runAction("生成 Flow", planTask);
     });
+    refs.flowEditor.addEventListener("input", handleFlowEditorInput);
     refs.runFlowButton.addEventListener("click", () => runAction("执行 Flow", executePlanFlow));
     refs.replayFlowButton.addEventListener("click", () => runAction("回放 Flow", executePlanFlow));
     refs.repairFlowButton.addEventListener("click", () => runAction("生成 Repair Context", buildRepairContext));
     refs.autoRepairFlowButton.addEventListener("click", () => runAction("自动修复 Flow", buildAutoRepair));
     refs.runRepairedFlowButton.addEventListener("click", () => runAction("执行修复版 Flow", executePlanFlow));
+    refs.copyOriginalFlowButton.addEventListener("click", () => runAction("复制原始 Flow", copyOriginalFlow));
     refs.copyFlowButton.addEventListener("click", () => runAction("复制 Flow", copyFlow));
     refs.tabs.forEach((button) => {
       button.addEventListener("click", () => {
@@ -169,6 +168,15 @@
       refs.apiSearchInput.value = "";
       renderCards();
       refs.apiSearchInput.focus();
+    });
+    refs.exploreMeta.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-tab-target]");
+      if (!target) {
+        return;
+      }
+      state.currentTab = target.dataset.tabTarget || "pages";
+      renderTabs();
+      renderCards();
     });
   }
 
@@ -290,6 +298,7 @@
       refs.siteConfigDetails.open = false;
     }
     state.lastPlan = null;
+    state.currentFlowYAML = "";
     state.lastRun = null;
     state.lastRepair = null;
     renderJourney();
@@ -489,9 +498,11 @@
       body: JSON.stringify({
         site_id: siteID,
         intent: intent,
+        provider_id: normalizeString(refs.siteProviderSelect.value),
       }),
     });
     state.lastPlan = plan;
+    state.currentFlowYAML = typeof plan.flow_yaml === "string" ? plan.flow_yaml : "";
     state.lastRun = null;
     state.lastRepair = null;
     renderJourney();
@@ -502,7 +513,7 @@
 
   async function executePlanFlow() {
     const siteID = await ensureCurrentSiteReady();
-    const flowYAML = normalizeString(refs.flowEditor.value);
+    const flowYAML = normalizeString(currentFlowYAMLValue());
     if (!flowYAML || flowYAML === "还没有生成 Flow") {
       throw new Error("请先生成一个可执行的 Flow");
     }
@@ -521,7 +532,7 @@
       state.lastPlan = payload.plan;
     }
     if (payload.flow_yaml) {
-      refs.flowEditor.value = payload.flow_yaml;
+      setCurrentFlowYAML(payload.flow_yaml);
     }
     renderJourney();
     renderPlan();
@@ -539,7 +550,7 @@
     if (state.lastRun.ok) {
       throw new Error("当前执行已成功，不需要生成 Repair Context");
     }
-    const flowYAML = normalizeString(refs.flowEditor.value);
+    const flowYAML = normalizeString(currentFlowYAMLValue());
     if (!flowYAML || flowYAML === "还没有生成 Flow") {
       throw new Error("当前没有可修复的 Flow");
     }
@@ -564,7 +575,7 @@
     if (state.lastRun.ok) {
       throw new Error("当前执行已成功，不需要自动修复");
     }
-    const flowYAML = normalizeString(refs.flowEditor.value);
+    const flowYAML = normalizeString(currentFlowYAMLValue());
     if (!flowYAML || flowYAML === "还没有生成 Flow") {
       throw new Error("当前没有可修复的 Flow");
     }
@@ -581,7 +592,7 @@
     });
     state.lastRepair = payload;
     if (payload.repaired_flow_yaml) {
-      refs.flowEditor.value = payload.repaired_flow_yaml;
+      setCurrentFlowYAML(payload.repaired_flow_yaml);
     }
     renderJourney();
     renderRepair();
@@ -591,9 +602,17 @@
   }
 
   async function copyFlow() {
-    const text = normalizeString(refs.flowEditor.value);
+    const text = normalizeString(currentFlowYAMLValue());
     if (!text) {
       throw new Error("当前没有可复制的 Flow");
+    }
+    await navigator.clipboard.writeText(text);
+  }
+
+  async function copyOriginalFlow() {
+    const text = normalizeString(originalFlowYAMLValue());
+    if (!text) {
+      throw new Error("当前没有原始 Flow 可复制");
     }
     await navigator.clipboard.writeText(text);
   }
@@ -624,6 +643,7 @@
     state.entities = [];
     state.lastExplore = null;
     state.lastPlan = null;
+    state.currentFlowYAML = "";
     state.lastRun = null;
     state.lastRepair = null;
     renderExploreMeta();
@@ -722,7 +742,7 @@
     const selectedID = normalizeString(refs.siteProviderSelect.value);
     const provider = findProvider(selectedID);
     if (!provider) {
-      refs.providerSummary.textContent = "未显式选择 provider 时，自动修复会优先尝试已就绪的默认 provider。";
+      refs.providerSummary.textContent = "未显式选择 provider 时，系统会优先尝试已就绪的默认 provider 来自动生成或修复 Flow。";
       return;
     }
     const pieces = [
@@ -797,7 +817,7 @@
     renderPlan();
     renderRunResult();
     renderRepair();
-    setStatus(nextMode === "developer" ? "已切换到开发者模式" : "已切换到新手模式", "idle");
+    setStatus(nextMode === "developer" ? "已展开开发者详情" : "已切换到工作台视图", "idle");
   }
 
   function renderViewMode() {
@@ -830,10 +850,10 @@
   function renderExploreMeta() {
     const eventCount = totalPageEventCount(state.pages);
     refs.exploreMeta.innerHTML = [
-      metaCard("页面", String(state.pages.length)),
-      metaCard("API", String(state.apis.length)),
-      metaCard("实体", String(state.entities.length)),
-      metaCard("事件", String(eventCount)),
+      metaCard("页面", String(state.pages.length), "pages"),
+      metaCard("API", String(state.apis.length), "apis"),
+      metaCard("实体", String(state.entities.length), "entities"),
+      metaCard("事件", String(eventCount), "pages"),
     ].join("");
   }
 
@@ -854,7 +874,7 @@
     const exploreMode = state.lastExplore && state.lastExplore.explore_mode
       ? describeExploreMode(state.lastExplore.explore_mode)
       : "暂无";
-    const observationNote = summarizeObservationNote(summary);
+    const observationStatus = describeObservationStatus(summary);
     refs.exploreLifecycle.innerHTML =
       "<h3>运行结论</h3>" +
       "<p>" +
@@ -862,8 +882,8 @@
       "</p>" +
       '<div class="wb-card-meta">' +
       pill("模式 · " + escapeHTML(exploreMode)) +
-      (observationNote ? pill(escapeHTML(observationNote)) : "") +
       "</div>" +
+      (observationStatus.message ? '<p class="wb-data-note">' + escapeHTML(observationStatus.message) + "</p>" : "") +
       '<details class="wb-details wb-details-subtle">' +
       "<summary>运行详情</summary>" +
       '<div class="wb-detail-grid">' +
@@ -885,27 +905,32 @@
       '<p class="wb-data-note"><strong>渲染后观察：</strong>' +
       escapeHTML(summary.observationMode) +
       "</p>" +
-      (summary.observationSummary ? '<p class="wb-data-note">' + escapeHTML(summary.observationSummary) + "</p>" : "") +
+      (isDeveloperMode() && observationStatus.technical
+        ? renderDisclosure("查看技术详情", '<p class="wb-data-note">' + escapeHTML(observationStatus.technical) + "</p>")
+        : "") +
       "</details>";
   }
 
   function renderCards() {
     renderTabs();
-    const renderers = {
-      pages: renderPageCard,
-      apis: renderAPICard,
-      entities: renderEntityCard,
-    };
-    const collections = {
-      pages: state.pages,
-      apis: filterAPIs(state.apis),
-      entities: state.entities,
-    };
-    const items = collections[state.currentTab] || [];
+    const items =
+      state.currentTab === "pages"
+        ? state.pages
+        : state.currentTab === "apis"
+          ? filterAPIs(state.apis)
+          : state.entities;
     if (!items.length) {
       refs.cardList.innerHTML = renderEmptyCardForCurrentTab();
       return;
     }
+    if (state.currentTab === "apis") {
+      refs.cardList.innerHTML = renderAPIList(items);
+      return;
+    }
+    const renderers = {
+      pages: renderPageCard,
+      entities: renderEntityCard,
+    };
     refs.cardList.innerHTML = items.map((item) => renderers[state.currentTab](item)).join("");
   }
 
@@ -916,20 +941,24 @@
         "<h3>规划结果</h3><p>先输入任务需求，系统会根据当前站点自动匹配页面和 API，再生成步骤卡片。</p>";
       refs.flowStoryboard.innerHTML = "";
       refs.planCandidates.innerHTML = "";
-      refs.flowEditor.value = "# 还没有生成 Flow";
-      refs.runFlowButton.disabled = true;
-      refs.replayFlowButton.disabled = true;
+      refs.originalFlowViewer.value = "# 还没有生成原始 Flow";
+      setCurrentFlowYAML("");
       refs.autoRepairFlowButton.disabled = true;
-      refs.runRepairedFlowButton.disabled = true;
       return;
     }
 
+    const provider = plan.provider || null;
+    const warnings = Array.isArray(plan.warnings) ? plan.warnings : [];
     const summaryBits = [
       '<div class="wb-card-meta">',
       pill("策略 · " + escapeHTML(plan.strategy || "unknown")),
+      pill("生成 · " + escapeHTML(plan.generation_mode || "local")),
       pill("Flow · " + escapeHTML(plan.flow_name || "未命名")),
+      (provider ? pill("Provider · " + escapeHTML(provider.name || provider.provider_id || "auto")) : ""),
       "</div>",
       "<p>" + escapeHTML(plan.reason || "系统已经生成了一条可执行的建议路径。") + "</p>",
+      plan.validation_error ? "<p><strong>AI 校验失败：</strong>" + escapeHTML(plan.validation_error) + "</p>" : "",
+      warnings.length ? "<p><strong>提示：</strong>" + escapeHTML(warnings.join("；")) + "</p>" : "",
     ];
     refs.planSummary.innerHTML = "<h3>规划结果</h3>" + summaryBits.join("");
     refs.flowStoryboard.innerHTML = renderFlowStoryboard(plan.flow);
@@ -941,12 +970,18 @@
     if (Array.isArray(plan.matched_apis) && plan.matched_apis.length) {
       sections.push(renderCandidateSection("命中的 API", plan.matched_apis));
     }
+    if (isDeveloperMode() && plan.model_output) {
+      sections.push(renderSchema("Model Output", plan.model_output));
+    }
     refs.planCandidates.innerHTML = sections.join("");
-    refs.flowEditor.value = plan.flow_yaml || "# 当前没有生成 Flow";
-    refs.runFlowButton.disabled = !(plan.flow_yaml || "");
-    refs.replayFlowButton.disabled = !(plan.flow_yaml || "");
+    refs.originalFlowViewer.value = originalFlowYAMLValue() || "# 当前没有原始 Flow";
+    if (!currentFlowYAMLValue()) {
+      setCurrentFlowYAML(plan.flow_yaml || "");
+    } else {
+      refs.flowEditor.value = currentFlowYAMLValue();
+      syncFlowActionButtons();
+    }
     refs.autoRepairFlowButton.disabled = true;
-    refs.runRepairedFlowButton.disabled = !(plan.flow_yaml || "");
   }
 
   function renderRunResult() {
@@ -1205,7 +1240,6 @@
   function renderPageCard(page) {
     const routeLabel = page.normalized_route || page.url || "未命名页面";
     const modeLabel = describeExploreMode(page.discovery_mode);
-    const semanticSummary = normalizeString(page.summary);
     const actionLabels = Array.isArray(page.actions)
       ? page.actions.map((item) => item.label || item.name || item.selector).filter(Boolean)
       : [];
@@ -1223,70 +1257,74 @@
           .map((field) => [field.label || field.name || "input", field.selector || ""].filter(Boolean).join(" · "))
           .filter(Boolean)
       : [];
-    const keyElements = Array.isArray(page.key_elements) ? page.key_elements.slice(0, 8) : [];
-    const linkGroups = Array.isArray(page.link_groups) ? page.link_groups.slice(0, 4) : [];
+    const keyElements = Array.isArray(page.key_elements)
+      ? page.key_elements
+          .map((item) => {
+            if (typeof item === "string") {
+              return item;
+            }
+            return item && (item.label || item.text || item.name || item.selector || item.role || "");
+          })
+          .filter(Boolean)
+          .slice(0, 8)
+      : [];
+    const linkGroups = Array.isArray(page.link_groups)
+      ? page.link_groups
+          .map((item) => {
+            if (typeof item === "string") {
+              return item;
+            }
+            return item && (item.label || item.group || item.name || item.selector || "");
+          })
+          .filter(Boolean)
+          .slice(0, 4)
+      : [];
     const textLabels = Array.isArray(page.text_snippets) ? page.text_snippets.slice(0, 6) : [];
+    const flowHints = page.flow_hints || null;
     const links = Array.isArray(page.links) ? page.links : [];
     const apiHits = Array.isArray(page.api_hits) ? page.api_hits : [];
     const events = Array.isArray(page.events) ? page.events : [];
     const captureSummary = page.capture_summary || null;
-    const warningCount = countWarningEvents(events);
-    const observationNote = summarizePageObservation(captureSummary);
-    const runtimeSummary = [
-      apiHits.length ? "识别到 " + apiHits.length + " 个接口" : "",
-      events.length ? events.length + " 条事件" : "",
-      observationNote,
-    ]
-      .filter(Boolean)
-      .join("，");
+    const observationStatus = describeObservationStatus(captureSummary);
     return (
       '<article class="wb-card">' +
       "<header>" +
       "<div>" +
       '<span class="wb-card-kicker">' + escapeHTML(routeLabel) + "</span>" +
       "<h3>" + escapeHTML(page.title || routeLabel) + "</h3>" +
-      '<p class="wb-card-subtitle">' + escapeHTML(modeLabel) + "</p>" +
+      '<p class="wb-card-subtitle">' + escapeHTML(modeLabel + " · " + formatRiskLabel(page.risk)) + "</p>" +
       "</div>" +
-      '<div class="wb-card-meta">' + riskPill(page.risk) + "</div>" +
       "</header>" +
-      (semanticSummary ? '<p class="wb-card-summary">' + escapeHTML(semanticSummary) + "</p>" : "") +
-      renderOptionalList("内容摘要", textLabels.slice(0, 3)) +
-      renderOptionalList("关键元素", keyElements.slice(0, 5)) +
-      renderOptionalList("链接分组", linkGroups) +
-      (runtimeSummary ? '<p class="wb-data-note">' + escapeHTML(runtimeSummary + "。") + "</p>" : "") +
-      '<div class="wb-detail-grid">' +
-      miniStat("API", String(apiHits.length)) +
-      miniStat("页面事件", String(events.length)) +
-      miniStat("关键元素", String(keyElements.length)) +
-      miniStat("输入控件", String(inputLabels.length)) +
-      miniStat("动作", String(actionLabels.length)) +
-      miniStat("链接", String(links.length)) +
-      miniStat("警告", String(warningCount)) +
-      "</div>" +
+      '<p class="wb-card-summary">识别到 ' +
+      escapeHTML(String(apiHits.length)) +
+      " 个接口、" +
+      escapeHTML(String(events.length)) +
+      " 条页面事件。</p>" +
+      '<p class="wb-data-note">' + escapeHTML(observationStatus.message) + "</p>" +
       renderDisclosure(
-        "查看接口（" + apiHits.length + "）",
+        "查看 API",
         renderAPIPreview(apiHits),
         "当前页面还没有识别到接口请求。"
       ) +
       renderDisclosure(
-        "查看事件（" + events.length + "）",
+        "查看事件",
         renderEventPreview(events),
         "当前页面还没有页面事件。"
       ) +
-      (isDeveloperMode()
-        ? renderDisclosure(
-            "查看 Observation",
-            renderObservationDetails(page, {
-              formLabels: formLabels,
-              inputLabels: inputLabels,
-              keyElements: keyElements,
-              actionLabels: actionLabels,
-              tableLabels: tableLabels,
-              textLabels: textLabels,
-            }),
-            "当前页面还没有 Observation 证据。"
-          )
-        : "") +
+      renderDisclosure(
+        "查看 Observation",
+        renderObservationDetails(page, {
+          formLabels: formLabels,
+          inputLabels: inputLabels,
+          keyElements: keyElements,
+          actionLabels: actionLabels,
+          tableLabels: tableLabels,
+          linkGroups: linkGroups,
+          flowHints: flowHints,
+          textLabels: textLabels,
+        }),
+        "当前页面还没有 Observation 证据。"
+      ) +
       "</article>"
     );
   }
@@ -1295,6 +1333,7 @@
     if (!summary) {
       return "";
     }
+    const observationStatus = describeObservationStatus(summary);
     return (
       '<div class="wb-detail-grid">' +
       miniStat("请求数", String(summary.network_request_count || 0)) +
@@ -1305,48 +1344,57 @@
       miniStat("内容块", String(summary.content_element_count || 0)) +
       miniStat("观察错误", String(summary.observation_error_count || 0)) +
       "</div>" +
+      '<p class="wb-data-note">' + escapeHTML(observationStatus.message) + "</p>" +
       '<p class="wb-data-note"><strong>加载期回调：</strong>' +
       escapeHTML(summary.filter_rule || "仅保留 xhr/fetch 网络请求。") +
       "</p>" +
       '<p class="wb-data-note"><strong>渲染后观察：</strong>' +
       escapeHTML(summary.observation_mode || "页面加载完成后观察渲染态 DOM。") +
       "</p>" +
-      (summary.observation_summary ? '<p class="wb-data-note">' + escapeHTML(summary.observation_summary) + "</p>" : "")
+      (isDeveloperMode() && observationStatus.technical
+        ? renderDisclosure("查看技术详情", '<p class="wb-data-note">' + escapeHTML(observationStatus.technical) + "</p>")
+        : "")
     );
   }
 
-  function renderAPICard(api) {
-    const title = [api.method || "API", api.path_template || api.url || ""].filter(Boolean).join(" ");
-    const metaLine = [
-      api.status ? String(api.status) : "",
-      api.operation_type || "",
-      describePayloadType(api.content_type, api.resource_type),
-      normalizeString(api.risk) || "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
+  function renderAPIList(apis) {
     return (
-      '<details class="wb-card wb-card-collapsible wb-api-card">' +
+      '<div class="wb-api-table">' +
+      '<div class="wb-api-header">' +
+      '<span>Method</span>' +
+      '<span>Path</span>' +
+      '<span>Status</span>' +
+      '<span>Type</span>' +
+      '<span>Risk</span>' +
+      "</div>" +
+      apis.map((api) => renderAPIRow(api)).join("") +
+      "</div>"
+    );
+  }
+
+  function renderAPIRow(api) {
+    const status = api.status ? String(api.status) : "—";
+    const typeLabel = api.operation_type || describePayloadType(api.content_type, api.resource_type) || "—";
+    const pathLabel = api.path_template || api.url || "暂无路径";
+    return (
+      '<details class="wb-api-row">' +
       "<summary>" +
-      '<div class="wb-data-title">' +
-      "<div><strong>" + escapeHTML(title) + "</strong>" +
-      '<p class="wb-data-meta">' + escapeHTML(metaLine || "接口详情") + "</p></div>" +
-      '<div class="wb-card-meta">' +
-      riskPill(api.risk) +
-      (api.trigger_route ? pill(escapeHTML(api.trigger_route)) : "") +
-      "</div>" +
-      "</div>" +
+      '<span class="wb-api-cell wb-api-cell-method" data-label="Method">' + escapeHTML(api.method || "GET") + "</span>" +
+      '<span class="wb-api-cell wb-api-cell-path" data-label="Path">' + escapeHTML(pathLabel) + "</span>" +
+      '<span class="wb-api-cell" data-label="Status">' + escapeHTML(status) + "</span>" +
+      '<span class="wb-api-cell" data-label="Type">' + escapeHTML(typeLabel) + "</span>" +
+      '<span class="wb-api-cell wb-api-cell-risk" data-label="Risk">' + riskPill(api.risk) + "</span>" +
       "</summary>" +
-      '<div class="wb-card-body">' +
+      '<div class="wb-api-detail">' +
       '<p class="wb-data-note"><strong>请求方法：</strong>' + escapeHTML(api.method || "GET") + "</p>" +
-      '<p class="wb-data-note"><strong>路径模板：</strong>' + escapeHTML(api.path_template || api.url || "暂无") + "</p>" +
+      '<p class="wb-data-note"><strong>路径模板：</strong>' + escapeHTML(pathLabel) + "</p>" +
+      (api.url ? '<p class="wb-data-note"><strong>请求 URL：</strong>' + escapeHTML(api.url) + "</p>" : "") +
       (api.content_type ? '<p class="wb-data-note"><strong>Content-Type：</strong>' + escapeHTML(api.content_type) + "</p>" : "") +
       (api.trigger_route ? '<p class="wb-data-note"><strong>来源页面：</strong>' + escapeHTML(api.trigger_route) + "</p>" : "") +
       (api.trigger_action ? '<p class="wb-data-note"><strong>触发动作：</strong>' + escapeHTML(api.trigger_action) + "</p>" : "") +
-      (api.resource_type ? '<p class="wb-data-note"><strong>资源类型：</strong>' + escapeHTML(api.resource_type) + "</p>" : "") +
-      (isDeveloperMode() && api.url ? renderArtifactPath("Captured URL", api.url, false) : "") +
-      (isDeveloperMode() ? renderSchema("Request Schema", api.request_schema) : "") +
-      (isDeveloperMode() ? renderSchema("Response Schema", api.response_schema) : "") +
+      (api.error ? '<p class="wb-data-note"><strong>错误信息：</strong>' + escapeHTML(api.error) + "</p>" : "") +
+      renderSchema("Request Schema", api.request_schema) +
+      renderSchema("Response Schema", api.response_schema) +
       "</div>" +
       "</details>"
     );
@@ -1385,6 +1433,48 @@
     return "<p><strong>" + escapeHTML(label) + "：</strong>" + escapeHTML(items.join("、")) + "</p>";
   }
 
+  function renderFlowHints(flowHints) {
+    if (!flowHints) {
+      return "";
+    }
+    const groups = [
+      { title: "推荐主输入", items: normalizeHintItems(flowHints.primary_inputs) },
+      { title: "推荐主动作", items: normalizeHintItems(flowHints.primary_actions) },
+      { title: "推荐等待条件", items: normalizeHintItems(flowHints.wait_conditions) },
+      { title: "推荐 API 优先级", items: normalizeHintItems(flowHints.api_priority) },
+    ].filter((group) => group.items.length);
+    if (!groups.length) {
+      return "";
+    }
+    return (
+      '<div class="wb-flow-hints">' +
+      groups
+        .map((group) => {
+          return (
+            '<section class="wb-flow-hint">' +
+            "<strong>" +
+            escapeHTML(group.title) +
+            "</strong><p>" +
+            escapeHTML(group.items.join("、")) +
+            "</p></section>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function normalizeHintItems(items) {
+    return (Array.isArray(items) ? items : [])
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        return item && (item.label || item.text || item.name || item.selector || item.path || "");
+      })
+      .filter(Boolean);
+  }
+
   function renderLinkPreview(links) {
     const items = Array.isArray(links) ? links.slice(0, 8) : [];
     if (!items.length) {
@@ -1419,13 +1509,18 @@
     if (!items.length) {
       return "";
     }
-    const warningCount = countWarningEvents(items);
+    const levels = summarizeEventLevels(items);
     return (
-      '<p class="wb-data-note">页面事件 ' +
+      '<p class="wb-data-note">页面事件：' +
       escapeHTML(String(items.length)) +
-      " 条，其中 warning " +
-      escapeHTML(String(warningCount)) +
-      " 条。</p>" +
+      " 条</p>" +
+      '<p class="wb-data-note">warning ' +
+      escapeHTML(String(levels.warning)) +
+      " · info " +
+      escapeHTML(String(levels.info)) +
+      " · error " +
+      escapeHTML(String(levels.error)) +
+      "。</p>" +
       '<div class="wb-event-list">' +
       items
         .map((item) => {
@@ -1520,8 +1615,9 @@
   }
 
   function renderObservationDetails(page, details) {
+    const observationStatus = describeObservationStatus(page.capture_summary);
     const blocks = [
-      summarizePageObservation(page.capture_summary) ? '<p class="wb-data-note">' + escapeHTML(summarizePageObservation(page.capture_summary)) + "</p>" : "",
+      observationStatus.message ? '<p class="wb-data-note">' + escapeHTML(observationStatus.message) + "</p>" : "",
       renderCaptureSummary(page.capture_summary),
       renderOptionalList("面包屑", page.breadcrumbs || []),
       renderOptionalList("表单", details.formLabels || []),
@@ -1529,11 +1625,16 @@
       renderOptionalList("关键元素", details.keyElements || []),
       renderOptionalList("动作", details.actionLabels || []),
       renderOptionalList("表格", details.tableLabels || []),
+      renderOptionalList("链接分组", details.linkGroups || []),
       renderOptionalList("页面文本", details.textLabels || []),
+      renderFlowHints(details.flowHints || null),
       renderLinkPreview(page.links || []),
-      renderArtifactPath("Observation", page.observation_path),
-      renderArtifactPath("Screenshot", page.screenshot_path),
-      renderArtifactPath("DOM Snapshot", page.dom_snapshot_path),
+      isDeveloperMode() ? renderArtifactPath("Observation", page.observation_path) : "",
+      isDeveloperMode() ? renderArtifactPath("Screenshot", page.screenshot_path) : "",
+      isDeveloperMode() ? renderArtifactPath("DOM Snapshot", page.dom_snapshot_path) : "",
+      isDeveloperMode() && observationStatus.technical
+        ? renderDisclosure("查看技术详情", '<p class="wb-data-note">' + escapeHTML(observationStatus.technical) + "</p>")
+        : "",
     ].filter(Boolean);
     return blocks.join("");
   }
@@ -1627,14 +1728,16 @@
           state.apis.length +
           " API / " +
           state.entities.length +
-          " 实体 / " +
-          totalPageEventCount(state.pages) +
-          " 事件"
+          " 实体"
         : "还没有探索结果";
-    const currentStatus = describeCurrentSiteStatus();
+    const allowedDomains = site && Array.isArray(site.allowed_domains) ? site.allowed_domains.join(", ") : normalizeString(refs.siteDomainsInput.value) || "未设置";
+    const sessionName = normalizeString((site && site.session_name) || refs.siteSessionSelect.value) || "未设置";
+    const providerName = normalizeString((site && site.provider_id) || refs.siteProviderSelect.value) || "自动选择";
+    const runID = state.lastExplore && state.lastExplore.run_id ? state.lastExplore.run_id : "暂无";
+    const artifactRoot = state.appMeta && state.appMeta.artifact_root ? state.appMeta.artifact_root : state.artifactRoot || "default";
 
     refs.currentSiteHeader.textContent = siteName;
-    refs.currentSiteStatus.textContent = currentStatus;
+    refs.currentSiteStatus.textContent = describeCurrentSiteStatus();
 
     if (!site && !siteURL) {
       refs.currentSiteOverview.innerHTML =
@@ -1645,14 +1748,9 @@
     refs.currentSiteOverview.innerHTML =
       '<article class="wb-site-overview-card">' +
       '<div class="wb-site-main">' +
-      '<div class="wb-site-title-row">' +
       "<div><h3>" +
       escapeHTML(siteName) +
       "</h3></div>" +
-      '<span class="wb-site-status">' +
-      escapeHTML(currentStatus) +
-      "</span>" +
-      "</div>" +
       '<p class="wb-site-url">' +
       escapeHTML(siteURL || "当前还没有保存 Start URL") +
       "</p>" +
@@ -1661,12 +1759,15 @@
       siteDetail("最近探索", latestExplore) +
       siteDetail("结果", countsLabel) +
       "</div>" +
+      '<details class="wb-details wb-details-subtle wb-site-advanced">' +
+      "<summary>高级信息</summary>" +
+      '<div class="wb-detail-grid">' +
+      siteDetail("Allowed Domains", allowedDomains) +
+      siteDetail("Session", sessionName) +
+      siteDetail("Provider", providerName) +
+      (isDeveloperMode() ? siteDetail("Run ID", runID) + siteDetail("Artifact Root", artifactRoot) : "") +
       "</div>" +
-      '<div class="wb-compact-stats">' +
-      miniStat("页面", String(state.pages.length)) +
-      miniStat("API", String(state.apis.length)) +
-      miniStat("实体", String(state.entities.length)) +
-      miniStat("事件", String(totalPageEventCount(state.pages))) +
+      "</details>" +
       "</div>" +
       "</article>";
   }
@@ -1693,6 +1794,32 @@
 
   function isDeveloperMode() {
     return state.viewMode === "developer";
+  }
+
+  function handleFlowEditorInput() {
+    state.currentFlowYAML = refs.flowEditor.value || "";
+    syncFlowActionButtons();
+  }
+
+  function setCurrentFlowYAML(value) {
+    state.currentFlowYAML = typeof value === "string" ? value : "";
+    refs.flowEditor.value = state.currentFlowYAML || "# 还没有生成 Flow";
+    syncFlowActionButtons();
+  }
+
+  function currentFlowYAMLValue() {
+    return typeof state.currentFlowYAML === "string" ? state.currentFlowYAML : "";
+  }
+
+  function originalFlowYAMLValue() {
+    return state.lastPlan && typeof state.lastPlan.flow_yaml === "string" ? state.lastPlan.flow_yaml : "";
+  }
+
+  function syncFlowActionButtons() {
+    const hasFlow = !!normalizeString(currentFlowYAMLValue());
+    refs.runFlowButton.disabled = !hasFlow;
+    refs.replayFlowButton.disabled = !hasFlow;
+    refs.runRepairedFlowButton.disabled = !hasFlow;
   }
 
   function normalizeViewMode(value) {
@@ -1726,17 +1853,34 @@
     }, 0);
   }
 
+  function summarizeEventLevels(events) {
+    return (events || []).reduce(
+      (summary, item) => {
+        const level = normalizeString(item && item.level).toLowerCase();
+        if (level.includes("error")) {
+          summary.error += 1;
+        } else if (level.includes("warn")) {
+          summary.warning += 1;
+        } else {
+          summary.info += 1;
+        }
+        return summary;
+      },
+      { warning: 0, info: 0, error: 0 }
+    );
+  }
+
   function describeCurrentSiteStatus() {
     const hasSite = !!normalizeString(state.currentSiteId);
     const hasKnowledge =
       state.pages.length || state.apis.length || state.entities.length || (state.lastExplore && state.lastExplore.finished_at);
     if (!hasSite) {
-      return "等待选择站点";
+      return "未选择";
     }
     if (hasKnowledge) {
-      return "站点探索已完成";
+      return "已探索";
     }
-    return "等待探索";
+    return "待探索";
   }
 
   function describeExploreHeadline() {
@@ -1756,24 +1900,47 @@
     );
   }
 
+  function describeObservationStatus(summary) {
+    const technical = normalizeObservationTechnicalDetail(summary && summary.observation_summary);
+    const observationErrorCount = Number(summary && summary.observation_error_count ? summary.observation_error_count : summary && summary.observationErrorCount ? summary.observationErrorCount : 0);
+    if (!summary) {
+      return {
+        message: "页面结构观察信息暂不可用。",
+        technical: "",
+      };
+    }
+    if (observationErrorCount > 0 || technical) {
+      return {
+        message: "页面结构观察已降级，已优先保留接口识别和探索结果保存，页面元素识别可能不完整。",
+        technical: technical,
+      };
+    }
+    return {
+      message: "已完成页面结构观察。",
+      technical: "",
+    };
+  }
+
+  function normalizeObservationTechnicalDetail(value) {
+    const text = normalizeString(value);
+    if (!text) {
+      return "";
+    }
+    return /observe skipped|playwright rpc|safe mode|fallback|error|failed|降级/i.test(text) ? text : "";
+  }
+
   function summarizeObservationNote(summary) {
     if (!summary) {
       return "";
     }
-    if (summary.observationErrorCount > 0 || /降级|fallback/i.test(summary.observationSummary || "")) {
-      return "DOM 观察已降级，不影响 API 识别";
-    }
-    return normalizeString(summary.observationSummary);
+    return describeObservationStatus(summary).message;
   }
 
   function summarizePageObservation(summary) {
     if (!summary) {
       return "";
     }
-    if (Number(summary.observation_error_count || 0) > 0 || /降级|fallback/i.test(summary.observation_summary || "")) {
-      return "DOM 观察已降级，不影响 API 识别";
-    }
-    return normalizeString(summary.observation_summary) || "已完成 DOM 观察。";
+    return describeObservationStatus(summary).message;
   }
 
   function describePayloadType(contentType, resourceType) {
@@ -1858,13 +2025,22 @@
     }
   }
 
-  function metaCard(label, value) {
+  function metaCard(label, value, tabTarget) {
+    const tagName = tabTarget ? "button" : "div";
+    const attrs = tabTarget
+      ? ' class="wb-meta-card wb-meta-card-action" type="button" data-tab-target="' + escapeAttr(tabTarget) + '"'
+      : ' class="wb-meta-card"';
     return (
-      '<div class="wb-meta-card"><span>' +
+      "<" +
+      tagName +
+      attrs +
+      "><span>" +
       escapeHTML(label) +
       "</span><strong>" +
       escapeHTML(value) +
-      "</strong></div>"
+      "</strong></" +
+      tagName +
+      ">"
     );
   }
 
@@ -1906,8 +2082,26 @@
     }
   }
 
-  function riskPill(risk) {
+  function formatRiskLabel(risk) {
     const normalized = normalizeString(risk) || "unknown";
+    switch (normalized) {
+      case "read":
+        return "read";
+      case "read_download":
+        return "read_download";
+      case "write_low":
+        return "write_low";
+      case "write_high":
+        return "write_high";
+      case "critical":
+        return "critical";
+      default:
+        return normalized;
+    }
+  }
+
+  function riskPill(risk) {
+    const normalized = formatRiskLabel(risk);
     return '<span class="wb-pill wb-pill-risk-' + escapeHTML(normalized) + '">' + escapeHTML(normalized) + "</span>";
   }
 

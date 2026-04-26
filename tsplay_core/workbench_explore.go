@@ -2543,6 +2543,7 @@ func buildWorkbenchPageCard(site WorkbenchSiteConfig, runID string, discoveryMod
 		}
 	}
 	title = firstNonEmpty(title, route, rawURL)
+	flowHints := buildWorkbenchPageFlowHints(title, inputFields, actions, shape.Tables, textSnippets, apiHits)
 	card := WorkbenchPageCard{
 		ID:              fmt.Sprintf("route:%s:%s", site.SiteID, route),
 		SiteID:          site.SiteID,
@@ -2561,6 +2562,7 @@ func buildWorkbenchPageCard(site WorkbenchSiteConfig, runID string, discoveryMod
 		Events:          events,
 		APIHits:         apiHits,
 		CaptureSummary:  buildWorkbenchPageCaptureSummary(observation, rawRecords, events),
+		FlowHints:       flowHints,
 		TextSnippets:    textSnippets,
 		LinkGroups:      linkGroups,
 		KeyElements:     keyElements,
@@ -2953,6 +2955,202 @@ func buildWorkbenchKeyElements(inputs []WorkbenchFieldCard, actions []WorkbenchA
 		}
 	}
 	return items
+}
+
+func buildWorkbenchPageFlowHints(title string, inputs []WorkbenchFieldCard, actions []WorkbenchActionCard, tables []WorkbenchTableCard, textSnippets []string, apiHits []WorkbenchPageAPIHit) *WorkbenchPageFlowHints {
+	hints := &WorkbenchPageFlowHints{}
+
+	for _, field := range inputs[:minWorkbenchInt(len(inputs), 4)] {
+		label := firstNonEmpty(field.Label, field.Name, "input")
+		detail := strings.TrimSpace(field.Selector)
+		item := "优先填写 " + label
+		if detail != "" {
+			item += "（" + detail + "）"
+		}
+		hints.PrimaryInputs = appendUniqueWorkbenchHint(hints.PrimaryInputs, item, 4)
+	}
+
+	if len(actions) > 0 {
+		rankedActions := append([]WorkbenchActionCard{}, actions...)
+		sort.SliceStable(rankedActions, func(i, j int) bool {
+			left := scoreWorkbenchActionFlowHint(rankedActions[i])
+			right := scoreWorkbenchActionFlowHint(rankedActions[j])
+			if left == right {
+				return rankedActions[i].Label < rankedActions[j].Label
+			}
+			return left > right
+		})
+		for _, action := range rankedActions[:minWorkbenchInt(len(rankedActions), 4)] {
+			label := firstNonEmpty(action.Label, action.Selector, "button")
+			item := "优先点击 " + label
+			if selector := strings.TrimSpace(action.Selector); selector != "" {
+				item += "（" + selector + "）"
+			}
+			if risk := strings.TrimSpace(action.Risk); risk != "" && risk != "read" {
+				item += " · " + risk
+			}
+			hints.PrimaryActions = appendUniqueWorkbenchHint(hints.PrimaryActions, item, 4)
+		}
+	}
+
+	if title = workbenchCleanText(title, 120); title != "" && title != "/" {
+		hints.WaitConditions = appendUniqueWorkbenchHint(hints.WaitConditions, "等待页面标题稳定："+title, 4)
+	}
+	if len(inputs) > 0 {
+		field := inputs[0]
+		label := firstNonEmpty(field.Label, field.Name, "输入框")
+		detail := firstNonEmpty(strings.TrimSpace(field.Selector), label)
+		hints.WaitConditions = appendUniqueWorkbenchHint(hints.WaitConditions, "等待主输入可见："+detail, 4)
+	}
+	if len(actions) > 0 {
+		action := actions[0]
+		label := firstNonEmpty(strings.TrimSpace(action.Selector), action.Label, "按钮")
+		hints.WaitConditions = appendUniqueWorkbenchHint(hints.WaitConditions, "等待主动作可点击："+label, 4)
+	}
+	if len(tables) > 0 {
+		table := tables[0]
+		label := firstNonEmpty(table.Name, table.Selector, "表格")
+		hints.WaitConditions = appendUniqueWorkbenchHint(hints.WaitConditions, "等待表格出现："+label, 4)
+	}
+	for _, snippet := range textSnippets {
+		if workbenchEquivalentSummaryText(title, snippet) {
+			continue
+		}
+		hints.WaitConditions = appendUniqueWorkbenchHint(hints.WaitConditions, "等待页面出现文本："+workbenchCleanText(snippet, 80), 4)
+		if len(hints.WaitConditions) >= 4 {
+			break
+		}
+	}
+
+	if len(apiHits) > 0 {
+		rankedHits := append([]WorkbenchPageAPIHit{}, apiHits...)
+		sort.SliceStable(rankedHits, func(i, j int) bool {
+			left := scoreWorkbenchAPIFlowHint(rankedHits[i])
+			right := scoreWorkbenchAPIFlowHint(rankedHits[j])
+			if left == right {
+				return rankedHits[i].PathTemplate < rankedHits[j].PathTemplate
+			}
+			return left > right
+		})
+		for _, hit := range rankedHits[:minWorkbenchInt(len(rankedHits), 4)] {
+			level := "低优先级"
+			score := scoreWorkbenchAPIFlowHint(hit)
+			if score >= 90 {
+				level = "高优先级"
+			} else if score >= 50 {
+				level = "中优先级"
+			}
+			item := fmt.Sprintf("%s · %s %s", level, firstNonEmpty(hit.Method, "GET"), firstNonEmpty(hit.PathTemplate, hit.URL))
+			op := strings.TrimSpace(hit.OperationType)
+			if op != "" {
+				item += " · " + op
+			}
+			if risk := strings.TrimSpace(hit.Risk); risk != "" && risk != op {
+				item += " · " + risk
+			}
+			hints.APIPriority = appendUniqueWorkbenchHint(hints.APIPriority, item, 4)
+		}
+	}
+
+	if len(hints.PrimaryInputs) == 0 &&
+		len(hints.PrimaryActions) == 0 &&
+		len(hints.WaitConditions) == 0 &&
+		len(hints.APIPriority) == 0 {
+		return nil
+	}
+	return hints
+}
+
+func appendUniqueWorkbenchHint(items []string, value string, limit int) []string {
+	value = workbenchCleanText(strings.TrimSpace(value), 140)
+	if value == "" {
+		return items
+	}
+	for _, item := range items {
+		if item == value {
+			return items
+		}
+	}
+	items = append(items, value)
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
+func scoreWorkbenchActionFlowHint(action WorkbenchActionCard) int {
+	score := 10
+	label := strings.ToLower(strings.TrimSpace(action.Label))
+	kind := strings.ToLower(strings.TrimSpace(action.Kind))
+	switch {
+	case workbenchContainsAny(label, "搜索", "查询", "筛选", "查找", "检索"):
+		score += 120
+	case workbenchContainsAny(label, "查看", "详情", "打开", "进入", "下一步", "继续"):
+		score += 90
+	case workbenchContainsAny(label, "导出", "下载"):
+		score += 70
+	case workbenchContainsAny(label, "登录", "提交", "确认"):
+		score += 50
+	}
+	if kind == "submit" {
+		score += 45
+	}
+	switch strings.TrimSpace(action.Risk) {
+	case "read":
+		score += 35
+	case "read_download":
+		score += 25
+	case "write_low":
+		score -= 35
+	case "write_high", "critical":
+		score -= 60
+	}
+	if strings.TrimSpace(action.Selector) != "" {
+		score += 5
+	}
+	return score
+}
+
+func scoreWorkbenchAPIFlowHint(hit WorkbenchPageAPIHit) int {
+	score := 0
+	switch strings.TrimSpace(hit.OperationType) {
+	case "read":
+		score += 100
+	case "download":
+		score += 65
+	case "write":
+		score -= 40
+	}
+	switch strings.TrimSpace(hit.Risk) {
+	case "read":
+		score += 20
+	case "read_download":
+		score += 10
+	case "write_low":
+		score -= 10
+	case "write_high", "critical":
+		score -= 60
+	}
+	if hit.Status >= 200 && hit.Status < 300 {
+		score += 15
+	}
+	if strings.TrimSpace(hit.Error) != "" {
+		score -= 50
+	}
+	path := strings.ToLower(strings.TrimSpace(hit.PathTemplate))
+	switch {
+	case workbenchContainsAny(path, "search", "query", "list", "detail", "suggest", "page"):
+		score += 18
+	case workbenchContainsAny(path, "config", "profile", "info", "init"):
+		score += 10
+	case workbenchContainsAny(path, "track", "collect", "beacon", "ad", "analytics"):
+		score -= 50
+	}
+	contentType := strings.ToLower(strings.TrimSpace(hit.ContentType))
+	if strings.Contains(contentType, "json") {
+		score += 6
+	}
+	return score
 }
 
 func collectWorkbenchTextSnippets(shape *workbenchPageShape, observation *PageObservation) []string {
