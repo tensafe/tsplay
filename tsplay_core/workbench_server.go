@@ -3,8 +3,10 @@ package tsplay_core
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type workbenchServer struct {
@@ -28,7 +30,7 @@ func NewWorkbenchAPIHandler(artifactRoot string) http.Handler {
 	mux.HandleFunc("/api/workbench/tasks/repair/auto", server.handleTaskRepairAuto)
 	mux.HandleFunc("/api/workbench/tasks/repair", server.handleTaskRepair)
 
-	return withWorkbenchCORS(mux)
+	return withWorkbenchRequestLogging(withWorkbenchCORS(mux))
 }
 
 func StartWorkbenchAPIServer(addr string, artifactRoot string) error {
@@ -46,6 +48,58 @@ func withWorkbenchCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func withWorkbenchRequestLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startedAt := time.Now()
+		recorder := &workbenchResponseRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		duration := time.Since(startedAt)
+		if workbenchShouldSkipAccessLog(r.Method, r.URL.Path, recorder.status, duration) {
+			return
+		}
+		log.Printf(
+			"workbench api method=%s path=%s status=%d duration_ms=%d",
+			r.Method,
+			r.URL.Path,
+			recorder.status,
+			duration.Milliseconds(),
+		)
+	})
+}
+
+func workbenchShouldSkipAccessLog(method string, path string, status int, duration time.Duration) bool {
+	if status >= 400 {
+		return false
+	}
+	if strings.ToUpper(strings.TrimSpace(method)) != http.MethodGet {
+		return false
+	}
+	path = strings.TrimSpace(path)
+	switch {
+	case path == "/api/workbench/health",
+		path == "/api/workbench/sessions",
+		path == "/api/workbench/providers",
+		path == "/api/workbench/sites":
+		return true
+	case strings.HasSuffix(path, "/pages"),
+		strings.HasSuffix(path, "/apis"),
+		strings.HasSuffix(path, "/entities"):
+		return duration < 250*time.Millisecond
+	default:
+		return false
+	}
+}
+
+type workbenchResponseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *workbenchResponseRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
 }
 
 func (s *workbenchServer) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +152,7 @@ func (s *workbenchServer) handleSessions(w http.ResponseWriter, r *http.Request)
 			writeWorkbenchError(w, http.StatusBadRequest, err)
 			return
 		}
+		log.Printf("workbench session saved name=%s kind=%s", saved.Name, saved.Kind)
 		writeWorkbenchResponse(w, http.StatusOK, BuildFlowSavedSessionDetail(*saved, s.artifactRoot))
 	default:
 		workbenchMethodNotAllowed(w, http.MethodGet, http.MethodPost)
@@ -149,6 +204,7 @@ func (s *workbenchServer) handleProviders(w http.ResponseWriter, r *http.Request
 			writeWorkbenchError(w, http.StatusBadRequest, err)
 			return
 		}
+		log.Printf("workbench provider saved provider_id=%s type=%s enabled=%v", saved.ProviderID, saved.Type, saved.Enabled)
 		writeWorkbenchResponse(w, http.StatusOK, BuildWorkbenchProviderView(*saved))
 	default:
 		workbenchMethodNotAllowed(w, http.MethodGet, http.MethodPost)
@@ -196,6 +252,14 @@ func (s *workbenchServer) handleSites(w http.ResponseWriter, r *http.Request) {
 			writeWorkbenchError(w, http.StatusBadRequest, err)
 			return
 		}
+		log.Printf(
+			"workbench site saved site_id=%s start_url=%s session=%s provider=%s domains=%d",
+			saved.SiteID,
+			saved.StartURL,
+			saved.SessionName,
+			saved.ProviderID,
+			len(saved.AllowedDomains),
+		)
 		writeWorkbenchResponse(w, http.StatusOK, saved)
 	default:
 		workbenchMethodNotAllowed(w, http.MethodGet, http.MethodPost)
@@ -236,6 +300,13 @@ func (s *workbenchServer) handleSiteSubroutes(w http.ResponseWriter, r *http.Req
 			MaxPages  int  `json:"max_pages"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&payload)
+		log.Printf(
+			"workbench explore request site=%s headless=%v max_pages=%d timeout_ms=%d",
+			siteID,
+			payload.Headless,
+			payload.MaxPages,
+			payload.TimeoutMS,
+		)
 		result, err := ExploreWorkbenchSite(WorkbenchExploreOptions{
 			SiteID:       siteID,
 			ArtifactRoot: s.artifactRoot,
@@ -247,6 +318,15 @@ func (s *workbenchServer) handleSiteSubroutes(w http.ResponseWriter, r *http.Req
 			writeWorkbenchError(w, http.StatusBadRequest, err)
 			return
 		}
+		log.Printf(
+			"workbench explore response site=%s run_id=%s mode=%s pages=%d apis=%d entities=%d",
+			siteID,
+			result.RunID,
+			result.ExploreMode,
+			len(result.Pages),
+			len(result.APIs),
+			len(result.Entities),
+		)
 		writeWorkbenchResponse(w, http.StatusOK, result)
 	case "pages":
 		if r.Method != http.MethodGet {
@@ -297,11 +377,25 @@ func (s *workbenchServer) handleTaskPlan(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	payload.ArtifactRoot = firstNonEmpty(payload.ArtifactRoot, s.artifactRoot)
+	log.Printf(
+		"workbench plan request site=%s intent=%q",
+		payload.SiteID,
+		workbenchCleanText(payload.Intent, 120),
+	)
 	plan, err := BuildWorkbenchTaskPlan(payload)
 	if err != nil {
 		writeWorkbenchError(w, http.StatusBadRequest, err)
 		return
 	}
+	log.Printf(
+		"workbench plan response site=%s strategy=%s matched_pages=%d matched_apis=%d flow_name=%s requires_confirm=%v",
+		plan.SiteID,
+		plan.Strategy,
+		len(plan.MatchedPages),
+		len(plan.MatchedAPIs),
+		plan.FlowName,
+		plan.RequiresUserConfirm,
+	)
 	writeWorkbenchResponse(w, http.StatusOK, plan)
 }
 
@@ -321,6 +415,13 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 		writeWorkbenchError(w, http.StatusBadRequest, fmt.Errorf("decode task run request: %w", err))
 		return
 	}
+	log.Printf(
+		"workbench run request site=%s flow_yaml=%t headless_override=%t intent=%q",
+		payload.SiteID,
+		strings.TrimSpace(payload.FlowYAML) != "",
+		payload.Headless != nil,
+		workbenchCleanText(payload.Intent, 120),
+	)
 
 	artifactRoot := firstNonEmpty(strings.TrimSpace(payload.ArtifactRoot), s.artifactRoot)
 	flowYAML := strings.TrimSpace(payload.FlowYAML)
@@ -332,6 +433,7 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 	if flowYAML != "" {
 		flow, err = ParseFlow([]byte(flowYAML), "yaml")
 		if err != nil {
+			log.Printf("workbench run parse_flow_failed site=%s err=%v", payload.SiteID, err)
 			writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 				"ok":    false,
 				"error": err.Error(),
@@ -339,12 +441,14 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	} else {
+		log.Printf("workbench run planning_inline site=%s", payload.SiteID)
 		plan, err = BuildWorkbenchTaskPlan(WorkbenchTaskPlanOptions{
 			SiteID:       payload.SiteID,
 			ArtifactRoot: artifactRoot,
 			Intent:       payload.Intent,
 		})
 		if err != nil {
+			log.Printf("workbench run planning_failed site=%s err=%v", payload.SiteID, err)
 			writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 				"ok":    false,
 				"error": err.Error(),
@@ -352,6 +456,7 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if plan.Flow == nil {
+			log.Printf("workbench run no_runnable_flow site=%s strategy=%s reason=%q", payload.SiteID, plan.Strategy, plan.Reason)
 			writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 				"ok":    false,
 				"error": firstNonEmpty(plan.Reason, "planner did not produce a runnable flow"),
@@ -406,6 +511,25 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 	if runErr != nil {
 		response["error"] = runErr.Error()
 	}
+	runID := ""
+	stepCount := 0
+	runErrorText := ""
+	if result != nil {
+		runID = result.RunID
+		stepCount = len(result.Trace)
+	}
+	if runErr != nil {
+		runErrorText = runErr.Error()
+	}
+	log.Printf(
+		"workbench run response site=%s flow=%s ok=%v run_id=%s trace_steps=%d err=%q",
+		payload.SiteID,
+		flow.Name,
+		runErr == nil,
+		runID,
+		stepCount,
+		runErrorText,
+	)
 	writeWorkbenchResponse(w, http.StatusOK, response)
 }
 
@@ -425,6 +549,7 @@ func (s *workbenchServer) handleTaskRepair(w http.ResponseWriter, r *http.Reques
 		writeWorkbenchError(w, http.StatusBadRequest, fmt.Errorf("decode task repair request: %w", err))
 		return
 	}
+	log.Printf("workbench repair request artifact_root=%s error=%q", payload.ArtifactRoot, workbenchCleanText(payload.Error, 120))
 
 	repairData, err := s.buildWorkbenchRepairData(workbenchRepairRequest{
 		ArtifactRoot:       payload.ArtifactRoot,
@@ -434,12 +559,18 @@ func (s *workbenchServer) handleTaskRepair(w http.ResponseWriter, r *http.Reques
 		MaxArtifactExcerpt: payload.MaxArtifactExcerpt,
 	})
 	if err != nil {
+		log.Printf("workbench repair build_failed err=%v", err)
 		writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 		return
 	}
+	log.Printf(
+		"workbench repair response failed_step=%s hints=%d",
+		repairData.Context.FailedStepPath,
+		len(repairData.Context.RepairHints),
+	)
 	writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 		"ok":      true,
 		"context": repairData.Context,
@@ -465,6 +596,12 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 		writeWorkbenchError(w, http.StatusBadRequest, fmt.Errorf("decode auto repair request: %w", err))
 		return
 	}
+	log.Printf(
+		"workbench repair_auto request site=%s provider_id=%s error=%q",
+		payload.SiteID,
+		payload.ProviderID,
+		workbenchCleanText(payload.Error, 120),
+	)
 
 	repairData, err := s.buildWorkbenchRepairData(workbenchRepairRequest{
 		ArtifactRoot:       payload.ArtifactRoot,
@@ -474,6 +611,7 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 		MaxArtifactExcerpt: payload.MaxArtifactExcerpt,
 	})
 	if err != nil {
+		log.Printf("workbench repair_auto build_failed err=%v", err)
 		writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 			"ok":    false,
 			"error": err.Error(),
@@ -483,6 +621,7 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 
 	providerConfig, providerView, err := s.resolveWorkbenchRepairProvider(payload.ProviderID, payload.SiteID)
 	if err != nil {
+		log.Printf("workbench repair_auto resolve_provider_failed site=%s provider_id=%s err=%v", payload.SiteID, payload.ProviderID, err)
 		writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 			"ok":       false,
 			"error":    err.Error(),
@@ -497,6 +636,7 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 		firstNonEmpty(repairData.Repair.Prompt, repairData.Context.Prompt),
 	)
 	if err != nil {
+		log.Printf("workbench repair_auto provider_failed provider_id=%s err=%v", runtimeProviderView.ProviderID, err)
 		writeWorkbenchResponse(w, http.StatusOK, map[string]any{
 			"ok":       false,
 			"error":    err.Error(),
@@ -515,6 +655,7 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 		"repaired_flow_yaml": repairedFlowYAML,
 	}
 	if _, err := ParseFlow([]byte(repairedFlowYAML), "yaml"); err != nil {
+		log.Printf("workbench repair_auto validation_failed provider_id=%s err=%v", runtimeProviderView.ProviderID, err)
 		response["ok"] = false
 		response["validation_error"] = err.Error()
 		writeWorkbenchResponse(w, http.StatusOK, map[string]any{
@@ -528,6 +669,12 @@ func (s *workbenchServer) handleTaskRepairAuto(w http.ResponseWriter, r *http.Re
 		})
 		return
 	}
+	log.Printf(
+		"workbench repair_auto response provider_id=%s model=%s repaired_flow=%t",
+		runtimeProviderView.ProviderID,
+		runtimeProviderView.ResolvedModel,
+		strings.TrimSpace(repairedFlowYAML) != "",
+	)
 	writeWorkbenchResponse(w, http.StatusOK, response)
 }
 
@@ -624,6 +771,9 @@ func (s *workbenchServer) resolveWorkbenchRepairProvider(providerID string, site
 
 func writeWorkbenchResponse(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.WriteHeader(status)
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {

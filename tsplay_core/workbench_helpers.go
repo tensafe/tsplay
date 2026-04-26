@@ -196,6 +196,24 @@ func flattenWorkbenchPageCard(card WorkbenchPageCard) string {
 	for _, action := range card.Actions {
 		parts = append(parts, action.Label, action.Kind)
 	}
+	for _, field := range card.InputFields {
+		parts = append(parts, field.Name, field.Label, field.Selector)
+	}
+	for _, event := range card.Events {
+		parts = append(parts, event.Type, event.Level, event.Message, event.Detail, event.URL)
+	}
+	for _, hit := range card.APIHits {
+		parts = append(parts, hit.Method, hit.PathTemplate, hit.URL, hit.OperationType, hit.Risk, hit.ContentType, hit.Error)
+	}
+	if card.FlowHints != nil {
+		parts = append(parts, card.FlowHints.PrimaryInputs...)
+		parts = append(parts, card.FlowHints.PrimaryActions...)
+		parts = append(parts, card.FlowHints.WaitConditions...)
+		parts = append(parts, card.FlowHints.APIPriority...)
+	}
+	parts = append(parts, card.LinkGroups...)
+	parts = append(parts, card.KeyElements...)
+	parts = append(parts, card.TextSnippets...)
 	return strings.Join(parts, " ")
 }
 

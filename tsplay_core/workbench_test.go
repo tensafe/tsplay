@@ -1,10 +1,12 @@
 package tsplay_core
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -300,6 +302,419 @@ func TestBuildWorkbenchTaskPlanFallbacks(t *testing.T) {
 			t.Fatalf("unexpected target_url: %#v", plan.Flow.Vars["target_url"])
 		}
 	})
+}
+
+func TestBuildWorkbenchFallbackShape(t *testing.T) {
+	shape := buildWorkbenchFallbackShape("https://example.com/admin/orders", "timeout")
+	if shape == nil {
+		t.Fatalf("expected fallback shape")
+	}
+	if shape.Title != "/admin/orders" {
+		t.Fatalf("unexpected fallback title: %q", shape.Title)
+	}
+	if len(shape.Forms) != 0 || len(shape.Actions) != 0 || len(shape.Links) != 0 {
+		t.Fatalf("expected empty fallback shape: %#v", shape)
+	}
+}
+
+func TestObserveWorkbenchPageNoEvaluate(t *testing.T) {
+	observation := observeWorkbenchPageNoEvaluate(nil, &workbenchPageShape{
+		Title: "订单管理",
+	}, PageObservationOptions{
+		URL: "https://example.com/admin/orders",
+	})
+	if observation == nil {
+		t.Fatalf("expected observation")
+	}
+	if observation.Title != "订单管理" {
+		t.Fatalf("unexpected observation title: %q", observation.Title)
+	}
+	if observation.PageSummary != "订单管理" {
+		t.Fatalf("unexpected observation summary: %q", observation.PageSummary)
+	}
+	if len(observation.Elements) != 0 || len(observation.ContentElements) != 0 {
+		t.Fatalf("expected no-evaluate observation to skip element extraction: %#v", observation)
+	}
+	if len(observation.Errors) == 0 || !strings.Contains(observation.Errors[0], "safe mode") {
+		t.Fatalf("expected safe-mode marker error, got: %#v", observation.Errors)
+	}
+}
+
+func TestWorkbenchShouldRetryDirectHTTPFetch(t *testing.T) {
+	if !workbenchShouldRetryDirectHTTPFetch(errors.New(`fetch html: Get "https://www.163.com/": proxyconnect tcp: dial tcp 127.0.0.1:7890: connect: connection refused`)) {
+		t.Fatalf("expected proxy failure to trigger direct retry")
+	}
+	if workbenchShouldRetryDirectHTTPFetch(errors.New("fetch html: tls handshake timeout")) {
+		t.Fatalf("did not expect generic timeout to trigger proxy retry")
+	}
+}
+
+func TestBuildWorkbenchPageCaptureSummarySafeMode(t *testing.T) {
+	summary := buildWorkbenchPageCaptureSummary(&PageObservation{
+		URL:         "https://example.com",
+		Title:       "Example",
+		PageSummary: "Example",
+		Errors:      []string{"observe skipped: no Playwright RPC safe mode"},
+	}, []workbenchNetworkRecord{
+		{Method: "GET", URL: "https://example.com/api/demo", ResourceType: "xhr", ContentType: "application/json"},
+	}, []WorkbenchPageEvent{
+		{Type: "frame_navigated", Message: "frame navigated"},
+	})
+	if summary == nil {
+		t.Fatalf("expected summary")
+	}
+	if !strings.Contains(summary.FilterRule, "不会在 Playwright 回调里读取 response body") {
+		t.Fatalf("unexpected filter rule: %q", summary.FilterRule)
+	}
+	if !strings.Contains(summary.ObservationMode, "默认安全模式") {
+		t.Fatalf("unexpected observation mode: %q", summary.ObservationMode)
+	}
+	if summary.ReadableResponseCount != 0 {
+		t.Fatalf("expected no structured responses in safe mode, got %d", summary.ReadableResponseCount)
+	}
+}
+
+func TestExtractWorkbenchTextSnippetsFromHTML(t *testing.T) {
+	htmlBody := `
+	<html>
+	  <head>
+	    <meta name="description" content="飞书开放平台，帮助开发者构建企业应用。">
+	  </head>
+	  <body>
+	    <h1>飞书开放平台</h1>
+	    <p>面向企业协作场景的开发者入口。</p>
+	    <ul><li>文档中心</li><li>API 参考</li></ul>
+	  </body>
+	</html>`
+	items := extractWorkbenchTextSnippetsFromHTML(htmlBody, 6)
+	if len(items) < 3 {
+		t.Fatalf("expected snippets, got %#v", items)
+	}
+	if items[0] != "飞书开放平台，帮助开发者构建企业应用。" {
+		t.Fatalf("unexpected first snippet: %#v", items)
+	}
+}
+
+func TestInferWorkbenchSchemaFromURLQuery(t *testing.T) {
+	schema, ok := inferWorkbenchSchemaFromURLQuery("https://example.com/api/orders/search?status=paid&page=2&debug=true").(map[string]any)
+	if !ok {
+		t.Fatalf("expected schema map")
+	}
+	if schema["status"] != "string" || schema["page"] != "number" || schema["debug"] != "boolean" {
+		t.Fatalf("unexpected query schema: %#v", schema)
+	}
+}
+
+func TestWorkbenchPostProcessNetworkRecordsPublicDenoise(t *testing.T) {
+	records := workbenchPostProcessNetworkRecords([]workbenchNetworkRecord{
+		{
+			Method:       "GET",
+			URL:          "https://gw.m.163.com/search/api/v1/pc-wap/rolling-word?tab=hot",
+			ResourceType: "xhr",
+			ContentType:  "application/json",
+		},
+		{
+			Method:       "POST",
+			URL:          "https://h5.analytics.126.net/news/g",
+			ResourceType: "fetch",
+			ContentType:  "application/octet-stream",
+		},
+		{
+			Method:       "GET",
+			URL:          "https://revive.outin.cn/www/gtr/gtrspc.php?zones=1",
+			ResourceType: "xhr",
+			ContentType:  "application/json",
+		},
+	}, "public_html_fallback")
+	if len(records) != 1 {
+		t.Fatalf("expected only one public API record after denoise, got %#v", records)
+	}
+	schema, ok := records[0].RequestSchema.(map[string]any)
+	if !ok || schema["tab"] != "string" {
+		t.Fatalf("expected query schema to be inferred after post process, got %#v", records[0].RequestSchema)
+	}
+}
+
+func TestBuildWorkbenchLinkGroups(t *testing.T) {
+	groups := buildWorkbenchLinkGroups([]WorkbenchLinkCard{
+		{Text: "新闻", Href: "https://news.example.com"},
+		{Text: "体育", Href: "https://sports.example.com"},
+		{Text: "财经", Href: "https://finance.example.com"},
+		{Text: "娱乐", Href: "https://ent.example.com"},
+		{Text: "登录", Href: "https://passport.example.com/login"},
+		{Text: "下载APP", Href: "https://www.example.com/app"},
+	})
+	if len(groups) < 2 {
+		t.Fatalf("expected grouped link summary, got %#v", groups)
+	}
+	if !strings.Contains(groups[0], "高频入口") {
+		t.Fatalf("expected first group to describe hot entries, got %#v", groups)
+	}
+}
+
+func TestBuildWorkbenchKeyElements(t *testing.T) {
+	items := buildWorkbenchKeyElements(
+		[]WorkbenchFieldCard{
+			{Name: "keyword", Label: "搜索框", Selector: "#kw"},
+		},
+		[]WorkbenchActionCard{
+			{Label: "百度一下", Selector: "#su"},
+		},
+		[]WorkbenchTableCard{
+			{Name: "订单列表", Columns: []string{"订单号", "状态", "金额"}},
+		},
+		[]WorkbenchLinkCard{
+			{Text: "新闻", Href: "https://news.example.com"},
+		},
+	)
+	if len(items) < 4 {
+		t.Fatalf("expected key elements, got %#v", items)
+	}
+	if !strings.Contains(items[0], "输入 · 搜索框") {
+		t.Fatalf("unexpected first key element: %#v", items)
+	}
+}
+
+func TestWorkbenchPageCardSummaryUsesSemanticContext(t *testing.T) {
+	shape := &workbenchPageShape{
+		Title: "百度",
+		Forms: []WorkbenchFormCard{
+			{
+				Name: "页面输入控件",
+				Fields: []WorkbenchFieldCard{
+					{Name: "kw", Label: "搜索框", Selector: "#kw"},
+				},
+			},
+		},
+		Actions: []WorkbenchActionCard{
+			{Label: "百度一下", Kind: "submit", Selector: "#su"},
+		},
+		Links: []WorkbenchLinkCard{
+			{Text: "新闻", Href: "https://news.baidu.com"},
+		},
+		TextSnippets: []string{
+			"百度一下，你就知道",
+			"搜索新闻资讯视频地图贴吧文库",
+		},
+	}
+
+	summary := workbenchPageCardSummary(
+		shape.Title,
+		shape,
+		nil,
+		shape.TextSnippets,
+		[]string{"输入 · 搜索框 · #kw", "动作 · 百度一下 · #su"},
+		[]string{"高频入口：新闻、视频、贴吧"},
+		[]WorkbenchPageEvent{{Type: "console"}},
+		[]WorkbenchPageAPIHit{{Method: "GET", PathTemplate: "/s"}},
+	)
+
+	if !strings.Contains(summary, "页面内容：百度一下，你就知道") {
+		t.Fatalf("expected semantic content summary, got %q", summary)
+	}
+	if !strings.Contains(summary, "关键元素：输入 · 搜索框 · #kw") {
+		t.Fatalf("expected key element summary, got %q", summary)
+	}
+	if !strings.Contains(summary, "运行线索：1 个接口、1 条页面事件") {
+		t.Fatalf("expected runtime clue summary, got %q", summary)
+	}
+}
+
+func TestBuildWorkbenchPageCardPromotesSnippetToTitle(t *testing.T) {
+	card := buildWorkbenchPageCard(
+		WorkbenchSiteConfig{SiteID: "open_feishu_cn"},
+		"run-1",
+		"public_html_fallback",
+		"https://open.feishu.cn/",
+		&workbenchPageShape{
+			Title: "/",
+			TextSnippets: []string{
+				"飞书开放平台",
+				"连接企业业务系统与飞书能力",
+			},
+		},
+		nil,
+		"",
+		nil,
+		nil,
+	)
+
+	if card.Title != "飞书开放平台" {
+		t.Fatalf("expected snippet-promoted title, got %q", card.Title)
+	}
+	if !strings.Contains(card.Summary, "页面内容：连接企业业务系统与飞书能力") {
+		t.Fatalf("expected semantic summary to include text snippet, got %q", card.Summary)
+	}
+}
+
+func TestMergeWorkbenchShapes(t *testing.T) {
+	base := &workbenchPageShape{
+		Title: "/",
+	}
+	overlay := &workbenchPageShape{
+		Title: "百度一下，你就知道",
+		Forms: []WorkbenchFormCard{
+			{Name: "页面输入控件", Fields: []WorkbenchFieldCard{{Label: "搜索框", Selector: "#kw"}}},
+		},
+		Actions: []WorkbenchActionCard{
+			{Label: "百度一下", Selector: "#su"},
+		},
+		Links: []WorkbenchLinkCard{
+			{Text: "新闻", Href: "https://news.baidu.com"},
+		},
+	}
+	merged := mergeWorkbenchShapes(base, overlay, "https://www.baidu.com")
+	if merged == nil {
+		t.Fatalf("expected merged shape")
+	}
+	if len(merged.Forms) != 1 || len(merged.Actions) != 1 || len(merged.Links) != 1 {
+		t.Fatalf("expected merged key elements, got %#v", merged)
+	}
+}
+
+func TestCollectWorkbenchPageEventsAndSummary(t *testing.T) {
+	events := collectWorkbenchPageEvents([]WorkbenchPageEvent{
+		{
+			Type:    "frame_navigated",
+			Level:   "info",
+			Message: "frame navigated",
+			URL:     "https://example.com/admin/orders",
+		},
+		{
+			Type:    "popup",
+			Level:   "info",
+			Message: "popup opened",
+			URL:     "https://other.example.net/dialog",
+		},
+		{
+			Type:    "console",
+			Level:   "error",
+			Message: "search failed",
+		},
+	}, "https://example.com/admin/orders")
+	if len(events) != 2 {
+		t.Fatalf("expected 2 related events, got %d: %#v", len(events), events)
+	}
+	shape := &workbenchPageShape{
+		Title: "订单管理",
+		Forms: []WorkbenchFormCard{
+			{Name: "查询表单", Fields: []WorkbenchFieldCard{{Label: "订单号"}}},
+		},
+		Actions: []WorkbenchActionCard{{Label: "搜索"}},
+		Links:   []WorkbenchLinkCard{{Text: "详情"}},
+	}
+	summary := workbenchPageCardSummary(
+		shape.Title,
+		shape,
+		nil,
+		nil,
+		[]string{"输入 · 订单号", "动作 · 搜索"},
+		nil,
+		events,
+		[]WorkbenchPageAPIHit{{Method: "POST", PathTemplate: "/api/orders/search"}},
+	)
+	if !strings.Contains(summary, "2 条页面事件") {
+		t.Fatalf("expected summary to mention event count, got %q", summary)
+	}
+	if !strings.Contains(summary, "1 个接口") {
+		t.Fatalf("expected summary to mention api count, got %q", summary)
+	}
+}
+
+func TestFlattenWorkbenchPageCardIncludesEvents(t *testing.T) {
+	card := WorkbenchPageCard{
+		Title: "订单管理",
+		Events: []WorkbenchPageEvent{
+			{
+				Type:    "console",
+				Level:   "error",
+				Message: "search failed",
+				URL:     "https://example.com/admin/orders",
+			},
+		},
+	}
+	corpus := flattenWorkbenchPageCard(card)
+	if !strings.Contains(corpus, "search failed") {
+		t.Fatalf("expected flattened page card to include event message, got %q", corpus)
+	}
+}
+
+func TestNormalizeWorkbenchExploreURLCanonicalizesRoot(t *testing.T) {
+	left := normalizeWorkbenchExploreURL("https://www.163.com")
+	right := normalizeWorkbenchExploreURL("https://www.163.com/")
+	if left == "" || right == "" {
+		t.Fatalf("expected normalized urls to be non-empty")
+	}
+	if left != right {
+		t.Fatalf("expected same normalized url, got %q vs %q", left, right)
+	}
+}
+
+func TestWorkbenchShouldFollowDiscoveredLinks(t *testing.T) {
+	if workbenchShouldFollowDiscoveredLinks("public_html_fallback") {
+		t.Fatalf("public_html_fallback should not follow discovered links")
+	}
+	if !workbenchShouldFollowDiscoveredLinks("authorized_dom_api") {
+		t.Fatalf("authorized_dom_api should follow discovered links")
+	}
+}
+
+func TestWorkbenchShouldCaptureNetworkRequestFiltersStaticAssets(t *testing.T) {
+	if workbenchShouldCaptureNetworkRequest("https://example.com/assets/app.js", "fetch") {
+		t.Fatalf("expected js asset request to be ignored")
+	}
+	if workbenchShouldCaptureNetworkRequest("https://example.com/assets/app.css", "xhr") {
+		t.Fatalf("expected css asset request to be ignored")
+	}
+	if !workbenchShouldCaptureNetworkRequest("https://example.com/api/orders/search", "fetch") {
+		t.Fatalf("expected api request to be captured")
+	}
+	if workbenchShouldCaptureNetworkRequest("https://example.com/admin", "document") {
+		t.Fatalf("expected non-xhr request to be ignored")
+	}
+}
+
+func TestBuildWorkbenchPageCaptureSummary(t *testing.T) {
+	summary := buildWorkbenchPageCaptureSummary(&PageObservation{
+		PageSummary:     `Observed "订单管理" with 3 interactive elements and 2 content elements.`,
+		ContentElements: []PageObservationContentElement{{Text: "订单管理"}},
+		Elements:        []PageObservationElement{{Text: "搜索"}, {Text: "导出"}, {Text: "订单号"}},
+		Errors:          []string{"minor warning"},
+	}, []workbenchNetworkRecord{
+		{
+			URL:          "https://example.com/api/orders/search",
+			Method:       "POST",
+			ResourceType: "fetch",
+			ContentType:  "application/json",
+			ResponseSchema: map[string]any{
+				"items": []any{},
+			},
+		},
+		{
+			URL:          "https://example.com/api/orders/export",
+			Method:       "POST",
+			ResourceType: "xhr",
+			Error:        "timeout",
+		},
+	}, []WorkbenchPageEvent{
+		{Type: "frame_navigated", Message: "frame navigated"},
+		{Type: "console", Message: "loaded"},
+	})
+	if summary == nil {
+		t.Fatalf("expected capture summary")
+	}
+	if summary.NetworkRequestCount != 2 {
+		t.Fatalf("unexpected network count: %#v", summary)
+	}
+	if summary.NetworkFailureCount != 1 {
+		t.Fatalf("unexpected failure count: %#v", summary)
+	}
+	if summary.InteractiveElementCount != 3 || summary.ContentElementCount != 1 {
+		t.Fatalf("unexpected observation counts: %#v", summary)
+	}
+	if !strings.Contains(summary.FilterRule, "xhr/fetch") {
+		t.Fatalf("expected filter rule to mention xhr/fetch: %#v", summary)
+	}
 }
 
 func TestExploreWorkbenchSiteDiscoversSPAMenuRoutes(t *testing.T) {

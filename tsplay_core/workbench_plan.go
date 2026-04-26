@@ -3,6 +3,7 @@ package tsplay_core
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"sort"
@@ -30,9 +31,22 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
+	log.Printf(
+		"workbench planner knowledge site=%s pages=%d apis=%d intent=%q",
+		siteID,
+		len(pages),
+		len(apis),
+		workbenchCleanText(intent, 120),
+	)
 
 	pageCandidates := rankWorkbenchPages(intent, pages)
 	apiCandidates := rankWorkbenchAPIs(intent, apis)
+	log.Printf(
+		"workbench planner ranked site=%s top_page=%s top_api=%s",
+		siteID,
+		workbenchCandidateDebugLabel(firstWorkbenchCandidate(pageCandidates)),
+		workbenchCandidateDebugLabel(firstWorkbenchCandidate(apiCandidates)),
+	)
 	plan := &WorkbenchTaskPlan{
 		SiteID:       siteID,
 		Intent:       intent,
@@ -48,6 +62,7 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 				flow = drafted
 				plan.Strategy = "ui_first"
 				plan.Reason = "Matched a known page card with saved observation data, so TSPlay can draft a selector-aware flow."
+				log.Printf("workbench planner chose ui_first_draft site=%s page=%s", siteID, pageCard.ID)
 			}
 		}
 	}
@@ -56,6 +71,7 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 			flow = buildWorkbenchAPIFallbackFlow(*site, *apiCard, intent)
 			plan.Strategy = "api_first"
 			plan.Reason = "Matched a readable API card, so the planner generated an API-first flow that reuses browser cookies."
+			log.Printf("workbench planner chose api_first site=%s api=%s", siteID, apiCard.ID)
 		}
 	}
 	if flow == nil && len(pageCandidates) > 0 {
@@ -63,11 +79,13 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 			flow = buildWorkbenchPageFallbackFlow(*site, *pageCard, intent)
 			plan.Strategy = "ui_first"
 			plan.Reason = "Matched a page card, but no saved observation was available for richer drafting, so the planner generated a navigation-first fallback flow."
+			log.Printf("workbench planner chose ui_first_fallback site=%s page=%s", siteID, pageCard.ID)
 		}
 	}
 	if flow == nil {
 		plan.Strategy = "needs_input"
 		plan.Reason = "No high-confidence page or API candidates were found in the local knowledge store."
+		log.Printf("workbench planner no_match site=%s", siteID)
 		return plan, nil
 	}
 	plan.Flow = flow
@@ -77,7 +95,26 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 		return nil, err
 	}
 	plan.FlowYAML = flowYAML
+	log.Printf("workbench planner flow_ready site=%s flow=%s strategy=%s steps=%d", siteID, flow.Name, plan.Strategy, len(flow.Steps))
 	return plan, nil
+}
+
+func firstWorkbenchCandidate(items []WorkbenchTaskCandidate) *WorkbenchTaskCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	return &items[0]
+}
+
+func workbenchCandidateDebugLabel(item *WorkbenchTaskCandidate) string {
+	if item == nil {
+		return "none"
+	}
+	parts := []string{firstNonEmpty(item.Kind, "candidate"), firstNonEmpty(item.Label, item.ID)}
+	if item.Score > 0 {
+		parts = append(parts, fmt.Sprintf("score=%d", item.Score))
+	}
+	return strings.Join(parts, ":")
 }
 
 func rankWorkbenchPages(intent string, cards []WorkbenchPageCard) []WorkbenchTaskCandidate {

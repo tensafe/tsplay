@@ -90,25 +90,75 @@ type WorkbenchLinkCard struct {
 	Selector string `json:"selector,omitempty"`
 }
 
+type WorkbenchPageEvent struct {
+	Type      string `json:"type,omitempty"`
+	Level     string `json:"level,omitempty"`
+	Message   string `json:"message,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
+type WorkbenchPageAPIHit struct {
+	Method        string `json:"method,omitempty"`
+	PathTemplate  string `json:"path_template,omitempty"`
+	URL           string `json:"url,omitempty"`
+	Status        int    `json:"status,omitempty"`
+	ContentType   string `json:"content_type,omitempty"`
+	ResourceType  string `json:"resource_type,omitempty"`
+	OperationType string `json:"operation_type,omitempty"`
+	Risk          string `json:"risk,omitempty"`
+	Error         string `json:"error,omitempty"`
+}
+
+type WorkbenchPageCaptureSummary struct {
+	FilterRule              string `json:"filter_rule,omitempty"`
+	ObservationMode         string `json:"observation_mode,omitempty"`
+	NetworkRequestCount     int    `json:"network_request_count,omitempty"`
+	NetworkFailureCount     int    `json:"network_failure_count,omitempty"`
+	ReadableResponseCount   int    `json:"readable_response_count,omitempty"`
+	EventCount              int    `json:"event_count,omitempty"`
+	InteractiveElementCount int    `json:"interactive_element_count,omitempty"`
+	ContentElementCount     int    `json:"content_element_count,omitempty"`
+	ObservationErrorCount   int    `json:"observation_error_count,omitempty"`
+	ObservationSummary      string `json:"observation_summary,omitempty"`
+}
+
+type WorkbenchPageFlowHints struct {
+	PrimaryInputs  []string `json:"primary_inputs,omitempty"`
+	PrimaryActions []string `json:"primary_actions,omitempty"`
+	WaitConditions []string `json:"wait_conditions,omitempty"`
+	APIPriority    []string `json:"api_priority,omitempty"`
+}
+
 type WorkbenchPageCard struct {
-	ID              string                `json:"id"`
-	SiteID          string                `json:"site_id"`
-	URL             string                `json:"url"`
-	NormalizedRoute string                `json:"normalized_route,omitempty"`
-	Title           string                `json:"title,omitempty"`
-	MenuPath        []string              `json:"menu_path,omitempty"`
-	Breadcrumbs     []string              `json:"breadcrumbs,omitempty"`
-	Summary         string                `json:"summary,omitempty"`
-	Forms           []WorkbenchFormCard   `json:"forms,omitempty"`
-	Tables          []WorkbenchTableCard  `json:"tables,omitempty"`
-	Actions         []WorkbenchActionCard `json:"actions,omitempty"`
-	Links           []WorkbenchLinkCard   `json:"links,omitempty"`
-	Risk            string                `json:"risk,omitempty"`
-	ObservationPath string                `json:"observation_path,omitempty"`
-	ScreenshotPath  string                `json:"screenshot_path,omitempty"`
-	DOMSnapshotPath string                `json:"dom_snapshot_path,omitempty"`
-	ExploreRunID    string                `json:"explore_run_id,omitempty"`
-	UpdatedAt       string                `json:"updated_at,omitempty"`
+	ID              string                       `json:"id"`
+	SiteID          string                       `json:"site_id"`
+	DiscoveryMode   string                       `json:"discovery_mode,omitempty"`
+	URL             string                       `json:"url"`
+	NormalizedRoute string                       `json:"normalized_route,omitempty"`
+	Title           string                       `json:"title,omitempty"`
+	MenuPath        []string                     `json:"menu_path,omitempty"`
+	Breadcrumbs     []string                     `json:"breadcrumbs,omitempty"`
+	Summary         string                       `json:"summary,omitempty"`
+	Forms           []WorkbenchFormCard          `json:"forms,omitempty"`
+	InputFields     []WorkbenchFieldCard         `json:"input_fields,omitempty"`
+	Tables          []WorkbenchTableCard         `json:"tables,omitempty"`
+	Actions         []WorkbenchActionCard        `json:"actions,omitempty"`
+	Links           []WorkbenchLinkCard          `json:"links,omitempty"`
+	Events          []WorkbenchPageEvent         `json:"events,omitempty"`
+	APIHits         []WorkbenchPageAPIHit        `json:"api_hits,omitempty"`
+	CaptureSummary  *WorkbenchPageCaptureSummary `json:"capture_summary,omitempty"`
+	FlowHints       *WorkbenchPageFlowHints      `json:"flow_hints,omitempty"`
+	TextSnippets    []string                     `json:"text_snippets,omitempty"`
+	LinkGroups      []string                     `json:"link_groups,omitempty"`
+	KeyElements     []string                     `json:"key_elements,omitempty"`
+	Risk            string                       `json:"risk,omitempty"`
+	ObservationPath string                       `json:"observation_path,omitempty"`
+	ScreenshotPath  string                       `json:"screenshot_path,omitempty"`
+	DOMSnapshotPath string                       `json:"dom_snapshot_path,omitempty"`
+	ExploreRunID    string                       `json:"explore_run_id,omitempty"`
+	UpdatedAt       string                       `json:"updated_at,omitempty"`
 }
 
 type WorkbenchAPICard struct {
@@ -149,6 +199,7 @@ type WorkbenchExploreResult struct {
 	Site         WorkbenchSiteConfig   `json:"site"`
 	RunID        string                `json:"run_id"`
 	RunRoot      string                `json:"run_root"`
+	ExploreMode  string                `json:"explore_mode,omitempty"`
 	StartedAt    string                `json:"started_at,omitempty"`
 	FinishedAt   string                `json:"finished_at,omitempty"`
 	ExploredURLs []string              `json:"explored_urls,omitempty"`
