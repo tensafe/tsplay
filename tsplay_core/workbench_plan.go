@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,9 @@ import (
 )
 
 func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPlan, error) {
+	if err := normalizeWorkbenchTaskPlanOptions(&options); err != nil {
+		return nil, err
+	}
 	siteID := normalizeWorkbenchSiteID(options.SiteID)
 	if siteID == "" {
 		return nil, fmt.Errorf("site_id is required")
@@ -32,14 +36,16 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 		return nil, err
 	}
 	log.Printf(
-		"workbench planner knowledge site=%s pages=%d apis=%d intent=%q",
+		"workbench planner knowledge site=%s pages=%d apis=%d realtime_context=%t intent=%q",
 		siteID,
 		len(pages),
 		len(apis),
+		options.realtimeContext != nil,
 		workbenchCleanText(intent, 120),
 	)
 
 	pageCandidates := rankWorkbenchPages(intent, pages)
+	pageCandidates = boostWorkbenchPageCandidatesWithRealtimeContext(pageCandidates, pages, options.realtimeContext)
 	apiCandidates := rankWorkbenchAPIs(intent, apis)
 	log.Printf(
 		"workbench planner ranked site=%s top_page=%s top_api=%s",
@@ -56,7 +62,19 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 	}
 
 	var flow *Flow
-	if len(pageCandidates) > 0 {
+	if options.realtimeContext != nil && options.realtimeContext.Observation != nil {
+		drafted, err := buildWorkbenchRealtimeContextFlow(site, options.realtimeContext, intent, options.ArtifactRoot)
+		if err == nil && drafted != nil {
+			flow = drafted
+			plan.Strategy = "ui_live"
+			plan.Reason = "Used real-time page observation passed by caller, so TSPlay can draft directly from the current page context."
+			log.Printf("workbench planner chose ui_live site=%s url=%s", siteID, firstNonEmpty(options.realtimeContext.URL, site.StartURL))
+		} else if err != nil {
+			addWorkbenchPlanWarning(plan, fmt.Sprintf("Real-time page context could not be drafted directly: %s. Falling back to stored site knowledge.", err.Error()))
+			log.Printf("workbench planner realtime_draft_failed site=%s err=%v", siteID, err)
+		}
+	}
+	if flow == nil && len(pageCandidates) > 0 {
 		if pageCard := findWorkbenchPageByID(pages, pageCandidates[0].ID); pageCard != nil {
 			drafted, err := buildWorkbenchPageFlow(site, *pageCard, intent, options.ArtifactRoot)
 			if err == nil && drafted != nil {
@@ -98,6 +116,61 @@ func BuildWorkbenchTaskPlan(options WorkbenchTaskPlanOptions) (*WorkbenchTaskPla
 	plan.FlowYAML = flowYAML
 	log.Printf("workbench planner flow_ready site=%s flow=%s strategy=%s steps=%d", siteID, flow.Name, plan.Strategy, len(flow.Steps))
 	return plan, nil
+}
+
+func normalizeWorkbenchTaskPlanOptions(options *WorkbenchTaskPlanOptions) error {
+	if options == nil || options.realtimeContext != nil {
+		return nil
+	}
+	realtimeContext, err := parseWorkbenchRealtimeContext(options.RealtimeContext)
+	if err != nil {
+		return err
+	}
+	options.realtimeContext = realtimeContext
+	return nil
+}
+
+func parseWorkbenchRealtimeContext(input *WorkbenchRealtimeContextInput) (*workbenchRealtimeContext, error) {
+	if input == nil {
+		return nil, nil
+	}
+	context := &workbenchRealtimeContext{
+		URL:   strings.TrimSpace(input.URL),
+		Title: strings.TrimSpace(input.Title),
+		HTML:  strings.TrimSpace(input.HTML),
+	}
+	if len(bytes.TrimSpace(input.Observation)) > 0 {
+		observation, err := parseWorkbenchRealtimeObservation(input.Observation)
+		if err != nil {
+			return nil, fmt.Errorf("realtime_context.observation: %w", err)
+		}
+		context.Observation = observation
+		if context.URL == "" && observation != nil {
+			context.URL = strings.TrimSpace(observation.URL)
+		}
+		if context.Title == "" && observation != nil {
+			context.Title = strings.TrimSpace(observation.Title)
+		}
+	}
+	if context.URL == "" && context.Title == "" && context.HTML == "" && context.Observation == nil {
+		return nil, nil
+	}
+	return context, nil
+}
+
+func parseWorkbenchRealtimeObservation(raw json.RawMessage) (*PageObservation, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	if trimmed[0] == '"' {
+		var text string
+		if err := json.Unmarshal(trimmed, &text); err != nil {
+			return nil, err
+		}
+		return ParseObservationForDraft(text)
+	}
+	return ParseObservationForDraft(string(trimmed))
 }
 
 func firstWorkbenchCandidate(items []WorkbenchTaskCandidate) *WorkbenchTaskCandidate {
@@ -143,6 +216,145 @@ func rankWorkbenchPages(intent string, cards []WorkbenchPageCard) []WorkbenchTas
 		candidates = candidates[:5]
 	}
 	return candidates
+}
+
+func boostWorkbenchPageCandidatesWithRealtimeContext(candidates []WorkbenchTaskCandidate, cards []WorkbenchPageCard, realtimeContext *workbenchRealtimeContext) []WorkbenchTaskCandidate {
+	if realtimeContext == nil {
+		return candidates
+	}
+	merged := map[string]WorkbenchTaskCandidate{}
+	for _, item := range candidates {
+		merged[item.ID] = item
+	}
+	for _, card := range cards {
+		boost := scoreWorkbenchRealtimePageBoost(realtimeContext, card)
+		if boost <= 0 {
+			continue
+		}
+		candidate, ok := merged[card.ID]
+		if !ok {
+			candidate = WorkbenchTaskCandidate{
+				Kind:  "page",
+				ID:    card.ID,
+				Label: firstNonEmpty(card.Title, card.NormalizedRoute),
+				URL:   card.URL,
+			}
+		}
+		candidate.Score += boost
+		if candidate.Label == "" {
+			candidate.Label = firstNonEmpty(card.Title, card.NormalizedRoute)
+		}
+		if candidate.URL == "" {
+			candidate.URL = card.URL
+		}
+		merged[card.ID] = candidate
+	}
+	items := make([]WorkbenchTaskCandidate, 0, len(merged))
+	for _, item := range merged {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Score != items[j].Score {
+			return items[i].Score > items[j].Score
+		}
+		return items[i].Label < items[j].Label
+	})
+	if len(items) > 5 {
+		items = items[:5]
+	}
+	return items
+}
+
+func scoreWorkbenchRealtimePageBoost(realtimeContext *workbenchRealtimeContext, card WorkbenchPageCard) int {
+	if realtimeContext == nil {
+		return 0
+	}
+	score := 0
+	if realtimeURL := strings.TrimSpace(realtimeContext.URL); realtimeURL != "" {
+		switch {
+		case sameWorkbenchURLTarget(realtimeURL, card.URL):
+			score = maxWorkbenchInt(score, 120)
+		case sameWorkbenchURLPath(realtimeURL, card.URL):
+			score = maxWorkbenchInt(score, 80)
+		case sameWorkbenchRoutePath(realtimeURL, card.NormalizedRoute):
+			score = maxWorkbenchInt(score, 70)
+		}
+	}
+	if realtimeTitle := strings.ToLower(strings.TrimSpace(realtimeContext.Title)); realtimeTitle != "" {
+		cardTitle := strings.ToLower(strings.TrimSpace(card.Title))
+		if cardTitle != "" && (strings.Contains(realtimeTitle, cardTitle) || strings.Contains(cardTitle, realtimeTitle)) {
+			score = maxWorkbenchInt(score, 30)
+		}
+	}
+	return score
+}
+
+func sameWorkbenchURLTarget(left string, right string) bool {
+	return normalizeWorkbenchURLForMatch(left) != "" && normalizeWorkbenchURLForMatch(left) == normalizeWorkbenchURLForMatch(right)
+}
+
+func sameWorkbenchURLPath(left string, right string) bool {
+	return workbenchURLPathForMatch(left) != "" && workbenchURLPathForMatch(left) == workbenchURLPathForMatch(right)
+}
+
+func sameWorkbenchRoutePath(rawURL string, route string) bool {
+	path := workbenchURLPathForMatch(rawURL)
+	route = normalizeWorkbenchRoutePath(route)
+	return path != "" && route != "" && path == route
+}
+
+func normalizeWorkbenchURLForMatch(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return strings.TrimRight(strings.TrimSpace(raw), "/")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	host := strings.ToLower(strings.TrimSpace(parsed.Host))
+	path := normalizeWorkbenchRoutePath(parsed.Path)
+	if scheme == "" && host == "" && path == "" {
+		return strings.TrimRight(strings.TrimSpace(raw), "/")
+	}
+	return scheme + "://" + host + path
+}
+
+func workbenchURLPathForMatch(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return normalizeWorkbenchRoutePath(raw)
+	}
+	return normalizeWorkbenchRoutePath(parsed.Path)
+}
+
+func normalizeWorkbenchRoutePath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		if parsed, err := url.Parse(value); err == nil {
+			value = parsed.Path
+		}
+	}
+	if value == "" {
+		value = "/"
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	if len(value) > 1 {
+		value = strings.TrimRight(value, "/")
+	}
+	return value
+}
+
+func maxWorkbenchInt(values ...int) int {
+	best := values[0]
+	for _, value := range values[1:] {
+		if value > best {
+			best = value
+		}
+	}
+	return best
 }
 
 func rankWorkbenchAPIs(intent string, cards []WorkbenchAPICard) []WorkbenchTaskCandidate {
@@ -191,6 +403,39 @@ func buildWorkbenchPageFlow(site *WorkbenchSiteConfig, card WorkbenchPageCard, i
 	draft, err := BuildDraftFlow(FlowDraftOptions{
 		Intent:       intent,
 		URL:          card.URL,
+		FlowName:     buildDraftFlowName("", intent, &observation),
+		ArtifactRoot: artifactRoot,
+		Observation:  &observation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if draft == nil || draft.Flow == nil {
+		return nil, fmt.Errorf("draft flow returned no flow")
+	}
+	if draft.Flow.Browser == nil {
+		draft.Flow.Browser = &FlowBrowserConfig{}
+	}
+	if site != nil && strings.TrimSpace(site.SessionName) != "" {
+		draft.Flow.Browser.UseSession = site.SessionName
+	}
+	return draft.Flow, nil
+}
+
+func buildWorkbenchRealtimeContextFlow(site *WorkbenchSiteConfig, realtimeContext *workbenchRealtimeContext, intent string, artifactRoot string) (*Flow, error) {
+	if realtimeContext == nil || realtimeContext.Observation == nil {
+		return nil, fmt.Errorf("realtime context does not include observation")
+	}
+	observation := *realtimeContext.Observation
+	if strings.TrimSpace(observation.URL) == "" {
+		observation.URL = firstNonEmpty(strings.TrimSpace(realtimeContext.URL), strings.TrimSpace(site.StartURL))
+	}
+	if strings.TrimSpace(observation.Title) == "" {
+		observation.Title = strings.TrimSpace(realtimeContext.Title)
+	}
+	draft, err := BuildDraftFlow(FlowDraftOptions{
+		Intent:       intent,
+		URL:          observation.URL,
 		FlowName:     buildDraftFlowName("", intent, &observation),
 		ArtifactRoot: artifactRoot,
 		Observation:  &observation,

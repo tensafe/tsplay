@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -491,5 +492,99 @@ func TestWorkbenchTaskPlanHandlerNormalizesProviderBooleanUseSessionWithoutSaved
 	}
 	if !strings.Contains(body, `browser.use_session=true 已自动移除`) {
 		t.Fatalf("expected normalization warning, body=%s", body)
+	}
+}
+
+func TestWorkbenchTaskPlanHandlerPassesRealtimeContextToProvider(t *testing.T) {
+	var capturedRequestBody string
+	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read provider request body: %v", err)
+		}
+		capturedRequestBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{\n" +
+			"  \"choices\": [\n" +
+			"    {\n" +
+			"      \"message\": {\n" +
+			"        \"content\": \"schema_version: \\\"1\\\"\\nname: ai_live_news\\nsteps:\\n  - action: navigate\\n    url: \\\"https://www.163.com/\\\"\\n  - action: wait_for_selector\\n    selector: \\\"main a\\\"\\n    timeout: 10000\\n  - action: extract_text\\n    selector: \\\"main a\\\"\\n    save_as: article_title\\n\"\n" +
+			"      }\n" +
+			"    }\n" +
+			"  ]\n" +
+			"}"))
+	}))
+	defer providerServer.Close()
+
+	artifactRoot := t.TempDir()
+	if _, err := SaveWorkbenchSiteConfig(WorkbenchSiteConfig{
+		SiteID:   "live_news",
+		Name:     "Live News",
+		StartURL: "https://www.163.com/",
+	}, artifactRoot); err != nil {
+		t.Fatalf("SaveWorkbenchSiteConfig() error = %v", err)
+	}
+	if _, err := SaveWorkbenchProviderConfig(WorkbenchProviderConfig{
+		ProviderID: "live_provider",
+		Name:       "live_provider",
+		Type:       WorkbenchProviderTypeOpenAICompatible,
+		BaseURL:    providerServer.URL,
+		Model:      "gpt-test",
+		APIKey:     "sk-test-openai",
+		Enabled:    true,
+	}, artifactRoot); err != nil {
+		t.Fatalf("SaveWorkbenchProviderConfig() error = %v", err)
+	}
+
+	handler := NewWorkbenchAPIHandler(artifactRoot)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/workbench/tasks/plan",
+		strings.NewReader(`{
+  "site_id": "live_news",
+  "provider_id": "live_provider",
+  "intent": "帮我获取前10条最新的新闻",
+  "realtime_context": {
+    "url": "https://www.163.com/",
+    "title": "网易新闻",
+    "html": "<html><body><main><h1>网易新闻</h1><a href=\"/news/1\">头条一</a></main></body></html>",
+    "observation": {
+      "url": "https://www.163.com/",
+      "title": "网易新闻",
+      "page_summary": "首页有最新新闻列表",
+      "content_elements": [
+        {
+          "index": 1,
+          "kind": "headline",
+          "text": "头条一",
+          "selector": "main a"
+        }
+      ]
+    }
+  }
+}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"generation_mode": "provider"`) {
+		t.Fatalf("expected provider generation, body=%s", body)
+	}
+	if !strings.Contains(body, `ai_live_news`) {
+		t.Fatalf("expected provider flow name, body=%s", body)
+	}
+	if !strings.Contains(capturedRequestBody, `realtime_context`) {
+		t.Fatalf("expected provider request to include realtime_context, body=%s", capturedRequestBody)
+	}
+	if !strings.Contains(capturedRequestBody, `头条一`) {
+		t.Fatalf("expected provider request to include live observation content, body=%s", capturedRequestBody)
+	}
+	if !strings.Contains(capturedRequestBody, `网易新闻`) {
+		t.Fatalf("expected provider request to include live title/html excerpt, body=%s", capturedRequestBody)
 	}
 }

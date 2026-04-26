@@ -14,6 +14,7 @@
     entities: [],
     lastExplore: null,
     lastPlan: null,
+    lastPlanRealtimeContext: null,
     currentFlowYAML: "",
     lastRun: null,
     lastRepair: null,
@@ -89,6 +90,7 @@
     refs.apiSearchMeta = document.getElementById("apiSearchMeta");
     refs.taskForm = document.getElementById("taskForm");
     refs.intentInput = document.getElementById("intentInput");
+    refs.planContextPreview = document.getElementById("planContextPreview");
     refs.runHeadlessInput = document.getElementById("runHeadlessInput");
     refs.runFlowButton = document.getElementById("runFlowButton");
     refs.planSummary = document.getElementById("planSummary");
@@ -144,6 +146,7 @@
       event.preventDefault();
       runAction("生成 Flow", planTask);
     });
+    refs.intentInput.addEventListener("input", renderPlanContextPreview);
     refs.flowEditor.addEventListener("input", handleFlowEditorInput);
     refs.runFlowButton.addEventListener("click", () => runAction("执行 Flow", executePlanFlow));
     refs.replayFlowButton.addEventListener("click", () => runAction("回放 Flow", executePlanFlow));
@@ -298,6 +301,7 @@
       refs.siteConfigDetails.open = false;
     }
     state.lastPlan = null;
+    state.lastPlanRealtimeContext = null;
     state.currentFlowYAML = "";
     state.lastRun = null;
     state.lastRepair = null;
@@ -493,15 +497,21 @@
     if (!intent) {
       throw new Error("请输入任务需求");
     }
+    const realtimeContextMeta = await buildRealtimePlanningContext(intent);
+    const requestBody = {
+      site_id: siteID,
+      intent: intent,
+      provider_id: normalizeString(refs.siteProviderSelect.value),
+    };
+    if (realtimeContextMeta && realtimeContextMeta.payload) {
+      requestBody.realtime_context = realtimeContextMeta.payload;
+    }
     const plan = await apiFetch("/api/workbench/tasks/plan", {
       method: "POST",
-      body: JSON.stringify({
-        site_id: siteID,
-        intent: intent,
-        provider_id: normalizeString(refs.siteProviderSelect.value),
-      }),
+      body: JSON.stringify(requestBody),
     });
     state.lastPlan = plan;
+    state.lastPlanRealtimeContext = realtimeContextMeta;
     state.currentFlowYAML = typeof plan.flow_yaml === "string" ? plan.flow_yaml : "";
     state.lastRun = null;
     state.lastRepair = null;
@@ -921,10 +931,12 @@
           : state.entities;
     if (!items.length) {
       refs.cardList.innerHTML = renderEmptyCardForCurrentTab();
+      renderPlanContextPreview();
       return;
     }
     if (state.currentTab === "apis") {
       refs.cardList.innerHTML = renderAPIList(items);
+      renderPlanContextPreview();
       return;
     }
     const renderers = {
@@ -932,6 +944,7 @@
       entities: renderEntityCard,
     };
     refs.cardList.innerHTML = items.map((item) => renderers[state.currentTab](item)).join("");
+    renderPlanContextPreview();
   }
 
   function renderPlan() {
@@ -948,6 +961,7 @@
     }
 
     const provider = plan.provider || null;
+    const realtimeContext = state.lastPlanRealtimeContext;
     const warnings = Array.isArray(plan.warnings) ? plan.warnings : [];
     const summaryBits = [
       '<div class="wb-card-meta">',
@@ -957,6 +971,10 @@
       (provider ? pill("Provider · " + escapeHTML(provider.name || provider.provider_id || "auto")) : ""),
       "</div>",
       "<p>" + escapeHTML(plan.reason || "系统已经生成了一条可执行的建议路径。") + "</p>",
+      realtimeContext ? "<p><strong>规划上下文：</strong>" + escapeHTML(describeRealtimeContextMeta(realtimeContext)) + "</p>" : "",
+      realtimeContext && realtimeContext.warnings.length
+        ? "<p><strong>上下文提示：</strong>" + escapeHTML(realtimeContext.warnings.join("；")) + "</p>"
+        : "",
       plan.validation_error ? "<p><strong>AI 校验失败：</strong>" + escapeHTML(plan.validation_error) + "</p>" : "",
       warnings.length ? "<p><strong>提示：</strong>" + escapeHTML(warnings.join("；")) + "</p>" : "",
     ];
@@ -969,6 +987,9 @@
     }
     if (Array.isArray(plan.matched_apis) && plan.matched_apis.length) {
       sections.push(renderCandidateSection("命中的 API", plan.matched_apis));
+    }
+    if (isDeveloperMode() && realtimeContext && realtimeContext.payload) {
+      sections.push(renderSchema("Realtime Context", realtimeContext.payload));
     }
     if (isDeveloperMode() && plan.model_output) {
       sections.push(renderSchema("Model Output", plan.model_output));
@@ -1072,6 +1093,227 @@
         })
         .join("") +
       "</div>"
+    );
+  }
+
+  function renderPlanContextPreview() {
+    if (!refs.planContextPreview) {
+      return;
+    }
+    const intent = normalizeString(refs.intentInput ? refs.intentInput.value : "");
+    const page = pickRealtimeContextPage(intent);
+    if (!state.currentSiteId) {
+      refs.planContextPreview.textContent = "先选择一个站点，生成 Flow 时系统才会自动附带该站点的实时上下文。";
+      return;
+    }
+    if (!page) {
+      refs.planContextPreview.textContent =
+        state.pages.length > 0
+          ? "当前页面卡片里还没有足够稳定的上下文，生成 Flow 时会先退回到站点知识库。"
+          : "当前还没有页面卡片；先探索一次站点，生成 Flow 时才能自动附带 Observation。";
+      return;
+    }
+
+    const pageLabel = firstNonEmpty(
+      normalizeString(page.title),
+      normalizeString(page.normalized_route),
+      normalizeString(page.url),
+      "页面卡片"
+    );
+    const details = [];
+    const url = normalizeString(page.url);
+    if (url) {
+      details.push(url);
+    }
+    details.push(page.observation_path ? "会附带 Observation" : "只会附带 URL / 标题");
+    refs.planContextPreview.innerHTML =
+      "<strong>本次规划会优先使用：</strong>" +
+      escapeHTML(pageLabel) +
+      (details.length ? '<p class="wb-data-note">' + escapeHTML(details.join(" · ")) + "</p>" : "");
+  }
+
+  async function buildRealtimePlanningContext(intent) {
+    const page = pickRealtimeContextPage(intent);
+    if (!page) {
+      return null;
+    }
+
+    const payload = {};
+    const warnings = [];
+    const pageURL = normalizeString(page.url);
+    const pageTitle = normalizeString(page.title);
+    const observationPath = normalizeString(page.observation_path);
+
+    if (pageURL) {
+      payload.url = pageURL;
+    }
+    if (pageTitle) {
+      payload.title = pageTitle;
+    }
+
+    if (observationPath) {
+      try {
+        const observation = await loadArtifactJSON(observationPath);
+        if (hasMeaningfulRealtimeObservation(observation)) {
+          payload.observation = observation;
+          payload.url = firstNonEmpty(normalizeString(payload.url), normalizeString(observation.url));
+          payload.title = firstNonEmpty(normalizeString(payload.title), normalizeString(observation.title));
+        } else {
+          warnings.push("Observation artifact 为空，已退回到页面 URL 和标题。");
+        }
+      } catch (error) {
+        warnings.push("Observation artifact 读取失败，已退回到页面 URL 和标题。");
+      }
+    }
+
+    if (!payload.url && !payload.title && !payload.observation) {
+      return null;
+    }
+
+    return {
+      page_label: firstNonEmpty(pageTitle, normalizeString(page.normalized_route), pageURL, "页面卡片"),
+      observation_path: observationPath,
+      payload: payload,
+      warnings: warnings,
+    };
+  }
+
+  function pickRealtimeContextPage(intent) {
+    const pages = Array.isArray(state.pages) ? state.pages.filter(Boolean) : [];
+    if (!pages.length) {
+      return null;
+    }
+    const site = findSite(state.currentSiteId);
+    let bestPage = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    pages.forEach((page, index) => {
+      const score = scoreRealtimeContextPage(page, intent, site, index);
+      if (!bestPage || score > bestScore) {
+        bestPage = page;
+        bestScore = score;
+      }
+    });
+    return bestPage;
+  }
+
+  function scoreRealtimeContextPage(page, intent, site, index) {
+    let score = 0;
+    const title = normalizeString(page && page.title);
+    const url = normalizeString(page && page.url);
+    const route = normalizeString(page && page.normalized_route);
+    const summary = normalizeString(page && page.summary);
+    const snippets = Array.isArray(page && page.text_snippets) ? page.text_snippets.filter(Boolean) : [];
+    const haystack = [title, url, route, summary]
+      .concat(snippets)
+      .join(" ")
+      .toLowerCase();
+
+    if (normalizeString(page && page.observation_path)) {
+      score += 50;
+    }
+    if (page && page.capture_summary) {
+      score += Math.min(20, toNumber(page.capture_summary.interactive_element_count, 0));
+      score += Math.min(20, toNumber(page.capture_summary.content_element_count, 0));
+    }
+
+    const siteStartURL = normalizeString(site && site.start_url);
+    if (siteStartURL && samePlanningURL(url, siteStartURL)) {
+      score += 120;
+    }
+    if (route === "/" || route.endsWith(":/")) {
+      score += 40;
+    }
+    if (index === 0) {
+      score += 10;
+    }
+
+    buildPlanningIntentTerms(intent).forEach((term) => {
+      if (!term || !haystack.includes(term)) {
+        return;
+      }
+      score += term.length >= 4 ? 18 : 10;
+      if (title.toLowerCase().includes(term)) {
+        score += 8;
+      }
+      if (summary.toLowerCase().includes(term)) {
+        score += 6;
+      }
+    });
+    return score;
+  }
+
+  function buildPlanningIntentTerms(intent) {
+    const value = normalizeString(intent).toLowerCase();
+    if (!value) {
+      return [];
+    }
+    const terms = new Set();
+    const asciiTerms = value.match(/[a-z0-9_/-]{2,}/g) || [];
+    asciiTerms.forEach((term) => terms.add(term));
+
+    const cjkGroups = value.match(/[\u4e00-\u9fff]{2,}/g) || [];
+    cjkGroups.forEach((group) => {
+      if (group.length <= 4) {
+        terms.add(group);
+      }
+      const maxWindow = Math.min(4, group.length);
+      for (let size = 2; size <= maxWindow; size += 1) {
+        for (let start = 0; start <= group.length - size; start += 1) {
+          terms.add(group.slice(start, start + size));
+        }
+      }
+    });
+
+    return Array.from(terms)
+      .map((term) => term.trim())
+      .filter((term) => term.length >= 2);
+  }
+
+  function samePlanningURL(left, right) {
+    const normalizedLeft = normalizePlanningURL(left);
+    const normalizedRight = normalizePlanningURL(right);
+    return !!normalizedLeft && normalizedLeft === normalizedRight;
+  }
+
+  function normalizePlanningURL(value) {
+    const input = normalizeString(value);
+    if (!input) {
+      return "";
+    }
+    try {
+      const parsed = new URL(input);
+      return parsed.origin.toLowerCase() + parsed.pathname.replace(/\/+$/, "");
+    } catch (error) {
+      return input.replace(/\/+$/, "").toLowerCase();
+    }
+  }
+
+  function describeRealtimeContextMeta(meta) {
+    if (!meta || !meta.payload) {
+      return "未附带实时上下文";
+    }
+    const pieces = [];
+    if (meta.page_label) {
+      pieces.push(meta.page_label);
+    }
+    if (meta.payload.url) {
+      pieces.push(meta.payload.url);
+    }
+    pieces.push(meta.payload.observation ? "已附带 Observation" : "未附带 Observation");
+    return pieces.join(" · ");
+  }
+
+  function hasMeaningfulRealtimeObservation(observation) {
+    if (!observation || typeof observation !== "object") {
+      return false;
+    }
+    return !!(
+      normalizeString(observation.url) ||
+      normalizeString(observation.title) ||
+      normalizeString(observation.page_summary) ||
+      normalizeString(observation.dom_snapshot_excerpt) ||
+      (Array.isArray(observation.elements) && observation.elements.length) ||
+      (Array.isArray(observation.content_elements) && observation.content_elements.length)
     );
   }
 
@@ -2261,6 +2503,16 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   }
 
+  function firstNonEmpty() {
+    for (let index = 0; index < arguments.length; index += 1) {
+      const value = normalizeString(arguments[index]);
+      if (value) {
+        return value;
+      }
+    }
+    return "";
+  }
+
   function normalizeString(value) {
     return String(value || "").trim();
   }
@@ -2346,6 +2598,20 @@
       return value;
     }
     return "";
+  }
+
+  async function loadArtifactJSON(path) {
+    const href = artifactHrefForPath(path);
+    if (!href) {
+      throw new Error("artifact path is not available from the current app context");
+    }
+    const response = await fetch(appendCacheBuster(href), {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("artifact request failed with status " + response.status);
+    }
+    return response.json();
   }
 
   function slashPath(value) {

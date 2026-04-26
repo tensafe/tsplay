@@ -18,6 +18,7 @@ const (
 	defaultWorkbenchPlanObservationContentLimit = 12
 	defaultWorkbenchPlanExampleLimit            = 2
 	defaultWorkbenchPlanTextListLimit           = 6
+	defaultWorkbenchPlanHTMLExcerptLimit        = 4000
 )
 
 type workbenchTaskPlanningKnowledge struct {
@@ -32,6 +33,9 @@ func BuildWorkbenchProviderTaskPlan(
 	basePlan *WorkbenchTaskPlan,
 	providerConfig WorkbenchProviderConfig,
 ) (*WorkbenchTaskPlan, WorkbenchProviderView, string, error) {
+	if err := normalizeWorkbenchTaskPlanOptions(&options); err != nil {
+		return nil, WorkbenchProviderView{}, "", err
+	}
 	knowledge, err := loadWorkbenchTaskPlanningKnowledge(options.SiteID, options.ArtifactRoot)
 	if err != nil {
 		return nil, WorkbenchProviderView{}, "", err
@@ -124,7 +128,8 @@ func buildWorkbenchProviderTaskPlanPrompt(
 	if knowledge == nil || knowledge.Site == nil {
 		return "", fmt.Errorf("site context is required")
 	}
-	if len(knowledge.Pages) == 0 && len(knowledge.APIs) == 0 && strings.TrimSpace(flowYAMLFromPlan(basePlan)) == "" {
+	realtimeContext := compactWorkbenchRealtimeContextForAI(options.realtimeContext)
+	if len(knowledge.Pages) == 0 && len(knowledge.APIs) == 0 && strings.TrimSpace(flowYAMLFromPlan(basePlan)) == "" && realtimeContext == nil {
 		return "", fmt.Errorf("no explored site context is available for provider planning")
 	}
 
@@ -162,6 +167,9 @@ func buildWorkbenchProviderTaskPlanPrompt(
 			"generation_mode": basePlan.GenerationMode,
 			"flow_yaml":       baselineYAML,
 		}
+	}
+	if realtimeContext != nil {
+		contextPayload["realtime_context"] = realtimeContext
 	}
 
 	encoded, err := json.MarshalIndent(contextPayload, "", "  ")
@@ -328,6 +336,29 @@ func compactWorkbenchPageCardForAI(card WorkbenchPageCard) map[string]any {
 			})
 		}
 		value["tables"] = tables
+	}
+	return value
+}
+
+func compactWorkbenchRealtimeContextForAI(realtimeContext *workbenchRealtimeContext) map[string]any {
+	if realtimeContext == nil {
+		return nil
+	}
+	value := map[string]any{}
+	if urlValue := strings.TrimSpace(realtimeContext.URL); urlValue != "" {
+		value["url"] = urlValue
+	}
+	if title := strings.TrimSpace(realtimeContext.Title); title != "" {
+		value["title"] = title
+	}
+	if html := strings.TrimSpace(realtimeContext.HTML); html != "" {
+		value["html_excerpt"] = workbenchCleanText(html, defaultWorkbenchPlanHTMLExcerptLimit)
+	}
+	if realtimeContext.Observation != nil {
+		value["observation"] = compactWorkbenchObservationForAI(realtimeContext.Observation)
+	}
+	if len(value) == 0 {
+		return nil
 	}
 	return value
 }

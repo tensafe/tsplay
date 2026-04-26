@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -314,6 +315,89 @@ func TestBuildWorkbenchFallbackShape(t *testing.T) {
 	}
 	if len(shape.Forms) != 0 || len(shape.Actions) != 0 || len(shape.Links) != 0 {
 		t.Fatalf("expected empty fallback shape: %#v", shape)
+	}
+}
+
+func TestBuildWorkbenchTaskPlanUsesRealtimeObservationContext(t *testing.T) {
+	artifactRoot := t.TempDir()
+	if _, err := SaveWorkbenchSiteConfig(WorkbenchSiteConfig{
+		SiteID:      "demo_admin",
+		Name:        "Demo Admin",
+		StartURL:    "https://example.com/admin",
+		SessionName: "demo_admin_user",
+	}, artifactRoot); err != nil {
+		t.Fatalf("SaveWorkbenchSiteConfig() error = %v", err)
+	}
+
+	plan, err := BuildWorkbenchTaskPlan(WorkbenchTaskPlanOptions{
+		SiteID:       "demo_admin",
+		ArtifactRoot: artifactRoot,
+		Intent:       "搜索订单并导出",
+		RealtimeContext: &WorkbenchRealtimeContextInput{
+			URL:   "https://example.com/admin/orders",
+			Title: "订单管理",
+			Observation: json.RawMessage(`{
+  "url": "https://example.com/admin/orders",
+  "title": "订单管理",
+  "elements": [
+    {
+      "index": 1,
+      "tag": "input",
+      "type": "text",
+      "label": "订单关键词",
+      "placeholder": "搜索订单",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-testid=\"order-query\"]", "#query"],
+      "attributes": {
+        "data-testid": "order-query"
+      }
+    },
+    {
+      "index": 2,
+      "tag": "button",
+      "type": "button",
+      "text": "Search",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["#search-button", "text=\"Search\""]
+    },
+    {
+      "index": 3,
+      "tag": "a",
+      "type": "link",
+      "text": "Export orders",
+      "visible": true,
+      "enabled": true,
+      "selector_candidates": ["[data-cy=\"export-link\"]", "text=\"Export orders\""],
+      "attributes": {
+        "data-cy": "export-link"
+      }
+    }
+  ]
+}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildWorkbenchTaskPlan() error = %v", err)
+	}
+	if plan.Strategy != "ui_live" {
+		t.Fatalf("unexpected strategy: %q", plan.Strategy)
+	}
+	if plan.Flow == nil {
+		t.Fatalf("expected flow")
+	}
+	if plan.Flow.Browser == nil || plan.Flow.Browser.UseSession != "demo_admin_user" {
+		t.Fatalf("expected flow to reuse session: %#v", plan.Flow.Browser)
+	}
+	if !strings.Contains(plan.FlowYAML, `action: type_text`) {
+		t.Fatalf("expected realtime draft to include type_text: %s", plan.FlowYAML)
+	}
+	if !strings.Contains(plan.FlowYAML, `[data-testid="order-query"]`) {
+		t.Fatalf("expected realtime draft to keep observed selector: %s", plan.FlowYAML)
+	}
+	if !strings.Contains(plan.Reason, "real-time page observation") {
+		t.Fatalf("unexpected reason: %q", plan.Reason)
 	}
 }
 

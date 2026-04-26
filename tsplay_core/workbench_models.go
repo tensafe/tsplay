@@ -1,5 +1,7 @@
 package tsplay_core
 
+import "encoding/json"
+
 type WorkbenchSiteConfig struct {
 	SiteID         string   `json:"site_id"`
 	Name           string   `json:"name"`
@@ -208,11 +210,28 @@ type WorkbenchExploreResult struct {
 	Entities     []WorkbenchEntityCard `json:"entities,omitempty"`
 }
 
+type WorkbenchRealtimeContextInput struct {
+	URL         string          `json:"url,omitempty"`
+	Title       string          `json:"title,omitempty"`
+	HTML        string          `json:"html,omitempty"`
+	Observation json.RawMessage `json:"observation,omitempty"`
+}
+
+type workbenchRealtimeContext struct {
+	URL         string
+	Title       string
+	HTML        string
+	Observation *PageObservation
+}
+
 type WorkbenchTaskPlanOptions struct {
-	SiteID       string `json:"site_id"`
-	ArtifactRoot string `json:"artifact_root,omitempty"`
-	Intent       string `json:"intent"`
-	ProviderID   string `json:"provider_id,omitempty"`
+	SiteID          string                         `json:"site_id"`
+	ArtifactRoot    string                         `json:"artifact_root,omitempty"`
+	Intent          string                         `json:"intent"`
+	ProviderID      string                         `json:"provider_id,omitempty"`
+	RealtimeContext *WorkbenchRealtimeContextInput `json:"realtime_context,omitempty"`
+
+	realtimeContext *workbenchRealtimeContext
 }
 
 type WorkbenchTaskCandidate struct {
