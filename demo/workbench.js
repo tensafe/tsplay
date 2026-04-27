@@ -101,6 +101,10 @@
     refs.copyOriginalFlowButton = document.getElementById("copyOriginalFlowButton");
     refs.copyFlowButton = document.getElementById("copyFlowButton");
     refs.runResultPanel = document.getElementById("runResultPanel");
+    refs.runRecoveryActions = document.getElementById("runRecoveryActions");
+    refs.smartRecoverFlowButton = document.getElementById("smartRecoverFlowButton");
+    refs.regenerateFlowButton = document.getElementById("regenerateFlowButton");
+    refs.runRecoveredFlowButton = document.getElementById("runRecoveredFlowButton");
     refs.replayFlowButton = document.getElementById("replayFlowButton");
     refs.repairFlowButton = document.getElementById("repairFlowButton");
     refs.autoRepairFlowButton = document.getElementById("autoRepairFlowButton");
@@ -147,8 +151,12 @@
       runAction("生成 Flow", planTask);
     });
     refs.intentInput.addEventListener("input", renderPlanContextPreview);
+    refs.intentInput.addEventListener("input", syncRecoveryActionButtons);
     refs.flowEditor.addEventListener("input", handleFlowEditorInput);
     refs.runFlowButton.addEventListener("click", () => runAction("执行 Flow", executePlanFlow));
+    refs.smartRecoverFlowButton.addEventListener("click", () => runAction("智能修复 Flow", smartRecoverFlow));
+    refs.regenerateFlowButton.addEventListener("click", () => runAction("重新生成 Flow", regeneratePlanFlow));
+    refs.runRecoveredFlowButton.addEventListener("click", () => runAction("执行修复版 Flow", executePlanFlow));
     refs.replayFlowButton.addEventListener("click", () => runAction("回放 Flow", executePlanFlow));
     refs.repairFlowButton.addEventListener("click", () => runAction("生成 Repair Context", buildRepairContext));
     refs.autoRepairFlowButton.addEventListener("click", () => runAction("自动修复 Flow", buildAutoRepair));
@@ -544,6 +552,9 @@
     if (payload.flow_yaml) {
       setCurrentFlowYAML(payload.flow_yaml);
     }
+    if (!payload.ok) {
+      await prepareRepairContextAfterFailure();
+    }
     renderJourney();
     renderPlan();
     renderRunResult();
@@ -575,6 +586,7 @@
     });
     state.lastRepair = payload;
     renderJourney();
+    renderRunResult();
     renderRepair();
   }
 
@@ -605,9 +617,61 @@
       setCurrentFlowYAML(payload.repaired_flow_yaml);
     }
     renderJourney();
+    renderRunResult();
     renderRepair();
     if (!payload.ok) {
       throw new Error(payload.validation_error || payload.error || "自动修复失败");
+    }
+  }
+
+  async function smartRecoverFlow() {
+    if (!state.lastRun) {
+      throw new Error("当前还没有执行结果，先运行一次 Flow");
+    }
+    if (state.lastRun.ok) {
+      throw new Error("当前执行已经成功，不需要智能修复");
+    }
+    try {
+      await buildAutoRepair();
+      return { mode: "auto_repair" };
+    } catch (error) {
+      console.warn("auto repair failed, falling back to regenerate plan", error);
+      await planTask();
+      return {
+        mode: "replanned_after_repair_failure",
+        reason: error && error.message ? error.message : String(error || ""),
+      };
+    }
+  }
+
+  async function regeneratePlanFlow() {
+    await planTask();
+    return { mode: "replanned" };
+  }
+
+  async function prepareRepairContextAfterFailure() {
+    if (!state.lastRun || state.lastRun.ok) {
+      return null;
+    }
+    const flowYAML = normalizeString(currentFlowYAMLValue());
+    if (!flowYAML || flowYAML === "还没有生成 Flow") {
+      return null;
+    }
+    try {
+      const payload = await apiFetch("/api/workbench/tasks/repair", {
+        method: "POST",
+        body: JSON.stringify({
+          artifact_root: state.artifactRoot,
+          flow_yaml: flowYAML,
+          run_result: state.lastRun.result || null,
+          error: state.lastRun.error || "",
+        }),
+      });
+      state.lastRepair = payload;
+      return payload;
+    } catch (error) {
+      console.warn("prepare repair context failed", error);
+      return null;
     }
   }
 
@@ -653,6 +717,7 @@
     state.entities = [];
     state.lastExplore = null;
     state.lastPlan = null;
+    state.lastPlanRealtimeContext = null;
     state.currentFlowYAML = "";
     state.lastRun = null;
     state.lastRepair = null;
@@ -1013,10 +1078,13 @@
       refs.runTraceList.innerHTML = "";
       refs.repairFlowButton.disabled = true;
       refs.autoRepairFlowButton.disabled = true;
+      syncRecoveryActionButtons();
       return;
     }
 
     const result = run.result || {};
+    const recoveryHint = describeRunRecoveryHint(run, state.lastRepair);
+    const repairHint = summarizeTopRepairHint(state.lastRepair);
     const summary = [
       '<div class="wb-card-meta">',
       pill("状态 · " + escapeHTML(run.ok ? "success" : "failed")),
@@ -1025,6 +1093,8 @@
       (isDeveloperMode() && result.trace ? pill("Trace · " + escapeHTML(String(result.trace.length || 0))) : ""),
       "</div>",
       run.error ? "<p>" + escapeHTML(run.error) + "</p>" : "<p>Flow 已执行完成，可以继续下一步。</p>",
+      !run.ok && recoveryHint ? "<p><strong>恢复建议：</strong>" + escapeHTML(recoveryHint) + "</p>" : "",
+      !run.ok && repairHint ? "<p><strong>首条修复线索：</strong>" + escapeHTML(repairHint) + "</p>" : "",
       isDeveloperMode() ? renderArtifactPath("Run Root", result.run_root) : "",
       isDeveloperMode() ? renderArtifactPath("Browser Video", result.browser_video) : "",
       isDeveloperMode() ? renderSchema("Vars", result.vars) : "",
@@ -1032,6 +1102,7 @@
     refs.runResultPanel.innerHTML = "<h3>执行结果</h3>" + summary.join("");
     refs.repairFlowButton.disabled = !!run.ok;
     refs.autoRepairFlowButton.disabled = !!run.ok;
+    syncRecoveryActionButtons();
 
     const traces = flattenTraceList(result.trace || []);
     if (!traces.length) {
@@ -1315,6 +1386,40 @@
       (Array.isArray(observation.elements) && observation.elements.length) ||
       (Array.isArray(observation.content_elements) && observation.content_elements.length)
     );
+  }
+
+  function describeRunRecoveryHint(run, repairPayload) {
+    if (!run || run.ok) {
+      return "";
+    }
+    const failureCategory = normalizeString(
+      repairPayload && repairPayload.context ? repairPayload.context.failure_category : ""
+    );
+    switch (failureCategory) {
+      case "selector_or_timing":
+        return "这类失败通常是页面结构变了，或者内容出现得更晚。优先试“智能修复 Flow”；如果页面整体变化较大，再重新生成。";
+      case "navigation":
+        return "这次更像是页面没有落到预期位置。先检查跳转目标；如果站点首页结构已变，重新生成通常更稳。";
+      case "text_mismatch":
+        return "页面文本和预期不一致。优先重新生成，必要时再用修复版微调断言。";
+      default:
+        if (/timeout|locator|not visible/i.test(normalizeString(run.error))) {
+          return "这次失败更像是选择器或时序漂移。优先试“智能修复 Flow”；如果修不回来，再重新生成。";
+        }
+        return "可以先试“智能修复 Flow”；如果结果仍不理想，再按当前上下文重新生成。";
+    }
+  }
+
+  function summarizeTopRepairHint(repairPayload) {
+    const hints =
+      repairPayload && repairPayload.context && Array.isArray(repairPayload.context.repair_hints)
+        ? repairPayload.context.repair_hints
+        : [];
+    if (!hints.length) {
+      return "";
+    }
+    const firstHint = hints[0] || {};
+    return firstNonEmpty(firstHint.suggestion, firstHint.issue, firstHint.selector);
   }
 
   function renderRepair() {
@@ -2062,6 +2167,28 @@
     refs.runFlowButton.disabled = !hasFlow;
     refs.replayFlowButton.disabled = !hasFlow;
     refs.runRepairedFlowButton.disabled = !hasFlow;
+    syncRecoveryActionButtons();
+  }
+
+  function syncRecoveryActionButtons() {
+    const hasFailedRun = !!(state.lastRun && !state.lastRun.ok);
+    const hasRepairFlow = !!(
+      state.lastRepair &&
+      typeof state.lastRepair.repaired_flow_yaml === "string" &&
+      normalizeString(state.lastRepair.repaired_flow_yaml)
+    );
+    if (refs.runRecoveryActions) {
+      refs.runRecoveryActions.classList.toggle("is-hidden", !hasFailedRun);
+    }
+    if (refs.smartRecoverFlowButton) {
+      refs.smartRecoverFlowButton.disabled = !hasFailedRun;
+    }
+    if (refs.regenerateFlowButton) {
+      refs.regenerateFlowButton.disabled = !normalizeString(refs.intentInput.value);
+    }
+    if (refs.runRecoveredFlowButton) {
+      refs.runRecoveredFlowButton.disabled = !hasRepairFlow;
+    }
   }
 
   function normalizeViewMode(value) {
@@ -2231,7 +2358,7 @@
     }
   }
 
-  function describeSuccessStatus(label) {
+  function describeSuccessStatus(label, result) {
     switch (label) {
       case "加载 Workbench":
         return "Workbench 已加载";
@@ -2258,6 +2385,12 @@
         return "Repair Context 已生成。";
       case "自动修复 Flow":
         return "Flow 自动修复已完成。";
+      case "智能修复 Flow":
+        return result && result.mode === "replanned_after_repair_failure"
+          ? "自动修复失败，已按当前上下文重新生成 Flow。"
+          : "Flow 智能修复已完成。";
+      case "重新生成 Flow":
+        return "Flow 已按当前上下文重新生成。";
       case "执行修复版 Flow":
         return state.lastRun && state.lastRun.ok ? "修复版 Flow 已执行完成。" : "修复版 Flow 执行结束。";
       case "复制 Flow":
