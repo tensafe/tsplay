@@ -60,6 +60,20 @@ If the repository is not available, fall back to `examples.md` and `flow-authori
 - Use when the workbook contains a larger sheet but only one bounded range matters.
 - Good first template for `read_excel` with `sheet`, `range`, and explicit header handling.
 
+## Email And Notification Flows / 邮件与通知类 Flow
+
+### Start Here: Send one notification email
+
+- `script/tutorials/send_email_qq_test.flow.yaml`
+- Use when the Flow should send a simple result or connectivity email without attachments.
+- Good first template for `send_email` plus inline SMTP config.
+
+### Start Here: Generate and attach a report
+
+- `script/tutorials/send_email_qq_attachment_test.flow.yaml`
+- Use when the Flow should generate an artifact such as Excel and email it as an attachment.
+- Good first template for `write_excel` plus `send_email` attachments.
+
 ## Session Flows / 会话类 Flow
 
 ### Start Here: Reuse a saved login session

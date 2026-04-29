@@ -22,6 +22,7 @@ Use this file when you know the business goal but need help choosing the right T
 - 重试易抖动步骤: `retry`
 - 读 CSV 或 Excel: `read_csv`, `read_excel`
 - 写 JSON 或 CSV: `write_json`, `write_csv`
+- 发邮件通知: `send_email`
 
 ## Authoring Rules From TSPlay
 
@@ -435,7 +436,73 @@ Useful optional fields:
 
 - `with.headers`
 
-## 6. Top-Level Browser Config / 顶层浏览器配置
+## 6. Notification And Delivery / 通知与投递
+
+### `send_email`
+
+Use to send a completion summary, failure alert, exported report, or other notification email through SMTP.
+
+```yaml
+- action: send_email
+  save_as: email_result
+  connection: alerts
+  with:
+    to:
+      - "ops@example.com"
+    subject: "TSPlay run finished"
+    body: "Import completed successfully."
+```
+
+Required fields:
+
+- `with.to`
+- `with.subject`
+- at least one of `with.body` or `with.html`
+
+Useful optional fields:
+
+- `with.cc`
+- `with.bcc`
+- `with.attachments`
+- `with.from_email`
+- `with.reply_to`
+- `with.headers`
+- `connection`
+- `with.smtp`
+- `save_as`
+
+Notes:
+
+- `with.to`, `with.cc`, and `with.bcc` can be one email string or a list of email strings.
+- `connection` loads SMTP settings from `TSPLAY_EMAIL_*` or `TSPLAY_EMAIL_<NAME>_*` environment variables.
+- `with.smtp` supports inline SMTP settings such as `host`, `port`, `username`, `password`, `from`, and `tls_mode`.
+- Restricted Flow or MCP contexts require `allow_email=true`.
+- Attachments read local files and therefore also require `allow_file_access=true` in restricted Flow or MCP contexts.
+- Custom headers cannot override reserved headers such as `From`, `To`, `Subject`, or `Content-Type`.
+
+Attachment example:
+
+```yaml
+- action: send_email
+  save_as: email_result
+  with:
+    to: "{{recipient_emails}}"
+    subject: "{{subject_text}}"
+    body: "{{body_text}}"
+    attachments:
+      - path: artifacts/reports/run.xlsx
+        name: run.xlsx
+        content_type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    smtp:
+      host: smtp.qq.com
+      port: 465
+      username: "{{sender_email}}"
+      password: "{{sender_password}}"
+      from: "{{sender_email}}"
+      tls_mode: tls
+```
+
+## 7. Top-Level Browser Config / 顶层浏览器配置
 
 ### `browser.use_session`
 
@@ -462,6 +529,7 @@ browser:
 - Table flow: `navigate` + `wait_for_selector` + `capture_table`
 - Batch import: `read_excel` or `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - Resilient import: `foreach` + `on_error` + `append_var`
+- Report notification: `set_var` or `write_excel` + `send_email`
 
 ## 中文起手组合
 
@@ -470,3 +538,4 @@ browser:
 - 抓取表格: `navigate` + `wait_for_selector` + `capture_table`
 - 批量导入: `read_excel` 或 `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - 带容错的导入: `foreach` + `on_error` + `append_var`
+- 结果邮件通知: `set_var` 或 `write_excel` + `send_email`

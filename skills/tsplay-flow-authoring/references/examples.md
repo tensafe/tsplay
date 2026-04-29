@@ -106,6 +106,19 @@ For repo-backed starting points grouped by category, read `example-index.md`.
 - 要求: 优先走 finalize_flow 思路，必要时再拆成 observe / draft / validate / repair
 ```
 
+## Template 9: Send Email Notification
+
+```text
+帮我写一条 TSPlay Flow 发送邮件通知。
+- 目标: <发送成功通知 / 失败告警 / 导出结果邮件 / 附件邮件>
+- 收件人: <邮箱字符串或邮箱列表>
+- 主题: <邮件主题>
+- 内容: <正文文本或 HTML>
+- 附件: <无，或附件文件路径 / 生成后的 artifact 路径>
+- SMTP: <用 connection 走环境变量，或直接给 inline smtp 配置>
+- 授权: 需要说明 allow_email；如果有附件，也说明文件权限
+```
+
 ## Good Input Shape
 
 The highest-signal Flow requests usually include:
@@ -124,6 +137,8 @@ The highest-signal Flow requests usually include:
 - On-error recovery flow: `script/tutorials/27_on_error_import_excel_writeback.flow.yaml`
 - Review readability example: `script/tutorials/131_review_readability_after.flow.yaml`
 - MCP schema and example discovery: `docs/tutorials/112-mcp-flow-schema-and-examples.md`
+- Email notification flow: `script/tutorials/send_email_qq_test.flow.yaml`
+- Email attachment flow: `script/tutorials/send_email_qq_attachment_test.flow.yaml`
 
 ## Ready-Made Flow Snippets
 
@@ -236,8 +251,29 @@ steps:
                 error: "{{last_error}}"
 ```
 
+### Snippet 4: Send A Completion Email
+
+```yaml
+schema_version: "1"
+name: send_completion_email_flow
+vars:
+  recipient_emails:
+    - "ops@example.com"
+  subject_text: "TSPlay run finished"
+  body_text: "Import completed successfully."
+steps:
+  - action: send_email
+    save_as: email_result
+    connection: alerts
+    with:
+      to: "{{recipient_emails}}"
+      subject: "{{subject_text}}"
+      body: "{{body_text}}"
+```
+
 ## 中文使用建议
 
 - 如果目标是“能跑一次”，先写最小 Flow，不要一上来就做很重的抽象。
 - 如果目标是“给团队复用”，优先把 `name`、`description`、`save_as`、artifact 路径写清楚。
 - 如果用户不知道 selector，先考虑 MCP 的 `observe_page` 路线，不要逼用户自己贴 HTML。
+- 如果目标是“发通知”，优先先决定 SMTP 来源是 `connection` 还是 `with.smtp`，再决定是否带附件。

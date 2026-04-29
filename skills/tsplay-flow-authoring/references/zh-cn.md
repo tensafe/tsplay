@@ -63,6 +63,7 @@
 - 页面易抖动、要重试: `retry`
 - 读本地 CSV 或 Excel: `read_csv`, `read_excel`
 - 写结果到 JSON 或 CSV: `write_json`, `write_csv`
+- 发邮件通知: `send_email`
 - 复用登录态: 顶层 `browser.use_session`
 
 ## 中文写 Flow 的推荐顺序
@@ -105,6 +106,14 @@
 - `example-index.md` 里的 Session Flows
 - `actions.md` 里的顶层 `browser.use_session`
 
+### 邮件通知
+
+先看：
+
+- `example-index.md` 里的 Email And Notification Flows
+- `actions.md` 里的 `send_email`
+- `zh-cn-business-templates.md` 里的邮件通知模板
+
 ### 容错与恢复
 
 先看：
@@ -133,6 +142,7 @@
 - `save_as` 用业务语义，比如 `import_results`、`auth_status`、`page_title`
 - artifact 路径尽量稳定，不要每次都换一套随意命名
 - 能用 Flow 原生 action 就别先绕到 Lua
+- 发邮件场景下，不要把邮箱密码直接硬编码进长期复用模板，优先走 `connection`
 
 ## 一句总结
 

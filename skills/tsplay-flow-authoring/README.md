@@ -6,6 +6,7 @@
 
 - 用自然语言把需求收敛成 TSPlay `.flow.yaml`
 - 修已有 Flow 的 selector、等待、断言、变量链路、会话复用
+- 编写邮件通知、失败告警、附件邮件等 `send_email` Flow
 - 用中文或英文提问
 - 按场景快速找到起手示例
 - 按 MCP 的 `finalize -> run -> repair` 思路组织 Flow 工作流
@@ -14,6 +15,7 @@
 
 - 写新的 TSPlay Flow
 - 修一条已经存在的 Flow
+- 写邮件通知或附件发送 Flow
 - 给团队做教程风格 Flow
 - review Flow 的可维护性
 - 把中文业务需求整理成稳定的 Flow
@@ -66,6 +68,8 @@ $CODEX_HOME/skills/tsplay-flow-authoring
 - 把这个需求转成 Flow
 - 帮我排查这条 Flow 为什么跑不通
 - 帮我按 MCP 思路收敛成 Flow
+- 帮我写一条发邮件的 Flow
+- 帮我做一个邮件通知 Flow
 
 典型英文触发词：
 
@@ -75,6 +79,8 @@ $CODEX_HOME/skills/tsplay-flow-authoring
 - generate flow
 - repair selector
 - convert a requirement into Flow
+- send email flow
+- email notification flow
 
 ## 建议阅读顺序
 
@@ -107,6 +113,14 @@ $CODEX_HOME/skills/tsplay-flow-authoring
 - `references/zh-cn-selectors.md`: 中文 selector 策略速查
 - `references/zh-cn-review-checklist.md`: 中文 Flow review 清单
 - `references/repo-map.md`: 在 TSPlay 仓库里工作时的路径和命令索引
+
+## 邮件能力说明
+
+- TSPlay 的动作名是 `send_email`
+- 适合发送成功通知、失败告警、导出结果邮件、附件报告
+- 需要发邮件时，受限上下文下要考虑 `allow_email`
+- 如果邮件带附件，还要同时考虑文件访问权限
+- SMTP 配置既可以走 `connection` 对应的环境变量，也可以直接写 `with.smtp`
 
 ## 最小使用模板
 

@@ -1,6 +1,6 @@
 ---
 name: tsplay-flow-authoring
-description: Shareable TSPlay Flow authoring skill for coders. Use when Codex needs to write, modify, fix, review, or explain TSPlay `.flow.yaml` files, choose between Flow DSL, Lua script mode, and MCP workflows, draft or review tutorial flows, or debug artifacts and saved sessions. Typical English triggers include write flow, fix flow, review flow, generate flow, repair selector, and convert a requirement into Flow. Typical Chinese triggers include 编写 Flow, 写 Flow, 改 Flow, 修 Flow, 生成 flow, 补一条 flow, 调试 flow, 排查 flow, 设计教程 flow, and 把需求转成 TSPlay Flow.
+description: Shareable TSPlay Flow authoring skill for coders. Use when Codex needs to write, modify, fix, review, or explain TSPlay `.flow.yaml` files, choose between Flow DSL, Lua script mode, and MCP workflows, draft or review tutorial flows, send email notifications with `send_email`, or debug artifacts and saved sessions. Typical English triggers include write flow, fix flow, review flow, generate flow, repair selector, send email flow, email notification flow, and convert a requirement into Flow. Typical Chinese triggers include 编写 Flow, 写 Flow, 改 Flow, 修 Flow, 生成 flow, 补一条 flow, 调试 flow, 排查 flow, 设计教程 flow, 发邮件 flow, 邮件通知 flow, and 把需求转成 TSPlay Flow.
 ---
 
 # TSPlay
@@ -44,7 +44,7 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 - Start from the user goal, page URL, required inputs, desired output file or variables, and the minimum security boundary.
 - Prefer stable and readable Flow structure over clever Lua detours.
 - Use clear `name`, optional `description`, and meaningful `save_as` names so the Flow is reviewable.
-- Reach for common Flow-native actions first: `navigate`, `wait_for_selector`, `type_text`, `click`, `assert_visible`, `assert_text`, `extract_text`, `set_var`, `foreach`, `on_error`, `write_json`, and `write_csv`.
+- Reach for common Flow-native actions first: `navigate`, `wait_for_selector`, `type_text`, `click`, `assert_visible`, `assert_text`, `extract_text`, `set_var`, `foreach`, `on_error`, `write_json`, `write_csv`, and `send_email`.
 - For Chinese requests, normalize the task into five fields first: 页面, 目标, 输入, 输出, 授权.
 - Keep artifact paths stable and task-scoped, especially for tutorial or handoff work.
 - Reuse existing tutorial patterns before inventing a brand-new structure from scratch.

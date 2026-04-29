@@ -65,6 +65,16 @@ steps:
 
 For action-level syntax, examples, and notes, read `actions.md`.
 
+### Pattern 5: Report And Notify
+
+Use when the Flow should send a completion notice, failure summary, or exported report by email.
+
+- build the result payload first
+- write artifacts such as JSON, CSV, or Excel when needed
+- call `send_email`
+- use `connection` for environment-driven SMTP or `with.smtp` for inline SMTP
+- remember that restricted Flow or MCP contexts require `allow_email=true`
+
 ### Pattern 1: Page Assert And Extract
 
 Use for readiness checks, smoke checks, and lightweight data capture.
