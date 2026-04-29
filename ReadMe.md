@@ -436,6 +436,8 @@ Useful for batch import, chunked execution, and writing results back into a ledg
 - `read_csv` treats the first non-empty row as the header by default
 - `read_excel` currently supports `.xlsx`
 - `write_excel` currently supports `.xlsx`
+- `write_excel` supports multi-sheet workbook values shaped like `value = { sheets = [...] }`
+- `write_excel` writes numbers and booleans as native Excel cell types
 - `read_excel.range` supports rectangular ranges such as `A2:B20`
 - you can combine `with.start_row`, `with.limit`, and `with.row_number_field` for resumable processing
 

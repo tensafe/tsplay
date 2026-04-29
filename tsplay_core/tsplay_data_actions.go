@@ -53,7 +53,7 @@ func write_excel(L *lua.LState) int {
 	value := luaValueToGo(L.Get(2))
 
 	options := excelWriteOptions{}
-	for index := 3; index <= 4 && index <= L.GetTop(); index++ {
+	for index := 3; index <= L.GetTop(); index++ {
 		if L.Get(index) == lua.LNil {
 			continue
 		}

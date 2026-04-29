@@ -529,6 +529,71 @@ func TestRunFlowWriteExcelAndReadBack(t *testing.T) {
 	}
 }
 
+func TestRunFlowWriteExcelWorkbookAndReadNamedSheet(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "write_excel_workbook_round_trip",
+		Steps: []FlowStep{
+			{
+				Action:   "write_excel",
+				FilePath: "reports/workbook.xlsx",
+				With: map[string]any{
+					"value": map[string]any{
+						"sheets": []any{
+							map[string]any{
+								"name": "Summary",
+								"value": []any{
+									map[string]any{
+										"count":  2,
+										"active": true,
+									},
+								},
+							},
+							map[string]any{
+								"name":    "Errors",
+								"headers": []any{"source_row", "error"},
+								"value": []any{
+									[]any{3, "boom"},
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				Action:   "read_excel",
+				FilePath: "reports/workbook.xlsx",
+				Sheet:    "Errors",
+				SaveAs:   "errors",
+			},
+			{
+				Action: "set_var",
+				SaveAs: "error_message",
+				Value:  "{{errors[0].error}}",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	if got := result.Vars["error_message"]; got != "boom" {
+		t.Fatalf("error_message = %#v", got)
+	}
+}
+
 func TestValidateFlowSecurityRejectsForeachProgressCheckpointWithoutAllow(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",

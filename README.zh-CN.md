@@ -433,6 +433,8 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 - `read_csv` 默认把第一行非空行当表头
 - `read_excel` 当前支持 `.xlsx`
 - `write_excel` 当前支持 `.xlsx`
+- `write_excel` 支持 `value = { sheets = [...] }` 这种多工作表写法
+- `write_excel` 会把数字和布尔值写成原生 Excel 单元格类型
 - `read_excel.range` 支持 `A2:B20` 这类矩形范围
 - 可配 `with.start_row`、`with.limit`、`with.row_number_field` 做断点续跑
 
