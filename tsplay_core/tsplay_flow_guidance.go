@@ -268,7 +268,7 @@ steps:
 				Code:   issue.Code,
 				Action: issue.Action,
 			},
-			Why: "TSPlay does not have a generic save_file action. Pick the writer that matches the artifact type, such as write_csv, write_json, save_html, or a download action.",
+			Why: "TSPlay does not have a generic save_file action. Pick the writer that matches the artifact type, such as write_csv, write_excel, write_json, save_html, or a download action.",
 			BeforeYAML: `- action: save_file
   path: "artifacts/results.csv"
   content: "{{rows}}"`,
@@ -284,6 +284,7 @@ steps:
 			Revalidate: true,
 			Notes: []string{
 				"Switch to write_json when the value is an object or list meant to stay as JSON.",
+				"Switch to write_excel when the result should stay as a native .xlsx workbook.",
 				"Switch to save_html when the payload is page HTML.",
 			},
 		}

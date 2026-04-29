@@ -116,7 +116,7 @@ var flowActionAliasHints = map[string]FlowIssue{
 		Suggestion: `Replace "result_var" with "save_as".`,
 	},
 	"save_file": {
-		Suggestion: `TSPlay has no generic "save_file" action; use "write_json", "write_csv", "save_html", or a download action depending on the artifact you need.`,
+		Suggestion: `TSPlay has no generic "save_file" action; use "write_json", "write_csv", "write_excel", "save_html", or a download action depending on the artifact you need.`,
 	},
 	"log": {
 		Suggestion: `TSPlay has no "log" action; surface completion in the caller, or use "set_var"/"append_var" if the flow needs to keep state.`,
@@ -629,6 +629,8 @@ func flowAllowedParamsForAction(action string) []string {
 		params = []string{"condition", "timeout", "interval_ms"}
 	case "write_csv":
 		params = []string{"file_path", "value", "with.headers"}
+	case "write_excel":
+		params = []string{"file_path", "value", "sheet", "with.headers"}
 	case "read_excel":
 		params = []string{"file_path", "sheet", "range", "with.headers", "with.start_row", "with.limit", "with.row_number_field"}
 	}

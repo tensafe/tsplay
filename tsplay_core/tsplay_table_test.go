@@ -265,6 +265,56 @@ func TestRunFlowReadExcelResumeWindow(t *testing.T) {
 	}
 }
 
+func TestWriteExcelValueAndReadBack(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "reports.xlsx")
+
+	result, err := writeExcelValue(xlsxPath, []any{
+		map[string]any{
+			"source_row": 2,
+			"status":     "success",
+		},
+		map[string]any{
+			"source_row": 3,
+			"status":     "failed",
+			"error":      "boom",
+		},
+	}, excelWriteOptions{
+		Sheet:   "Results",
+		Headers: []string{"source_row", "status", "error"},
+	})
+	if err != nil {
+		t.Fatalf("write excel: %v", err)
+	}
+	if got := result["sheet"]; got != "Results" {
+		t.Fatalf("sheet = %#v", got)
+	}
+
+	rows, err := loadExcelRows(xlsxPath, excelReadOptions{Sheet: "Results"})
+	if err != nil {
+		t.Fatalf("read excel: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows len = %d", len(rows))
+	}
+
+	first, ok := rows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first row = %#v", rows[0])
+	}
+	if first["source_row"] != "2" || first["status"] != "success" {
+		t.Fatalf("first row = %#v", first)
+	}
+
+	second, ok := rows[1].(map[string]any)
+	if !ok {
+		t.Fatalf("second row = %#v", rows[1])
+	}
+	if second["source_row"] != "3" || second["status"] != "failed" || second["error"] != "boom" {
+		t.Fatalf("second row = %#v", second)
+	}
+}
+
 func TestValidateFlowRejectsInvalidReadExcelRange(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",

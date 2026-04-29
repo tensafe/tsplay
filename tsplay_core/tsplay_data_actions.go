@@ -48,6 +48,30 @@ func write_csv(L *lua.LState) int {
 	return 1
 }
 
+func write_excel(L *lua.LState) int {
+	filePath := L.CheckString(1)
+	value := luaValueToGo(L.Get(2))
+
+	options := excelWriteOptions{}
+	for index := 3; index <= 4 && index <= L.GetTop(); index++ {
+		if L.Get(index) == lua.LNil {
+			continue
+		}
+		if err := applyExcelWriteOption(&options, luaValueToGo(L.Get(index))); err != nil {
+			L.RaiseError("write_excel arg #%d %v", index, err)
+			return 0
+		}
+	}
+
+	result, err := writeExcelValue(filePath, value, options)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, result))
+	return 1
+}
+
 func writeJSONValue(filePath string, value any) (map[string]any, error) {
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {

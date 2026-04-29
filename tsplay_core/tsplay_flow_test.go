@@ -456,6 +456,79 @@ func TestRunFlowAppendVarAndWriteResults(t *testing.T) {
 	}
 }
 
+func TestRunFlowWriteExcelAndReadBack(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "write_excel_round_trip",
+		Steps: []FlowStep{
+			{
+				Action: "append_var",
+				SaveAs: "import_results",
+				With: map[string]any{
+					"value": map[string]any{
+						"source_row": 2,
+						"status":     "success",
+					},
+				},
+			},
+			{
+				Action: "append_var",
+				SaveAs: "import_results",
+				With: map[string]any{
+					"value": map[string]any{
+						"source_row": 3,
+						"status":     "failed",
+						"error":      "boom",
+					},
+				},
+			},
+			{
+				Action: "write_excel",
+				Args: []any{
+					"reports/import-results.xlsx",
+					"{{import_results}}",
+					[]any{"source_row", "status", "error"},
+					"Results",
+				},
+			},
+			{
+				Action:   "read_excel",
+				FilePath: "reports/import-results.xlsx",
+				Sheet:    "Results",
+				SaveAs:   "reloaded",
+			},
+			{
+				Action: "set_var",
+				SaveAs: "reloaded_error",
+				Value:  "{{reloaded[1].error}}",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	xlsxPath := filepath.Join(root, "reports", "import-results.xlsx")
+	if _, err := os.Stat(xlsxPath); err != nil {
+		t.Fatalf("stat xlsx: %v", err)
+	}
+	if got := result.Vars["reloaded_error"]; got != "boom" {
+		t.Fatalf("reloaded_error = %#v", got)
+	}
+}
+
 func TestValidateFlowSecurityRejectsForeachProgressCheckpointWithoutAllow(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",

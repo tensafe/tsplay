@@ -1623,6 +1623,7 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
 	descriptions["write_json"] = "Write any resolved value to a local JSON file."
 	descriptions["write_csv"] = "Write resolved rows to a local CSV file, optionally with an explicit header order."
+	descriptions["write_excel"] = "Write resolved rows to a local Excel .xlsx file, optionally with an explicit sheet name and header order."
 	descriptions["redis_get"] = "Read one key from Redis using a named connection resolved from environment variables."
 	descriptions["redis_set"] = "Write one key to Redis with an optional TTL using a named connection resolved from environment variables."
 	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
@@ -1876,6 +1877,20 @@ func buildFlowActionManifest() []map[string]any {
 			item["notes"] = []string{
 				"Value should be a list of row objects, row lists, or scalars.",
 				"Use with.headers to control CSV column order when writing objects.",
+			}
+		}
+		if name == "write_excel" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "value", "type": "any", "required": true},
+				{"name": "sheet", "type": "string", "required": false},
+				{"name": "with.headers", "type": "string_list", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Value should be a list of row objects, row lists, or scalars.",
+				"Use sheet to override the default Sheet1 worksheet name.",
+				"Use with.headers to control Excel column order when writing objects.",
 			}
 		}
 		if group := flowActionSecurityGroup(name); group != "" {
