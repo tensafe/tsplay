@@ -18,6 +18,22 @@ Use this page to understand the structure, pick the right lesson range, and ente
 
 The repository already uses `docs/`, so the tutorial system lives here instead of a separate `doc/` folder.
 
+## Before You Pick Lessons
+
+If you have not brought the local environment up yet, start with [../../getting-started.md](../../getting-started.md) first.
+
+The shortest first-run path is:
+
+```bash
+go mod download
+go run . -flow script/tutorials/01_hello_world.flow.yaml
+# only run this when you want local demo pages
+go run . -action file-srv -addr :8000
+```
+
+The first two commands confirm TSPlay can run.
+The third is only needed when you want to practice against local demo pages.
+
 ## Fast Entry Points
 
 <div class="grid cards" markdown>
@@ -60,16 +76,29 @@ The repository already uses `docs/`, so the tutorial system lives here instead o
 
 </div>
 
-## Quick Scenario Map
+## Quick Topic Map
 
-| Scenario | Best First Stops |
-| --- | --- |
-| first runnable lesson | [01](01-hello-world.md), [02](02-local-page-select-option.md) |
-| extraction and local outputs | [03](03-capture-table.md), [04](04-extract-text-and-html.md), [12](12-custom-json-output.md) |
-| orchestration and resilience | [16](16-retry-flaky-action.md), [17](17-wait-until-ready.md), [21](21-if-optional-login.md), [23](23-on-error-import-recovery.md) |
-| files and batch import | [13](13-read-csv-basics.md), [22](22-foreach-batch-import-csv.md), [24](24-read-excel-basics.md), [27](27-on-error-import-excel-writeback.md) |
-| sessions and protected pages | [36](36-save-storage-state.md), [42](42-use-named-session.md), [44](44-session-import-with-login.md), [57](57-use-session-import-export-round-trip.md) |
-| MCP and AI-agent workflow | [111](111-mcp-list-actions.md), [113](113-mcp-observe-page.md), [120](120-mcp-finalize-flow.md) |
+This section is a set of high-frequency entry points, not a strict learning sequence.
+If you want the stable first-time path, start with the [Newbie Track](track-newbie.md).
+
+### Foundations
+
+- first runnable lesson: [01](01-hello-world.md), [02](02-local-page-select-option.md)
+- extraction and local outputs: [03](03-capture-table.md), [04](04-extract-text-and-html.md), [12](12-custom-json-output.md)
+- orchestration and resilience: [16](16-retry-flaky-action.md), [17](17-wait-until-ready.md), [21](21-if-optional-login.md), [23](23-on-error-import-recovery.md)
+- files and batch import: [13](13-read-csv-basics.md), [22](22-foreach-batch-import-csv.md), [24](24-read-excel-basics.md), [27](27-on-error-import-excel-writeback.md)
+
+### Sessions And Auth
+
+- browser-state save and reuse: [36](36-save-storage-state.md), [42](42-use-named-session.md)
+- login-driven import flow: [44](44-session-import-with-login.md)
+- authenticated import/export round trip: [57](57-use-session-import-export-round-trip.md)
+
+### MCP And Agent Workflow
+
+- capability overview: [111](111-mcp-list-actions.md)
+- page observation entry: [113](113-mcp-observe-page.md)
+- `finalize_flow` convergence path: [120](120-mcp-finalize-flow.md)
 
 ## Two Learning Tracks
 

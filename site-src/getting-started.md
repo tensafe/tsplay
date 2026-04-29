@@ -7,20 +7,64 @@ hide:
 
 这页只做一件事：帮你尽快跑通 TSPlay，然后根据你的目标跳到正确的下一站。
 
-## 先选一种起步方式
+## 零基础默认路径
 
-=== "直接跑源码"
+如果你第一次接触 TSPlay，不要先在 `Lua / Flow / MCP / 二进制` 之间做选择。
+先按下面这条默认路径走，跑通一次再分叉。
+
+### 1. 先准备两个东西
+
+- Go `1.23.6+`
+- 一台能启动 Chromium 的机器
+
+首次执行浏览器相关命令时，TSPlay 会自动调用 `playwright.Install()` 下载浏览器。
+
+### 2. 在仓库根目录安装依赖
+
+```bash
+go mod download
+```
+
+### 3. 先跑第一条最小 Flow
+
+```bash
+go run . -flow script/tutorials/01_hello_world.flow.yaml
+```
+
+### 4. 如果你要练本地 demo 页面，再开一个终端
+
+```bash
+go run . -action file-srv -addr :8000
+```
+
+然后访问：
+
+- `http://127.0.0.1:8000/demo/demo.html`
+- `http://127.0.0.1:8000/demo/tables.html`
+
+## 跑通算成功
+
+满足下面 2 到 3 条，就算环境已经准备好了：
+
+- `go run . -flow ...` 能正常结束
+- 命令输出里能看到结构化执行结果
+- `artifacts/` 下出现运行产物
+- 如果你启了 `file-srv`，本地 demo 页面能打开
+
+## 进阶起步方式
+
+默认路径跑通后，再按你的目标切换下面这些入口。
+
+=== "继续用源码模式"
 
     ```bash
-    go mod download
     go run . -flow script/demo_baidu.flow.yaml
     ```
 
     适合：
 
-    - 你已经在仓库里
-    - 想最快验证环境和 Flow 能不能跑
-    - 后面还会继续改代码或补教程
+    - 你已经跑通默认路径
+    - 想继续在仓库里改代码或补教程
 
 === "先构建二进制"
 
@@ -39,7 +83,6 @@ hide:
 === "先走 MCP / Agent"
 
     ```bash
-    go mod download
     go run . -action srv
     go run . -action mcp-tool -tool tsplay.list_actions
     ```

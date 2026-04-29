@@ -46,15 +46,29 @@
 
 ## 高频跳转
 
-| 场景 | 直接入口 |
-| --- | --- |
-| 跑第一条 Flow | [Lesson 01](tutorials/01-hello-world.md) |
-| 本地抓表到 JSON | [Lesson 03](tutorials/03-capture-table.md) |
-| 页面断言与检查 | [Lesson 10](tutorials/10-assert-page-state.md) |
-| 批量导入与恢复 | [Lesson 22](tutorials/22-foreach-batch-import-csv.md) |
-| 浏览器状态与命名会话 | [Lesson 36](tutorials/36-save-storage-state.md)、[Lesson 42](tutorials/42-use-named-session.md) |
-| MCP 能力总入口 | [Lesson 111](tutorials/111-mcp-list-actions.md)、[Lesson 120](tutorials/120-mcp-finalize-flow.md) |
-| 培训与课程安排 | [training/README.md](training/README.md)、[training/bootcamp-plan.md](training/bootcamp-plan.md) |
+这一栏按“最常被点开的入口”组织，不代表推荐阅读顺序。
+如果你想按顺序学习教程，请从 [tutorials/track-newbie.zh-CN.md](tutorials/track-newbie.zh-CN.md) 开始。
+
+### 基础起步
+
+- 第一条可运行示例：[Lesson 01](tutorials/01-hello-world.md)
+- 本地抓表到 JSON：[Lesson 03](tutorials/03-capture-table.md)
+- 页面断言与检查：[Lesson 10](tutorials/10-assert-page-state.md)
+- 批量导入与恢复：[Lesson 22](tutorials/22-foreach-batch-import-csv.md)
+
+### 会话与认证
+
+- 保存浏览器状态：[Lesson 36](tutorials/36-save-storage-state.md)
+- 复用命名会话：[Lesson 42](tutorials/42-use-named-session.md)
+- 登录后完成导入：[Lesson 44](tutorials/44-session-import-with-login.md)
+- 认证导入导出闭环：[Lesson 57](tutorials/57-use-session-import-export-round-trip.md)
+
+### MCP 与 Agent
+
+- MCP 能力总览：[Lesson 111](tutorials/111-mcp-list-actions.md)
+- 页面观察入口：[Lesson 113](tutorials/113-mcp-observe-page.md)
+- 收敛生成 Flow：[Lesson 120](tutorials/120-mcp-finalize-flow.md)
+- 培训与课程安排：[training/README.md](training/README.md)、[training/bootcamp-plan.md](training/bootcamp-plan.md)
 
 ## 推荐阅读顺序
 

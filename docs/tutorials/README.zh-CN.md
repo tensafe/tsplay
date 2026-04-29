@@ -10,6 +10,21 @@
 
 仓库里当前使用的是 `docs/` 目录，所以这套教程统一放在这里，而不是单独建 `doc/`。
 
+## 先别急着选课
+
+如果你还没把本地环境跑通，先去 [../../getting-started.md](../../getting-started.md)。
+
+第一次上手最短只需要这两到三步：
+
+```bash
+go mod download
+go run . -flow script/tutorials/01_hello_world.flow.yaml
+# 只有要练本地 demo 页面时再执行这条
+go run . -action file-srv -addr :8000
+```
+
+前两条用来确认 TSPlay 能跑，第三条只在你要练本地 demo 页面时再开。
+
 ## 最快入口
 
 <div class="grid cards" markdown>
@@ -52,16 +67,29 @@
 
 </div>
 
-## 按场景快速进入
+## 按主题快速进入
 
-| 场景 | 推荐入口 |
-| --- | --- |
-| 第一条可运行示例 | [01](01-hello-world.md)、[02](02-local-page-select-option.md) |
-| 本地表格 / 文本提取 | [03](03-capture-table.md)、[04](04-extract-text-and-html.md)、[12](12-custom-json-output.md) |
-| 稳定性与控制流 | [16](16-retry-flaky-action.md)、[17](17-wait-until-ready.md)、[21](21-if-optional-login.md)、[23](23-on-error-import-recovery.md) |
-| 文件与批量处理 | [13](13-read-csv-basics.md)、[22](22-foreach-batch-import-csv.md)、[24](24-read-excel-basics.md)、[27](27-on-error-import-excel-writeback.md) |
-| 登录态与认证流程 | [36](36-save-storage-state.md)、[42](42-use-named-session.md)、[44](44-session-import-with-login.md)、[57](57-use-session-import-export-round-trip.md) |
-| MCP / Agent | [111](111-mcp-list-actions.md)、[113](113-mcp-observe-page.md)、[120](120-mcp-finalize-flow.md) |
+这一栏是“高频入口”，不是“学习顺序”。
+如果你想按稳定主线从头走，请直接看 [新手学习路线](track-newbie.zh-CN.md)。
+
+### 基础起步
+
+- 第一条可运行示例：[01](01-hello-world.md)、[02](02-local-page-select-option.md)
+- 本地表格与文本提取：[03](03-capture-table.md)、[04](04-extract-text-and-html.md)、[12](12-custom-json-output.md)
+- 稳定性与控制流：[16](16-retry-flaky-action.md)、[17](17-wait-until-ready.md)、[21](21-if-optional-login.md)、[23](23-on-error-import-recovery.md)
+- 文件与批量处理：[13](13-read-csv-basics.md)、[22](22-foreach-batch-import-csv.md)、[24](24-read-excel-basics.md)、[27](27-on-error-import-excel-writeback.md)
+
+### 会话与认证
+
+- 浏览器状态保存与复用：[36](36-save-storage-state.md)、[42](42-use-named-session.md)
+- 登录后的导入流程：[44](44-session-import-with-login.md)
+- 认证导入导出闭环：[57](57-use-session-import-export-round-trip.md)
+
+### MCP 与 Agent
+
+- MCP 能力总览：[111](111-mcp-list-actions.md)
+- 页面观察入口：[113](113-mcp-observe-page.md)
+- `finalize_flow` 收敛路径：[120](120-mcp-finalize-flow.md)
 
 ## 两条学习路线
 

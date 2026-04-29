@@ -27,18 +27,23 @@
 - 为什么要先学本地页面，再学外部系统
 - 为什么结果一定要落到 `artifacts/`
 
-## 推荐顺序
+## 学习主线
 
-1. [Lesson 01](01-hello-world.md)
-2. [Lesson 08](08-bundled-assets-and-artifacts.md)
-3. [Lesson 02](02-local-page-select-option.md)
-4. [Lesson 09](09-local-demo-anatomy.md)
-5. [Lesson 03](03-capture-table.md)
-6. [Lesson 04](04-extract-text-and-html.md)
-7. [Lesson 05](05-http-request-json.md)
-8. [Lesson 10](10-assert-page-state.md)
-9. [Lesson 11](11-select-another-option.md)
-10. [Lesson 12](12-custom-json-output.md)
+这条主线只按“依赖关系”排序，不把理解类补充课硬插进编号里。
+以后即使继续加课，也优先保持主线顺序稳定。
+
+1. 跑通最小示例：[Lesson 01](01-hello-world.md)
+2. 做第一次页面交互：[Lesson 02](02-local-page-select-option.md)
+3. 完成第一次数据提取：[Lesson 03](03-capture-table.md)、[Lesson 04](04-extract-text-and-html.md)
+4. 理解本地 JSON 请求与结果写出：[Lesson 05](05-http-request-json.md)
+5. 学会页面断言与结果校验：[Lesson 10](10-assert-page-state.md)、[Lesson 11](11-select-another-option.md)、[Lesson 12](12-custom-json-output.md)
+
+## 补充理解课
+
+这两节不是“更早学”，而是“在主线跑通之后补上背景图”：
+
+- 为什么单个二进制还能带着资料一起走：[Lesson 08](08-bundled-assets-and-artifacts.md)
+- 本地 demo 页和练习资源是怎么组织的：[Lesson 09](09-local-demo-anatomy.md)
 
 ## 新手阶段的核心动作
 

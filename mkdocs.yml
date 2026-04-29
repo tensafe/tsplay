@@ -82,17 +82,25 @@ nav:
   - 教程:
       - 教程总览（中文）: docs/tutorials/README.zh-CN.md
       - English Tutorial Map: docs/tutorials/README.md
-      - 常用起手页:
-          - "Lesson 01: Hello World": docs/tutorials/01-hello-world.md
-          - "Lesson 03: 抓取表格并写 JSON": docs/tutorials/03-capture-table.md
-          - "Lesson 10: 页面断言": docs/tutorials/10-assert-page-state.md
-          - "Lesson 16: retry 处理偶发失败": docs/tutorials/16-retry-flaky-action.md
-          - "Lesson 22: foreach 批量导入 CSV": docs/tutorials/22-foreach-batch-import-csv.md
-          - "Lesson 36: 保存浏览器状态": docs/tutorials/36-save-storage-state.md
-          - "Lesson 42: 使用命名会话": docs/tutorials/42-use-named-session.md
-          - "Lesson 57: 认证导入导出闭环": docs/tutorials/57-use-session-import-export-round-trip.md
-          - "Lesson 111: MCP list_actions": docs/tutorials/111-mcp-list-actions.md
-          - "Lesson 120: MCP finalize_flow": docs/tutorials/120-mcp-finalize-flow.md
+      - 高频入口页:
+          - 基础起步:
+              - "Lesson 01: Hello World": docs/tutorials/01-hello-world.md
+              - "Lesson 03: 抓表并写 JSON": docs/tutorials/03-capture-table.md
+              - "Lesson 04: 提取文本与 HTML": docs/tutorials/04-extract-text-and-html.md
+              - "Lesson 10: 页面断言": docs/tutorials/10-assert-page-state.md
+              - "Lesson 16: retry 应对偶发失败": docs/tutorials/16-retry-flaky-action.md
+              - "Lesson 17: wait_until 等异步状态": docs/tutorials/17-wait-until-ready.md
+              - "Lesson 22: CSV 批量导入": docs/tutorials/22-foreach-batch-import-csv.md
+              - "Lesson 24: Excel 读取起步": docs/tutorials/24-read-excel-basics.md
+          - 会话与认证:
+              - "Lesson 36: 保存浏览器状态": docs/tutorials/36-save-storage-state.md
+              - "Lesson 42: 复用命名会话": docs/tutorials/42-use-named-session.md
+              - "Lesson 44: 登录并完成导入": docs/tutorials/44-session-import-with-login.md
+              - "Lesson 57: 认证导入导出闭环": docs/tutorials/57-use-session-import-export-round-trip.md
+          - MCP 与 Agent:
+              - "Lesson 111: list_actions 能力总览": docs/tutorials/111-mcp-list-actions.md
+              - "Lesson 113: observe_page 页面观察": docs/tutorials/113-mcp-observe-page.md
+              - "Lesson 120: finalize_flow 收敛生成": docs/tutorials/120-mcp-finalize-flow.md
       - 按阶段路线:
           - 新手学习路线: docs/tutorials/track-newbie.zh-CN.md
           - 初级交付路线: docs/tutorials/track-junior.zh-CN.md

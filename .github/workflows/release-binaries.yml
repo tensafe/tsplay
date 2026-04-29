@@ -1,0 +1,137 @@
+name: release-binaries
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version label used in asset names for manual runs
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build-${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            archive_ext: tar.gz
+          - goos: darwin
+            goarch: arm64
+            archive_ext: tar.gz
+          - goos: linux
+            goarch: amd64
+            archive_ext: tar.gz
+          - goos: linux
+            goarch: arm64
+            archive_ext: tar.gz
+          - goos: windows
+            goarch: amd64
+            archive_ext: zip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Go modules
+        shell: bash
+        run: go mod download
+
+      - name: Resolve version label
+        id: vars
+        shell: bash
+        run: |
+          version="${{ github.event.release.tag_name }}"
+          if [ -z "$version" ]; then
+            version="${{ inputs.version }}"
+          fi
+          if [ -z "$version" ]; then
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archive
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          ext=""
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
+
+          package="tsplay_${VERSION}_${GOOS}_${GOARCH}"
+          stage_dir="dist/${package}"
+
+          mkdir -p "$stage_dir"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "${stage_dir}/tsplay${ext}" .
+          cp LICENSE "$stage_dir/"
+          cp ReadMe.md "${stage_dir}/README.md"
+          cp README.zh-CN.md "${stage_dir}/README.zh-CN.md"
+
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            (
+              cd dist
+              zip -rq "${package}.zip" "${package}"
+            )
+          else
+            tar -C dist -czf "dist/${package}.tar.gz" "${package}"
+          fi
+
+          rm -rf "$stage_dir"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS.txt

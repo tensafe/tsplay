@@ -27,6 +27,21 @@ search:
   </div>
 </div>
 
+## 小白先看这里
+
+第一次接触 TSPlay，先不要纠结 `Lua / Flow / MCP`。
+先照抄下面三步，跑通一次再继续学：
+
+```bash
+go mod download
+go run . -flow script/tutorials/01_hello_world.flow.yaml
+# 只有要练本地 demo 页面时再执行这条
+go run . -action file-srv -addr :8000
+```
+
+前两条用来确认运行时，第三条只在你要练本地 demo 页面时再开。
+[看完整开箱步骤](getting-started.md)
+
 ## 按目标进入
 
 <div class="grid cards" markdown>
