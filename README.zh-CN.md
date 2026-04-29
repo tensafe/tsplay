@@ -3,11 +3,13 @@
 [English](ReadMe.md) | 简体中文
 
 > 面向 AI Agent 和交付团队的浏览器自动化执行引擎。  
-> 用一条统一链路收敛 `observe -> draft -> validate -> run -> repair`、会话复用和安全授权。
+> 用一套能力收敛 `observe -> draft -> validate -> run -> repair`、会话复用和安全授权。
 
 TSPlay 基于 Go + Playwright，提供三层入口：`Lua CLI / Script`、`Flow DSL`、`MCP Server`。
 
-它不是把浏览器动作简单封成一组函数，而是把这些在真实交付里最容易散掉的能力组织到一起：
+它不是把浏览器动作简单封成一组函数，而是把这些在真实交付里最容易散掉的内容收在一起：运行时、示例、文档、会话、失败现场和安全边界都围绕同一条链路组织。
+
+TSPlay 组织起来的核心能力包括：
 
 - 页面观察与可交互元素提取
 - 结构化 Flow 草拟、校验和执行
@@ -16,6 +18,65 @@ TSPlay 基于 Go + Playwright，提供三层入口：`Lua CLI / Script`、`Flow 
 - 面向 Agent 的 MCP 工具和安全授权边界
 
 如果你想做的是“可长期维护、可被 AI 生成、可被团队审查和交付”的浏览器自动化，TSPlay 更接近这个方向。
+
+## 从这里开始
+
+| 如果你现在更想做的是 | 先看什么 | 下一步 |
+| --- | --- | --- |
+| 写一条或修一条 Flow | [script/demo_baidu.flow.yaml](script/demo_baidu.flow.yaml) | [docs/tutorials/README.zh-CN.md](docs/tutorials/README.zh-CN.md) |
+| 接 Codex 或其他 Agent | [AI 无感入门](docs/training/ai-intent-to-flow.md) | `go run . -action srv` |
+| 按教程上手 | [Step-by-Step 教程](docs/tutorials/README.zh-CN.md) | [Lesson 01](docs/tutorials/01-hello-world.md) |
+| 给团队做培训和推广 | [培训体系总览](docs/training/README.md) | [Bootcamp 课程表](docs/training/bootcamp-plan.md) |
+
+## 5 分钟跑起来
+
+### 直接跑源码
+
+```bash
+go mod download
+go run . -flow script/demo_baidu.flow.yaml
+```
+
+### 先构建二进制
+
+```bash
+go build -o tsplay .
+./tsplay -flow script/tutorials/01_hello_world.flow.yaml
+./tsplay -action list-assets
+```
+
+跑通以后，接着做这几件事最顺：
+
+- `go run . -action cli`
+- `go run . -action srv`
+- `go run . -action mcp-tool -tool tsplay.list_actions`
+- 去 [docs/README.md](docs/README.md) 看完整文档地图
+
+## 推荐起手路径
+
+### 1. 我主要想写 Flow
+
+先跑一条能执行的 Flow，再进入教程和学习路径：
+
+- [script/demo_baidu.flow.yaml](script/demo_baidu.flow.yaml)
+- [docs/tutorials/README.zh-CN.md](docs/tutorials/README.zh-CN.md)
+- [docs/training/learning-path.md](docs/training/learning-path.md)
+
+### 2. 我主要想接 AI Agent
+
+先走“用户意图 -> MCP -> Flow -> 执行修复”这条线：
+
+- [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md)
+- `go run . -action srv`
+- `go run . -action mcp-tool -tool tsplay.list_actions`
+
+### 3. 我主要想给团队推广
+
+先看培训总览，再往课程、实验和讲师材料扩：
+
+- [docs/training/README.md](docs/training/README.md)
+- [docs/training/labs.md](docs/training/labs.md)
+- [docs/training/trainer-playbook.md](docs/training/trainer-playbook.md)
 
 ## 适用场景
 
