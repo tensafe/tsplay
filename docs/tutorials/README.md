@@ -18,6 +18,88 @@ Use this page to understand the structure, pick the right lesson range, and ente
 
 The repository already uses `docs/`, so the tutorial system lives here instead of a separate `doc/` folder.
 
+## Before You Pick Lessons
+
+If you have not brought the local environment up yet, start with [../../getting-started.md](../../getting-started.md) first.
+
+The shortest first-run path is:
+
+```bash
+go mod download
+go run . -flow script/tutorials/01_hello_world.flow.yaml
+# only run this when you want local demo pages
+go run . -action file-srv -addr :8000
+```
+
+The first two commands confirm TSPlay can run.
+The third is only needed when you want to practice against local demo pages.
+
+## Fast Entry Points
+
+<div class="grid cards" markdown>
+
+-   :material-run-fast:{ .lg .middle } __I Want A First Runnable Example__
+
+    Start with the smallest possible lesson and confirm your local runtime first.
+
+    [Lesson 01](01-hello-world.md)
+
+-   :material-table-eye:{ .lg .middle } __I Want Data Extraction__
+
+    Start with a local table and see the full page-to-JSON loop.
+
+    [Lesson 03](03-capture-table.md)
+
+-   :material-check-decagram-outline:{ .lg .middle } __I Want Assertions__
+
+    Learn visibility and text checks early so later lessons feel easier.
+
+    [Lesson 10](10-assert-page-state.md)
+
+-   :material-file-sync-outline:{ .lg .middle } __I Want Batch Processing__
+
+    Jump into CSV-driven `foreach` and local recovery patterns.
+
+    [Lesson 22](22-foreach-batch-import-csv.md)
+
+-   :material-account-lock-open-outline:{ .lg .middle } __I Want Sessions__
+
+    Learn storage state, named sessions, and protected-page flows.
+
+    [Lesson 36](36-save-storage-state.md)
+
+-   :material-robot-outline:{ .lg .middle } __I Want MCP__
+
+    Jump to the MCP toolchain and `finalize_flow` path.
+
+    [Lesson 111](111-mcp-list-actions.md)
+
+</div>
+
+## Quick Topic Map
+
+This section is a set of high-frequency entry points, not a strict learning sequence.
+If you want the stable first-time path, start with the [Newbie Track](track-newbie.md).
+
+### Foundations
+
+- first runnable lesson: [01](01-hello-world.md), [02](02-local-page-select-option.md)
+- extraction and local outputs: [03](03-capture-table.md), [04](04-extract-text-and-html.md), [12](12-custom-json-output.md)
+- orchestration and resilience: [16](16-retry-flaky-action.md), [17](17-wait-until-ready.md), [21](21-if-optional-login.md), [23](23-on-error-import-recovery.md)
+- files and batch import: [13](13-read-csv-basics.md), [22](22-foreach-batch-import-csv.md), [24](24-read-excel-basics.md), [27](27-on-error-import-excel-writeback.md)
+
+### Sessions And Auth
+
+- browser-state save and reuse: [36](36-save-storage-state.md), [42](42-use-named-session.md)
+- login-driven import flow: [44](44-session-import-with-login.md)
+- authenticated import/export round trip: [57](57-use-session-import-export-round-trip.md)
+
+### MCP And Agent Workflow
+
+- capability overview: [111](111-mcp-list-actions.md)
+- page observation entry: [113](113-mcp-observe-page.md)
+- `finalize_flow` convergence path: [120](120-mcp-finalize-flow.md)
+
 ## Two Learning Tracks
 
 ### Track A: The Hands-On Path You Can Start Today

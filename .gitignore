@@ -2,3 +2,6 @@
 /tsplay.exe
 /tsplaya
 artifacts*
+/site
+/site-docs
+/.venv-docs

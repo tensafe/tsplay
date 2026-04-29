@@ -30,18 +30,24 @@ By the end of this track, you should be able to answer:
 - why local pages come before external systems
 - why lesson outputs should land in `artifacts/`
 
-## Recommended Order
+## Main Learning Path
 
-1. [Lesson 01](01-hello-world.md)
-2. [Lesson 08](08-bundled-assets-and-artifacts.md)
-3. [Lesson 02](02-local-page-select-option.md)
-4. [Lesson 09](09-local-demo-anatomy.md)
-5. [Lesson 03](03-capture-table.md)
-6. [Lesson 04](04-extract-text-and-html.md)
-7. [Lesson 05](05-http-request-json.md)
-8. [Lesson 10](10-assert-page-state.md)
-9. [Lesson 11](11-select-another-option.md)
-10. [Lesson 12](12-custom-json-output.md)
+This path is ordered only by dependency.
+Background lessons are kept separate so the sequence stays stable and easy to scan.
+
+1. Run the smallest working example: [Lesson 01](01-hello-world.md)
+2. Do the first page interaction: [Lesson 02](02-local-page-select-option.md)
+3. Finish the first extraction loop: [Lesson 03](03-capture-table.md), [Lesson 04](04-extract-text-and-html.md)
+4. Understand local JSON requests and file output: [Lesson 05](05-http-request-json.md)
+5. Learn assertions and result validation: [Lesson 10](10-assert-page-state.md), [Lesson 11](11-select-another-option.md), [Lesson 12](12-custom-json-output.md)
+
+## Companion Background Lessons
+
+These are not "earlier" lessons.
+They are support material you can insert after the mainline starts making sense:
+
+- why a single binary can still carry bundled references: [Lesson 08](08-bundled-assets-and-artifacts.md)
+- how the local demo pages and practice assets are structured: [Lesson 09](09-local-demo-anatomy.md)
 
 ## Core Actions In This Track
 

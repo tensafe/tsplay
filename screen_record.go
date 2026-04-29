@@ -357,26 +357,6 @@ func errorAsExit(err error, target **exec.ExitError) bool {
 	return true
 }
 
-func attachProcessGroup(cmd *exec.Cmd) {
-	if cmd == nil || runtime.GOOS == "windows" {
-		return
-	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-}
-
-func terminateProcessGroup(cmd *exec.Cmd) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	if runtime.GOOS == "windows" {
-		_ = cmd.Process.Kill()
-		return
-	}
-	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err != nil {
-		_ = cmd.Process.Kill()
-	}
-}
-
 func parseAVFoundationDevices(output string) ([]string, []string) {
 	cleaned := stripANSI(output)
 	lines := strings.Split(cleaned, "\n")
