@@ -50,8 +50,9 @@ The goal of this matrix is not to force every capability into mechanical 1:1 par
 | Capability Area | Typical Actions | Flow | Lua | MCP | Recommendation |
 | --- | --- | --- | --- | --- | --- |
 | page primitives | `navigate`, `click`, `type_text`, `select_option` | Yes | Yes | Yes | Keep aligned |
-| file and spreadsheet I/O | `screenshot`, `save_html`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
+| file and spreadsheet I/O | `screenshot`, `save_html`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
 | HTTP requests | `http_request`, `json_extract` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_http`, `allow_file_access`, and file-root constraints |
+| email delivery | `send_email` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_email` |
 | Redis operations | `redis_get`, `redis_set`, `redis_del`, `redis_incr` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_redis` |
 | database operations | `db_insert`, `db_insert_many`, `db_upsert`, `db_query`, `db_query_one`, `db_execute`, `db_transaction` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_database`, and `db_transaction` auto-commits or rolls back |
 | browser state | `get_storage_state`, `get_cookies_string`, `browser.use_session` | Yes | Yes | Yes | Keep aligned; constrained by `allow_browser_state` in MCP |
@@ -207,7 +208,7 @@ Common Flow capabilities include:
 - variables: `vars`, `save_as`, `set_var`, `append_var`
 - control flow: `retry`, `if`, `foreach`, `on_error`, `wait_until`
 - page actions: click, type, wait, assert, screenshot, upload, download
-- data actions: `http_request`, `json_extract`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`
+- data actions: `http_request`, `json_extract`, `send_email`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`
 - browser state: `use_session`, `storage_state`, `save_storage_state`
 
 ## Core Capabilities
@@ -389,6 +390,7 @@ Explicit `allow_*` flags override the corresponding fields inside `security_pres
 | `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel` |
 | `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile |
 | `allow_http=true` | `http_request` |
+| `allow_email=true` | `send_email` |
 | `allow_redis=true` | `redis_get`, `redis_set`, `redis_del`, `redis_incr`, `foreach.with.progress_key` |
 | `allow_database=true` | `db_insert`, `db_insert_many`, `db_upsert`, `db_query`, `db_query_one`, `db_execute`, `db_transaction` |
 
@@ -418,6 +420,33 @@ Additional notes:
 - when `Lua http_request` runs inside a Flow / MCP security context, it also obeys `allow_http`
 - if `http_request` uses `save_path` or `multipart_files`, Lua follows the same `allow_file_access` constraints as Flow
 - in restricted mode, relative paths in `save_path` and `multipart_files` resolve under the configured file root
+
+### Email
+
+Useful when you want to send import results, failure summaries, or run-complete notifications directly to business or operations inboxes.
+
+Environment variable conventions:
+
+- default connection: `TSPLAY_EMAIL_*`
+- named connection: `TSPLAY_EMAIL_<NAME>_*`
+
+Common fields:
+
+- `HOST`, `PORT`
+- `USERNAME`, `PASSWORD`
+- `FROM`
+- `TLS_MODE`: `none`, `starttls`, `tls`
+- `TIMEOUT_MS`
+
+Additional notes:
+
+- both `Flow` and `Lua` support `send_email`
+- `send_email` requires `allow_email=true` in restricted Flow / MCP contexts
+- `send_email` accepts `with.to`, `with.cc`, and `with.bcc` as either one email string or a list of email strings
+- `send_email` requires at least one of `with.body` or `with.html`
+- you can either use `connection: qq` with environment variables or put `host`, `port`, `username`, `password`, `from`, and `tls_mode` directly under `with.smtp`
+- `send_email` supports `with.attachments` as either a single file path/object or a list of file paths/objects shaped like `{path, name?, content_type?}`
+- attachments read local files, so restricted Flow / MCP contexts also require `allow_file_access=true`
 
 ### Redis
 

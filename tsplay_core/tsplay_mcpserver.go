@@ -428,6 +428,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
 		),
+		mcp.WithBoolean("allow_email",
+			mcp.Description("Allow outbound email delivery during the auto validation pass."),
+		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
 		),
@@ -482,6 +485,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_email",
+			mcp.Description("Allow outbound email delivery during the auto validation pass."),
 		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions during the auto validation pass."),
@@ -612,6 +618,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
 		),
+		mcp.WithBoolean("allow_email",
+			mcp.Description("Allow outbound email delivery for this request. Defaults to false."),
+		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
 		),
@@ -656,6 +665,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_email",
+			mcp.Description("Allow outbound email delivery for this request. Defaults to false."),
 		),
 		mcp.WithBoolean("allow_redis",
 			mcp.Description("Allow Redis read/write actions for this request. Defaults to false."),
@@ -1620,7 +1632,9 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["on_error"] = "Run nested Flow steps and execute an error handler block if they fail."
 	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
 	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
+	descriptions["send_email"] = "Send an outbound email through an SMTP connection resolved from environment variables or provided inline in Flow."
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
+	descriptions["read_json"] = "Read any local JSON file and return its decoded value."
 	descriptions["write_json"] = "Write any resolved value to a local JSON file."
 	descriptions["write_csv"] = "Write resolved rows to a local CSV file, optionally with an explicit header order."
 	descriptions["write_excel"] = "Write resolved rows to a local Excel .xlsx file, optionally with an explicit sheet name and header order, or write a workbook object with multiple sheets."
@@ -1737,6 +1751,16 @@ func buildFlowActionManifest() []map[string]any {
 				"Use with.start_row to resume from a source row number in the CSV file.",
 				"Use with.limit to process one chunk at a time.",
 				"Use with.row_number_field to keep the original source row number in each row object.",
+			}
+		}
+		if name == "read_json" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+			}
+			item["returns"] = "any"
+			item["notes"] = []string{
+				"Returns the decoded JSON value as an object, list, primitive, or null depending on the file content.",
+				"UTF-8 BOM is accepted and ignored when present.",
 			}
 		}
 		if name == "redis_set" {
@@ -1893,6 +1917,33 @@ func buildFlowActionManifest() []map[string]any {
 				"Use sheet to override the default Sheet1 worksheet name.",
 				"Use with.headers to control Excel column order when writing single-sheet objects.",
 				"Numbers and booleans are written as native Excel cell types instead of inline strings.",
+			}
+		}
+		if name == "send_email" {
+			item["args"] = []map[string]any{
+				{"name": "with.to", "type": "email_recipients", "required": true},
+				{"name": "with.subject", "type": "string", "required": true},
+				{"name": "with.body", "type": "string", "required": false},
+				{"name": "with.html", "type": "string", "required": false},
+				{"name": "with.cc", "type": "email_recipients", "required": false},
+				{"name": "with.bcc", "type": "email_recipients", "required": false},
+				{"name": "with.attachments", "type": "attachments", "required": false},
+				{"name": "connection", "type": "string", "required": false},
+				{"name": "timeout", "type": "int", "required": false},
+				{"name": "with.from_email", "type": "string", "required": false},
+				{"name": "with.reply_to", "type": "string", "required": false},
+				{"name": "with.smtp", "type": "object", "required": false},
+				{"name": "with.headers", "type": "object", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Use with.to, with.cc, and with.bcc as either one email string or a list of email strings.",
+				"Provide at least one of with.body or with.html.",
+				"Use with.attachments as either a single file path/object or a list of file paths/objects shaped like {path, name?, content_type?}.",
+				"Attachments read local files and therefore require allow_file_access=true in restricted Flow or MCP contexts.",
+				"Use with.smtp for inline SMTP settings such as host, port, username, password, from, and tls_mode.",
+				"Use connection to load SMTP settings from TSPLAY_EMAIL_* or TSPLAY_EMAIL_<NAME>_* environment variables.",
+				"Custom headers cannot override reserved headers such as From, To, Subject, or Content-Type.",
 			}
 		}
 		if group := flowActionSecurityGroup(name); group != "" {

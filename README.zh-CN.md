@@ -50,8 +50,9 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | 能力类别 | 典型能力 | Flow | Lua | MCP | 建议 |
 | --- | --- | --- | --- | --- | --- |
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 应保持同步 |
-| 文件与表格 I/O | `screenshot`、`save_html`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
+| 文件与表格 I/O | `screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
 | HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_http`、`allow_file_access` 和文件根目录 |
+| 邮件通知 | `send_email` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_email` |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_redis` |
 | 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_database`，`db_transaction` 会自动提交或回滚 |
 | 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_browser_state` 约束 |
@@ -207,7 +208,7 @@ go run . -action mcp-tool -tool tsplay.observe_page -args-file script/tutorials/
 - 变量：`vars`、`save_as`、`set_var`、`append_var`
 - 控制流：`retry`、`if`、`foreach`、`on_error`、`wait_until`
 - 页面动作：点击、输入、等待、断言、截图、上传、下载
-- 数据动作：`http_request`、`json_extract`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`
+- 数据动作：`http_request`、`json_extract`、`send_email`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`
 - 浏览器状态：`use_session`、`storage_state`、`save_storage_state`
 
 ## 核心能力
@@ -387,6 +388,7 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 | `allow_file_access=true` | `screenshot`、`save_html`、`read_csv`、`read_excel`、上传下载、`write_json`、`write_csv`、`write_excel` |
 | `allow_browser_state=true` | Cookie / Storage State / `browser.use_session` / persistent profile |
 | `allow_http=true` | `http_request` |
+| `allow_email=true` | `send_email` |
 | `allow_redis=true` | `redis_get`、`redis_set`、`redis_del`、`redis_incr`、`foreach.with.progress_key` |
 | `allow_database=true` | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` |
 
@@ -415,6 +417,33 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 - 当 `Lua http_request` 运行在 `Flow` / MCP 安全上下文中时，也会遵守 `allow_http`
 - 如果 `http_request` 使用了 `save_path` 或 `multipart_files`，Lua 侧也会和 Flow 一样遵守 `allow_file_access`
 - 在受限运行模式下，`save_path` 和 `multipart_files` 的相对路径会解析到配置的文件根目录下
+
+### Email
+
+适合把导入结果、异常摘要、运行完成通知直接发给业务或运维邮箱。
+
+环境变量约定：
+
+- 默认连接：`TSPLAY_EMAIL_*`
+- 命名连接：`TSPLAY_EMAIL_<NAME>_*`
+
+常用字段：
+
+- `HOST`、`PORT`
+- `USERNAME`、`PASSWORD`
+- `FROM`
+- `TLS_MODE`：`none`、`starttls`、`tls`
+- `TIMEOUT_MS`
+
+补充说明：
+
+- `Flow` 和 `Lua` 两边都支持 `send_email`
+- `send_email` 在受限安全上下文中需要 `allow_email=true`
+- `send_email` 支持 `with.to` / `with.cc` / `with.bcc` 传单个邮箱字符串或字符串列表
+- `send_email` 需要至少提供 `with.body` 或 `with.html` 之一
+- 既支持 `connection: qq` 走环境变量，也支持在 `with.smtp` 里直接写 `host`、`port`、`username`、`password`、`from`、`tls_mode`
+- `send_email` 支持 `with.attachments`，可传单个文件路径 / 对象，或它们的列表；对象形状为 `{path, name?, content_type?}`
+- 附件会读取本地文件，因此在受限安全上下文中还需要 `allow_file_access=true`
 
 ### Redis
 

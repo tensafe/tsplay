@@ -35,6 +35,31 @@ func TestValidateFlowSecurityRejectsReadCSVWithoutAllow(t *testing.T) {
 	}
 }
 
+func TestValidateFlowSecurityRejectsReadJSONWithoutAllow(t *testing.T) {
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "json_policy",
+		Steps: []FlowStep{
+			{Action: "read_json", FilePath: "artifacts/payload.json"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	err := ValidateFlowSecurity(flow, FlowSecurityPolicy{
+		FileInputRoot:  root,
+		FileOutputRoot: root,
+	})
+	if err == nil {
+		t.Fatalf("expected file access security policy error")
+	}
+	if !strings.Contains(err.Error(), "allow_file_access") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunFlowReadCSVRows(t *testing.T) {
 	root := t.TempDir()
 	csvPath := filepath.Join(root, "users.csv")
@@ -129,6 +154,57 @@ func TestRunFlowReadCSVResumeWindow(t *testing.T) {
 	}
 	if got := result.Vars["first_source_row"]; got != 3 {
 		t.Fatalf("first_source_row = %#v", got)
+	}
+}
+
+func TestRunFlowReadJSONValue(t *testing.T) {
+	root := t.TempDir()
+	jsonPath := filepath.Join(root, "payload.json")
+	content := "\xEF\xBB\xBF{\n  \"meta\": {\"status\": \"ok\"},\n  \"items\": [{\"name\": \"Alice\"}, {\"name\": \"Bob\"}],\n  \"count\": 2\n}\n"
+	if err := os.WriteFile(jsonPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "read_json_value",
+		Steps: []FlowStep{
+			{Action: "read_json", FilePath: "payload.json", SaveAs: "payload"},
+			{Action: "set_var", SaveAs: "status", Value: "{{payload.meta.status}}"},
+			{Action: "set_var", SaveAs: "second_name", Value: "{{payload.items[1].name}}"},
+			{Action: "set_var", SaveAs: "count", Value: "{{payload.count}}"},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["status"]; got != "ok" {
+		t.Fatalf("status = %#v", got)
+	}
+	if got := result.Vars["second_name"]; got != "Bob" {
+		t.Fatalf("second_name = %#v", got)
+	}
+	if got := result.Vars["count"]; got != float64(2) {
+		t.Fatalf("count = %#v", got)
+	}
+	payload, ok := result.Vars["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v", result.Vars["payload"])
+	}
+	items, ok := payload["items"].([]any)
+	if !ok || len(items) != 2 {
+		t.Fatalf("payload.items = %#v", payload["items"])
 	}
 }
 
