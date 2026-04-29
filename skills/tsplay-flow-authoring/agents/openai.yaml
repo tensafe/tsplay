@@ -1,0 +1,4 @@
+interface:
+  display_name: "TSPlay Flow Authoring"
+  short_description: "TSPlay Flow 编写、修复、动作速查与示例索引"
+  default_prompt: "Use $tsplay-flow-authoring to 编写或修复这次任务需要的 TSPlay Flow，选择合适的本地或 MCP 路径，并保持结果可 review."
