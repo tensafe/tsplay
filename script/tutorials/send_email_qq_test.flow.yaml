@@ -1,0 +1,32 @@
+schema_version: "1"
+name: send_email_qq_ssl_465_test
+description: Send one test email through smtp.qq.com over implicit TLS on port 465.
+vars:
+  sender_email: "xxx@qq.com"
+  sender_password: "xxx"
+  recipient_emails:
+    - "xxx@qq.com"
+    - "xxx@gmail.com"
+  subject_text: "TSPlay QQ SMTP test"
+  body_text: |
+    This is a TSPlay test email.
+    If you receive it, smtp.qq.com:465 is working.
+steps:
+  - action: send_email
+    save_as: email_result
+    with:
+      to: "{{recipient_emails}}"
+      subject: "{{subject_text}}"
+      body: "{{body_text}}"
+      from_email: "{{sender_email}}"
+      smtp:
+        host: smtp.qq.com
+        port: 465
+        username: "{{sender_email}}"
+        password: "{{sender_password}}"
+        from: "{{sender_email}}"
+        tls_mode: tls
+
+  - action: write_json
+    file_path: artifacts/tutorials/send_email_qq_test_result.json
+    value: "{{email_result}}"

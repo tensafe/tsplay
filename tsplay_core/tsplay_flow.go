@@ -186,6 +186,7 @@ type FlowSecurityPolicy struct {
 	AllowFileAccess   bool   `json:"allow_file_access"`
 	AllowBrowserState bool   `json:"allow_browser_state"`
 	AllowHTTP         bool   `json:"allow_http"`
+	AllowEmail        bool   `json:"allow_email"`
 	AllowRedis        bool   `json:"allow_redis"`
 	AllowDatabase     bool   `json:"allow_database"`
 	FileInputRoot     string `json:"file_input_root,omitempty"`
@@ -259,6 +260,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"get_all_links":         {Args: []flowArgSpec{{Name: "selector"}}},
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
+	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
 	"redis_set":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "value", Required: true}, {Name: "ttl_seconds"}, {Name: "connection"}}},
@@ -298,6 +300,7 @@ func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
 		AllowFileAccess:   true,
 		AllowBrowserState: true,
 		AllowHTTP:         true,
+		AllowEmail:        true,
 		AllowRedis:        true,
 		AllowDatabase:     true,
 	}
@@ -380,6 +383,15 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 		}
 		if step.Action == "http_request" {
 			if err := validateHTTPRequestFlowStep(stepPath, step, spec, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
+			continue
+		}
+		if step.Action == "send_email" {
+			if err := validateSendEmailFlowStep(stepPath, step, knownVars); err != nil {
 				return err
 			}
 			if step.SaveAs != "" {
@@ -934,6 +946,153 @@ func validateRedisSetFlowStep(stepPath string, step FlowStep, spec flowActionSpe
 	return nil
 }
 
+func validateSendEmailFlowStep(stepPath string, step FlowStep, knownVars map[string]any) error {
+	if len(step.Args) > 0 {
+		return fmt.Errorf("step %s action %q does not support args; use with.to, with.subject, and with.body or with.html", stepPath, step.Action)
+	}
+
+	validateRecipientValue := func(name string, value any) error {
+		if err := validateFlowReferences(stepPath, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+		if len(flowReferences(value)) > 0 {
+			return nil
+		}
+		if _, err := emailAddressListValue(resolveStaticFlowValue(value, knownVars), name); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, name, err)
+		}
+		return nil
+	}
+	validateNonBlankString := func(name string, value any) error {
+		if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+		if len(flowReferences(value)) > 0 {
+			return nil
+		}
+		text := strings.TrimSpace(fmt.Sprint(resolveStaticFlowValue(value, knownVars)))
+		if text == "" {
+			return fmt.Errorf("step %s action %q parameter %q cannot be blank", stepPath, step.Action, name)
+		}
+		if err := validateEmailHeaderText(name, text); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, name, err)
+		}
+		return nil
+	}
+	validateSingleAddress := func(name string, value any) error {
+		if err := validateNonBlankString(name, value); err != nil {
+			return err
+		}
+		if len(flowReferences(value)) > 0 {
+			return nil
+		}
+		if _, err := parseSingleEmailAddress(fmt.Sprint(resolveStaticFlowValue(value, knownVars)), name); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, name, err)
+		}
+		return nil
+	}
+
+	present := step.presentNamedParams()
+	allowed := map[string]bool{
+		"to":          true,
+		"cc":          true,
+		"bcc":         true,
+		"subject":     true,
+		"body":        true,
+		"html":        true,
+		"headers":     true,
+		"attachments": true,
+		"connection":  true,
+		"from_email":  true,
+		"reply_to":    true,
+		"smtp":        true,
+		"timeout":     true,
+	}
+	for name, value := range present {
+		if !allowed[name] {
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+		switch name {
+		case "to", "cc", "bcc":
+			if err := validateRecipientValue(name, value); err != nil {
+				return err
+			}
+		case "subject":
+			if err := validateNonBlankString(name, value); err != nil {
+				return err
+			}
+		case "body", "html":
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		case "headers":
+			if err := validateFlowReferences(stepPath, step.Action, "headers", value, knownVars); err != nil {
+				return err
+			}
+			if _, ok := fullPlaceholderExpression(value); ok {
+				continue
+			}
+			if _, err := normalizeEmailHeaders(resolveStaticFlowValue(value, knownVars)); err != nil {
+				return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, "headers", err)
+			}
+		case "attachments":
+			if err := validateFlowReferences(stepPath, step.Action, "attachments", value, knownVars); err != nil {
+				return err
+			}
+			if len(flowReferences(value)) > 0 {
+				continue
+			}
+			if _, err := normalizeEmailAttachments(resolveStaticFlowValue(value, knownVars)); err != nil {
+				return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, "attachments", err)
+			}
+		case "from_email", "reply_to":
+			if err := validateSingleAddress(name, value); err != nil {
+				return err
+			}
+		case "smtp":
+			if err := validateFlowReferences(stepPath, step.Action, "smtp", value, knownVars); err != nil {
+				return err
+			}
+			if len(flowReferences(value)) > 0 {
+				continue
+			}
+			if _, err := normalizeInlineEmailConnectionConfig(resolveStaticFlowValue(value, knownVars)); err != nil {
+				return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, "smtp", err)
+			}
+		case "timeout":
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+			if len(flowReferences(value)) == 0 {
+				timeout, err := intParam(resolveStaticFlowValue(value, knownVars))
+				if err != nil {
+					return fmt.Errorf("step %s action %q parameter %q %v", stepPath, step.Action, name, err)
+				}
+				if timeout < 1 {
+					return fmt.Errorf("step %s action %q parameter %q must be at least 1", stepPath, step.Action, name)
+				}
+			}
+		default:
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		}
+	}
+
+	if _, ok := present["to"]; !ok {
+		return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, "to")
+	}
+	if _, ok := present["subject"]; !ok {
+		return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, "subject")
+	}
+	if _, hasBody := present["body"]; !hasBody {
+		if _, hasHTML := present["html"]; !hasHTML {
+			return fmt.Errorf("step %s action %q requires %q or %q", stepPath, step.Action, "body", "html")
+		}
+	}
+	return nil
+}
+
 func validateReadExcelFlowStep(stepPath string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
 	return validateReadTableFlowStep(stepPath, step, spec, knownVars, true)
 }
@@ -1417,6 +1576,11 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 			return nil
 		}
 		return fmt.Errorf("must be a list of strings")
+	case "email_recipients":
+		if _, err := emailAddressListValue(value, "recipient"); err == nil {
+			return nil
+		}
+		return fmt.Errorf("must be an email string or list of email strings")
 	case "object":
 		if _, ok := value.(map[string]any); ok {
 			return nil
@@ -1444,7 +1608,7 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing":
 		return "bool"
@@ -1452,10 +1616,14 @@ func flowParamType(name string) string {
 		return "int"
 	case "seconds":
 		return "number"
-	case "headers", "query", "form", "multipart_files", "multipart_fields", "row":
+	case "headers", "query", "form", "multipart_files", "multipart_fields", "row", "smtp":
 		return "object"
 	case "files", "columns", "returning", "key_columns", "update_columns":
 		return "string_list"
+	case "to", "cc", "bcc":
+		return "email_recipients"
+	case "attachments":
+		return "attachments"
 	case "steps":
 		return "steps"
 	case "items", "rows":
@@ -1517,6 +1685,8 @@ func flowActionSecurityGroup(action string) string {
 		return "javascript"
 	case "http_request":
 		return "http"
+	case "send_email":
+		return "email"
 	case "redis_get", "redis_set", "redis_del", "redis_incr":
 		return "redis"
 	case "db_insert", "db_insert_many", "db_upsert", "db_query", "db_query_one", "db_execute", "db_transaction":
@@ -1542,6 +1712,8 @@ func flowActionSecurityOption(group string) string {
 		return "allow_browser_state"
 	case "http":
 		return "allow_http"
+	case "email":
+		return "allow_email"
 	case "redis":
 		return "allow_redis"
 	case "database":
@@ -1563,6 +1735,8 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 		return policy.AllowBrowserState
 	case "http":
 		return policy.AllowHTTP
+	case "email":
+		return policy.AllowEmail
 	case "redis":
 		return policy.AllowRedis
 	case "database":
@@ -1747,6 +1921,12 @@ func validateFlowFilePathValue(stepIndex string, action string, name string, rol
 		}
 		return nil
 	case map[string]any:
+		if name == "attachments" {
+			if pathValue, ok := typed["path"]; ok {
+				return validateFlowFilePathValue(stepIndex, action, name, role, pathValue, policy)
+			}
+			return nil
+		}
 		for _, item := range typed {
 			if err := validateFlowFilePathValue(stepIndex, action, name, role, item, policy); err != nil {
 				return err
@@ -1818,6 +1998,8 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "http_request":
 		return map[string]flowFilePathRole{"multipart_files": flowFileInputPath, "save_path": flowFileOutputPath}
+	case "send_email":
+		return map[string]flowFilePathRole{"attachments": flowFileInputPath}
 	case "upload_file":
 		return map[string]flowFilePathRole{"file_path": flowFileInputPath}
 	case "upload_multiple_files":
@@ -3219,6 +3401,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowAppendVarStep(ctx, step)
 	case "http_request":
 		return runFlowHTTPRequestStep(L, ctx, step)
+	case "send_email":
+		return runFlowSendEmailStep(ctx, step)
 	case "json_extract":
 		return runFlowJSONExtractStep(ctx, step)
 	case "db_insert":

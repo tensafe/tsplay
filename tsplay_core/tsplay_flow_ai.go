@@ -375,6 +375,33 @@ func flowSpecialActionSchemaConstraint(action string) map[string]any {
 			},
 		}
 	}
+	if action == "send_email" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"to", "subject"},
+								"anyOf": []any{
+									map[string]any{"required": []string{"body"}},
+									map[string]any{"required": []string{"html"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
 	if action == "read_excel" {
 		return map[string]any{
 			"if": map[string]any{
@@ -488,6 +515,42 @@ func flowParamJSONSchema(name string) map[string]any {
 		return map[string]any{"oneOf": []any{map[string]any{"type": "object"}, placeholder}}
 	case "string_list":
 		return map[string]any{"oneOf": []any{map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, placeholder}}
+	case "email_recipients":
+		return map[string]any{"oneOf": []any{
+			map[string]any{"type": "string"},
+			map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			placeholder,
+		}}
+	case "attachments":
+		return map[string]any{"oneOf": []any{
+			map[string]any{"type": "string"},
+			map[string]any{
+				"type":     "object",
+				"required": []string{"path"},
+				"properties": map[string]any{
+					"path":         map[string]any{"type": "string"},
+					"name":         map[string]any{"type": "string"},
+					"content_type": map[string]any{"type": "string"},
+				},
+				"additionalProperties": false,
+			},
+			map[string]any{"type": "array", "items": map[string]any{
+				"oneOf": []any{
+					map[string]any{"type": "string"},
+					map[string]any{
+						"type":     "object",
+						"required": []string{"path"},
+						"properties": map[string]any{
+							"path":         map[string]any{"type": "string"},
+							"name":         map[string]any{"type": "string"},
+							"content_type": map[string]any{"type": "string"},
+						},
+						"additionalProperties": false,
+					},
+				},
+			}},
+			placeholder,
+		}}
 	default:
 		return map[string]any{"type": "string"}
 	}

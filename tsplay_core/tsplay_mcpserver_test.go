@@ -76,6 +76,7 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 
 	foundNavigate := false
 	foundWriteExcel := false
+	foundSendEmail := false
 	for _, action := range actions {
 		item, ok := action.(map[string]any)
 		if !ok {
@@ -87,12 +88,18 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 		if item["name"] == "write_excel" {
 			foundWriteExcel = true
 		}
+		if item["name"] == "send_email" {
+			foundSendEmail = true
+		}
 	}
 	if !foundNavigate {
 		t.Fatalf("navigate action not found in manifest")
 	}
 	if !foundWriteExcel {
 		t.Fatalf("write_excel action not found in manifest")
+	}
+	if !foundSendEmail {
+		t.Fatalf("send_email action not found in manifest")
 	}
 }
 
@@ -2141,6 +2148,7 @@ func TestFlowSecurityPolicyResolutionFromToolRequestSupportsPresetOverrides(t *t
 			Arguments: map[string]any{
 				"security_preset": "full_automation",
 				"allow_http":      false,
+				"allow_email":     false,
 			},
 		},
 	}
@@ -2157,6 +2165,9 @@ func TestFlowSecurityPolicyResolutionFromToolRequestSupportsPresetOverrides(t *t
 	}
 	if resolution.Policy.AllowHTTP != false {
 		t.Fatalf("expected explicit allow_http override to win, got %#v", resolution.Policy)
+	}
+	if resolution.Policy.AllowEmail != false {
+		t.Fatalf("expected explicit allow_email override to win, got %#v", resolution.Policy)
 	}
 	if resolution.Policy.FileInputRoot != options.ArtifactRoot || resolution.Policy.FileOutputRoot != options.ArtifactRoot {
 		t.Fatalf("expected artifact roots in security policy, got %#v", resolution.Policy)
