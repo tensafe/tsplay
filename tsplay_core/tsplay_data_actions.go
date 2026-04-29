@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,18 @@ import (
 
 	lua "github.com/yuin/gopher-lua"
 )
+
+func read_json(L *lua.LState) int {
+	filePath := L.CheckString(1)
+
+	value, err := readJSONValue(filePath)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return 0
+	}
+	L.Push(goValueToLua(L, value))
+	return 1
+}
 
 func write_json(L *lua.LState) int {
 	filePath := L.CheckString(1)
@@ -70,6 +83,20 @@ func write_excel(L *lua.LState) int {
 	}
 	L.Push(goValueToLua(L, result))
 	return 1
+}
+
+func readJSONValue(filePath string) (any, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read_json open %q: %w", filePath, err)
+	}
+	content = bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
+
+	var value any
+	if err := json.Unmarshal(content, &value); err != nil {
+		return nil, fmt.Errorf("read_json parse %q: %w", filePath, err)
+	}
+	return value, nil
 }
 
 func writeJSONValue(filePath string, value any) (map[string]any, error) {

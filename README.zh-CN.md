@@ -50,7 +50,7 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | 能力类别 | 典型能力 | Flow | Lua | MCP | 建议 |
 | --- | --- | --- | --- | --- | --- |
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 应保持同步 |
-| 文件与表格 I/O | `screenshot`、`save_html`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
+| 文件与表格 I/O | `screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
 | HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_http`、`allow_file_access` 和文件根目录 |
 | 邮件通知 | `send_email` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_email` |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_redis` |
@@ -208,7 +208,7 @@ go run . -action mcp-tool -tool tsplay.observe_page -args-file script/tutorials/
 - 变量：`vars`、`save_as`、`set_var`、`append_var`
 - 控制流：`retry`、`if`、`foreach`、`on_error`、`wait_until`
 - 页面动作：点击、输入、等待、断言、截图、上传、下载
-- 数据动作：`http_request`、`json_extract`、`send_email`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`
+- 数据动作：`http_request`、`json_extract`、`send_email`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`
 - 浏览器状态：`use_session`、`storage_state`、`save_storage_state`
 
 ## 核心能力

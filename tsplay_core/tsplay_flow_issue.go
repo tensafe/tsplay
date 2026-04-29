@@ -631,6 +631,8 @@ func flowAllowedParamsForAction(action string) []string {
 		params = []string{"file_path", "value", "with.headers"}
 	case "write_excel":
 		params = []string{"file_path", "value", "sheet", "with.headers"}
+	case "read_json":
+		params = []string{"file_path"}
 	case "read_excel":
 		params = []string{"file_path", "sheet", "range", "with.headers", "with.start_row", "with.limit", "with.row_number_field"}
 	case "send_email":

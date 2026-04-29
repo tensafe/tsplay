@@ -207,9 +207,14 @@ page:click("#submit")
 }
 
 func TestRunFlowSkipsPlaywrightForDataOnlyFlows(t *testing.T) {
-	csvPath := filepath.Join(t.TempDir(), "users.csv")
+	root := t.TempDir()
+	csvPath := filepath.Join(root, "users.csv")
 	if err := os.WriteFile(csvPath, []byte("name\nalice\n"), 0600); err != nil {
 		t.Fatalf("write csv: %v", err)
+	}
+	jsonPath := filepath.Join(root, "payload.json")
+	if err := os.WriteFile(jsonPath, []byte("{\"meta\":{\"status\":\"ok\"}}\n"), 0600); err != nil {
+		t.Fatalf("write json: %v", err)
 	}
 
 	flows := []struct {
@@ -244,6 +249,22 @@ func TestRunFlowSkipsPlaywrightForDataOnlyFlows(t *testing.T) {
 			check: func(t *testing.T, result *FlowResult) {
 				if result.Trace[0].Output != float64(2) {
 					t.Fatalf("trace output = %#v", result.Trace[0].Output)
+				}
+			},
+		},
+		{
+			name: "read_json",
+			flow: &Flow{
+				SchemaVersion: CurrentFlowSchemaVersion,
+				Name:          "data-only-read-json",
+				Steps: []FlowStep{
+					{Action: "read_json", FilePath: jsonPath, SaveAs: "payload"},
+				},
+			},
+			check: func(t *testing.T, result *FlowResult) {
+				payload, ok := result.Vars["payload"].(map[string]any)
+				if !ok || payload["meta"] == nil {
+					t.Fatalf("payload = %#v", result.Vars["payload"])
 				}
 			},
 		},

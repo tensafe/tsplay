@@ -266,6 +266,7 @@ func buildFlowActionCapabilitiesRegistry() map[string]FlowActionCapabilities {
 		"on_error",
 		"wait_until",
 		"db_transaction",
+		"read_json",
 		"read_csv",
 		"read_excel",
 		"write_json",

@@ -241,6 +241,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"screenshot":            {Args: []flowArgSpec{{Name: "path", Required: true}}},
 	"screenshot_element":    {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "path", Required: true}}},
 	"save_html":             {Args: []flowArgSpec{{Name: "path", Required: true}}},
+	"read_json":             {Args: []flowArgSpec{{Name: "file_path", Required: true}}},
 	"read_csv":              {Args: []flowArgSpec{{Name: "file_path", Required: true}}},
 	"read_excel":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "sheet"}, {Name: "range"}}},
 	"write_json":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "value", Required: true}}},
@@ -1691,7 +1692,7 @@ func flowActionSecurityGroup(action string) string {
 		return "redis"
 	case "db_insert", "db_insert_many", "db_upsert", "db_query", "db_query_one", "db_execute", "db_transaction":
 		return "database"
-	case "screenshot", "screenshot_element", "save_html", "read_csv", "read_excel", "write_json", "write_csv", "write_excel", "upload_file", "upload_multiple_files", "download_file", "download_url":
+	case "screenshot", "screenshot_element", "save_html", "read_json", "read_csv", "read_excel", "write_json", "write_csv", "write_excel", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
 		return "browser_state"
@@ -1990,7 +1991,7 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"path": flowFileOutputPath}
 	case "screenshot_element":
 		return map[string]flowFilePathRole{"path": flowFileOutputPath}
-	case "read_csv", "read_excel":
+	case "read_json", "read_csv", "read_excel":
 		return map[string]flowFilePathRole{"file_path": flowFileInputPath}
 	case "write_json", "write_csv", "write_excel":
 		return map[string]flowFilePathRole{"file_path": flowFileOutputPath}

@@ -1634,6 +1634,7 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
 	descriptions["send_email"] = "Send an outbound email through an SMTP connection resolved from environment variables or provided inline in Flow."
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
+	descriptions["read_json"] = "Read any local JSON file and return its decoded value."
 	descriptions["write_json"] = "Write any resolved value to a local JSON file."
 	descriptions["write_csv"] = "Write resolved rows to a local CSV file, optionally with an explicit header order."
 	descriptions["write_excel"] = "Write resolved rows to a local Excel .xlsx file, optionally with an explicit sheet name and header order, or write a workbook object with multiple sheets."
@@ -1750,6 +1751,16 @@ func buildFlowActionManifest() []map[string]any {
 				"Use with.start_row to resume from a source row number in the CSV file.",
 				"Use with.limit to process one chunk at a time.",
 				"Use with.row_number_field to keep the original source row number in each row object.",
+			}
+		}
+		if name == "read_json" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+			}
+			item["returns"] = "any"
+			item["notes"] = []string{
+				"Returns the decoded JSON value as an object, list, primitive, or null depending on the file content.",
+				"UTF-8 BOM is accepted and ignored when present.",
 			}
 		}
 		if name == "redis_set" {
