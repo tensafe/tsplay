@@ -7,25 +7,27 @@ search:
 
 <div class="tsplay-hero">
   <div class="tsplay-hero__eyebrow">TSPlay Docs</div>
-  <h1>把浏览器自动化做成<br>可交付、可评审、可被 AI 协作的资产</h1>
+  <h1>面向交付与 AI 协作的<br>浏览器自动化文档站</h1>
   <p>
-    TSPlay 把 <code>Flow DSL</code>、<code>MCP</code>、会话复用、失败修复、
-    教程与交付资料收在同一条链路里，适合研发、实施、测试、培训和 Agent 集成一起使用。
+    用一套资料收住 <code>Flow DSL</code>、<code>MCP</code>、会话复用、失败修复与教程交付，
+    适合研发、实施、测试、培训和 Agent 集成共同使用。
   </p>
   <div class="tsplay-hero__actions">
-    <a class="md-button md-button--primary" href="getting-started.md">5 分钟跑起来</a>
-    <a class="md-button" href="docs/tutorials/README.zh-CN.md">进入教程</a>
-    <a class="md-button" href="docs/training/ai-intent-to-flow.md">走 Agent 路线</a>
+    <a class="md-button md-button--primary" href="getting-started/">快速开始</a>
+    <a class="md-button" href="docs/tutorials/README.zh-CN/">教程总览</a>
+  </div>
+  <div class="tsplay-hero__minor">
+    想直接走智能体路线：<a href="docs/training/ai-intent-to-flow/">查看 AI 无感入门</a>
   </div>
   <div class="tsplay-hero__facts">
     <span>Flow-first</span>
     <span>MCP-ready</span>
     <span>160 节教程</span>
-    <span>单二进制可交付</span>
+    <span>单二进制交付</span>
   </div>
 </div>
 
-## 你现在最可能是哪一类用户
+## 按目标进入
 
 <div class="grid cards" markdown>
 
@@ -33,7 +35,7 @@ search:
 
     ---
 
-    想快速把页面动作整理成可评审、可复用、可被 AI 生成的 `.flow.yaml`。
+    想把页面动作整理成可评审、可复用的 `.flow.yaml`。
 
     [进入 Flow 学习路径](docs/tutorials/track-newbie.zh-CN.md)
 
@@ -41,7 +43,7 @@ search:
 
     ---
 
-    想把 `observe -> draft -> validate -> run -> repair` 接到 MCP 或智能体产品里。
+    想把 `observe -> draft -> validate -> run -> repair` 接到 MCP 或智能体产品。
 
     [进入 AI 无感入门](docs/training/ai-intent-to-flow.md)
 
@@ -49,7 +51,7 @@ search:
 
     ---
 
-    想把 TSPlay 讲给团队、做 onboarding、Bootcamp 或交付 enablement。
+    想把 TSPlay 讲给团队，做 onboarding、Bootcamp 或交付 enablement。
 
     [进入培训体系](docs/training/README.md)
 
@@ -57,7 +59,7 @@ search:
 
     ---
 
-    想先理解定位、三层能力、外部系统集成、安全边界和项目结构。
+    想先理解定位、三层能力、安全边界和项目结构。
 
     [看中文总览](README.zh-CN.md)
 

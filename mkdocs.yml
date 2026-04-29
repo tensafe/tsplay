@@ -82,8 +82,22 @@ nav:
   - 教程:
       - 教程总览（中文）: docs/tutorials/README.zh-CN.md
       - English Tutorial Map: docs/tutorials/README.md
-      - 新手学习路线: docs/tutorials/track-newbie.zh-CN.md
-      - 初级交付路线: docs/tutorials/track-junior.zh-CN.md
+      - 常用起手页:
+          - "Lesson 01: Hello World": docs/tutorials/01-hello-world.md
+          - "Lesson 03: 抓取表格并写 JSON": docs/tutorials/03-capture-table.md
+          - "Lesson 10: 页面断言": docs/tutorials/10-assert-page-state.md
+          - "Lesson 16: retry 处理偶发失败": docs/tutorials/16-retry-flaky-action.md
+          - "Lesson 22: foreach 批量导入 CSV": docs/tutorials/22-foreach-batch-import-csv.md
+          - "Lesson 36: 保存浏览器状态": docs/tutorials/36-save-storage-state.md
+          - "Lesson 42: 使用命名会话": docs/tutorials/42-use-named-session.md
+          - "Lesson 57: 认证导入导出闭环": docs/tutorials/57-use-session-import-export-round-trip.md
+          - "Lesson 111: MCP list_actions": docs/tutorials/111-mcp-list-actions.md
+          - "Lesson 120: MCP finalize_flow": docs/tutorials/120-mcp-finalize-flow.md
+      - 按阶段路线:
+          - 新手学习路线: docs/tutorials/track-newbie.zh-CN.md
+          - 初级交付路线: docs/tutorials/track-junior.zh-CN.md
+          - 中级交付路线: docs/tutorials/track-intermediate.zh-CN.md
+          - 高级交付路线: docs/tutorials/track-advanced.zh-CN.md
       - MCP 教程入口: docs/tutorials/119-mcp-chain-overview.md
   - 培训与交付:
       - 培训体系总览: docs/training/README.md

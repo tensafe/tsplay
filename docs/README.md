@@ -2,6 +2,60 @@
 
 根目录 [../ReadMe.md](../ReadMe.md) 提供英文项目入口，[../README.zh-CN.md](../README.zh-CN.md) 提供中文对应版本；教程入口层现在也采用相同策略：英文默认文件名，中文使用 `.zh-CN.md` 副本。`docs/` 负责承载更适合团队长期使用的材料，尤其是培训、Enablement 和交付规范。
 
+## 常用入口
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch-outline:{ .lg .middle } __第一次看 TSPlay__
+
+    想先知道 TSPlay 是什么、三层能力怎么分、怎么 5 分钟跑起来。
+
+    [看中文项目总览](../README.zh-CN.md)
+
+-   :material-play-box-outline:{ .lg .middle } __今天先跑起来__
+
+    想按最短路径把教程跑通，再慢慢理解 Flow、会话和 MCP。
+
+    [进入教程总站](tutorials/README.zh-CN.md)
+
+-   :material-file-document-edit-outline:{ .lg .middle } __主要想写 Flow__
+
+    想看更贴近交付的路线、变量、控制流、认证导入和恢复。
+
+    [看学习路径](training/learning-path.md)
+
+-   :material-robot-outline:{ .lg .middle } __主要想接 Agent__
+
+    想从“用户意图 -> MCP -> Flow -> 执行修复”开始。
+
+    [看 AI 无感入门](training/ai-intent-to-flow.md)
+
+-   :material-school-outline:{ .lg .middle } __我要做培训__
+
+    想组织课程、训练营、实训实验和讲师材料。
+
+    [看培训体系总览](training/README.md)
+
+-   :material-map-search-outline:{ .lg .middle } __我要看完整地图__
+
+    想从文档全图、课程体系和路线图来理解仓库资料。
+
+    [看完整课程总览](tutorials/curriculum-overview.zh-CN.md)
+
+</div>
+
+## 高频跳转
+
+| 场景 | 直接入口 |
+| --- | --- |
+| 跑第一条 Flow | [Lesson 01](tutorials/01-hello-world.md) |
+| 本地抓表到 JSON | [Lesson 03](tutorials/03-capture-table.md) |
+| 页面断言与检查 | [Lesson 10](tutorials/10-assert-page-state.md) |
+| 批量导入与恢复 | [Lesson 22](tutorials/22-foreach-batch-import-csv.md) |
+| 浏览器状态与命名会话 | [Lesson 36](tutorials/36-save-storage-state.md)、[Lesson 42](tutorials/42-use-named-session.md) |
+| MCP 能力总入口 | [Lesson 111](tutorials/111-mcp-list-actions.md)、[Lesson 120](tutorials/120-mcp-finalize-flow.md) |
+| 培训与课程安排 | [training/README.md](training/README.md)、[training/bootcamp-plan.md](training/bootcamp-plan.md) |
+
 ## 推荐阅读顺序
 
 1. [项目总览（中文）](../README.zh-CN.md)
@@ -35,6 +89,13 @@
 | 考核与认证 | 评分、门槛、证据和复盘机制 | [training/assessment.md](training/assessment.md) |
 | 教程自动录屏 | 用 `tsplay` + `ffmpeg` 把教程演示稳定录成视频素材 | [training/tutorial-video-recording.md](training/tutorial-video-recording.md) |
 | 讲师手册 | 讲师备课、授课、辅导和版本维护 | [training/trainer-playbook.md](training/trainer-playbook.md) |
+
+## 按角色进入
+
+- 实施 / 测试 / 运营：从 [tutorials/README.zh-CN.md](tutorials/README.zh-CN.md) 和 [training/labs.md](training/labs.md) 开始
+- 自动化开发 / Flow 编写者：先看 [training/learning-path.md](training/learning-path.md)，再挑 [tutorials/track-junior.zh-CN.md](tutorials/track-junior.zh-CN.md)
+- AI / 平台工程师：先看 [training/ai-intent-to-flow.md](training/ai-intent-to-flow.md)，再进 [tutorials/119-mcp-chain-overview.md](tutorials/119-mcp-chain-overview.md)
+- 讲师 / Enablement：先看 [training/README.md](training/README.md)、[training/bootcamp-plan.md](training/bootcamp-plan.md)、[training/trainer-playbook.md](training/trainer-playbook.md)
 
 ## 仓库内可直接复用的训练素材
 

@@ -1,8 +1,8 @@
 :root {
-  --tsplay-radius-lg: 24px;
-  --tsplay-radius-md: 18px;
-  --tsplay-shadow-lg: 0 22px 54px rgba(10, 43, 46, 0.18);
-  --tsplay-shadow-md: 0 14px 30px rgba(15, 54, 58, 0.12);
+  --tsplay-radius-lg: 20px;
+  --tsplay-radius-md: 16px;
+  --tsplay-shadow-lg: 0 18px 40px rgba(10, 43, 46, 0.14);
+  --tsplay-shadow-md: 0 10px 22px rgba(15, 54, 58, 0.10);
   --tsplay-hero-primary: #0d4c4a;
   --tsplay-hero-secondary: #16736e;
   --tsplay-hero-accent: #d7ab66;
@@ -49,12 +49,12 @@ h3,
 }
 
 .md-grid {
-  max-width: 1440px;
+  max-width: 1360px;
 }
 
 .md-header {
   backdrop-filter: blur(14px);
-  box-shadow: 0 8px 30px rgba(7, 34, 38, 0.18);
+  box-shadow: 0 6px 22px rgba(7, 34, 38, 0.14);
 }
 
 [data-md-color-scheme="default"] .md-header,
@@ -74,8 +74,8 @@ h3,
 
 .md-main {
   background:
-    radial-gradient(circle at top left, rgba(215, 171, 102, 0.12), transparent 22rem),
-    radial-gradient(circle at top right, rgba(19, 115, 110, 0.10), transparent 24rem);
+    radial-gradient(circle at top left, rgba(215, 171, 102, 0.08), transparent 20rem),
+    radial-gradient(circle at top right, rgba(19, 115, 110, 0.08), transparent 22rem);
 }
 
 .md-typeset .grid.cards > ul > li,
@@ -95,37 +95,37 @@ h3,
 
 .md-typeset .md-button {
   border-radius: 999px;
-  padding: 0.8em 1.2em;
+  padding: 0.72em 1.15em;
   font-weight: 700;
 }
 
 .md-typeset .md-button--primary {
-  box-shadow: 0 12px 28px rgba(14, 86, 82, 0.24);
+  box-shadow: 0 10px 20px rgba(14, 86, 82, 0.18);
 }
 
 .tsplay-hero {
   position: relative;
   overflow: hidden;
   margin: 0 0 2.25rem;
-  padding: 2.6rem;
+  padding: 2.25rem;
   border-radius: var(--tsplay-radius-lg);
   color: #f8fbfa;
   background:
-    radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.18), transparent 12rem),
-    radial-gradient(circle at 86% 18%, rgba(215, 171, 102, 0.32), transparent 12rem),
-    linear-gradient(135deg, var(--tsplay-hero-primary) 0%, var(--tsplay-hero-secondary) 60%, #0d5b57 100%);
+    radial-gradient(circle at 85% 18%, rgba(255, 255, 255, 0.08), transparent 11rem),
+    linear-gradient(135deg, #0e4c4a 0%, #126663 58%, #197069 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: var(--tsplay-shadow-lg);
 }
 
 .tsplay-hero::after {
   content: "";
   position: absolute;
-  inset: auto -4rem -4rem auto;
-  width: 14rem;
-  height: 14rem;
+  inset: auto -2rem -2rem auto;
+  width: 10rem;
+  height: 10rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  filter: blur(4px);
+  background: rgba(255, 255, 255, 0.06);
+  filter: blur(2px);
 }
 
 .tsplay-hero__eyebrow {
@@ -133,27 +133,29 @@ h3,
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1rem;
-  padding: 0.35rem 0.8rem;
+  padding: 0.32rem 0.74rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 0.78rem;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.74rem;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .tsplay-hero h1 {
   margin: 0 0 1rem;
-  font-size: clamp(2.3rem, 4.8vw, 4.4rem);
-  line-height: 1.04;
+  max-width: 12em;
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  line-height: 1.1;
   color: inherit;
 }
 
 .tsplay-hero p {
-  max-width: 48rem;
-  margin: 0 0 1.2rem;
-  font-size: 1.02rem;
-  color: rgba(248, 251, 250, 0.92);
+  max-width: 42rem;
+  margin: 0 0 1rem;
+  font-size: 0.98rem;
+  line-height: 1.7;
+  color: rgba(248, 251, 250, 0.88);
 }
 
 .tsplay-hero code {
@@ -164,42 +166,55 @@ h3,
 .tsplay-hero__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.8rem;
-  margin: 1.4rem 0 1rem;
+  gap: 0.7rem;
+  margin: 1.1rem 0 0.7rem;
+}
+
+.tsplay-hero__minor {
+  font-size: 0.92rem;
+  color: rgba(248, 251, 250, 0.76);
+}
+
+.tsplay-hero__minor a {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-underline-offset: 0.18em;
 }
 
 .tsplay-hero__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 1.35rem;
+  gap: 0.6rem;
+  margin-top: 1rem;
 }
 
 .tsplay-hero__facts span {
-  padding: 0.45rem 0.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 0.38rem 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  font-size: 0.88rem;
-  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.84rem;
+  font-weight: 650;
 }
 
 .tsplay-announce {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.8rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
+  font-size: 0.82rem;
 }
 
 .tsplay-announce strong {
-  color: #fff2d6;
+  color: #f4e4c1;
 }
 
 .tsplay-announce a {
   color: #fff;
   text-decoration: underline;
-  text-decoration-thickness: 2px;
+  text-decoration-thickness: 1px;
 }
 
 .md-typeset h2 {
@@ -223,18 +238,18 @@ h3,
 
 @media screen and (max-width: 76.1875em) {
   .tsplay-hero {
-    padding: 2rem;
+    padding: 1.85rem;
   }
 }
 
 @media screen and (max-width: 44.9375em) {
   .tsplay-hero {
-    padding: 1.4rem;
-    border-radius: 20px;
+    padding: 1.3rem;
+    border-radius: 18px;
   }
 
   .tsplay-hero h1 {
-    font-size: 2.15rem;
+    font-size: 1.9rem;
   }
 
   .tsplay-hero__actions {

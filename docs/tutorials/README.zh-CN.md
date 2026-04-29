@@ -10,6 +10,59 @@
 
 仓库里当前使用的是 `docs/` 目录，所以这套教程统一放在这里，而不是单独建 `doc/`。
 
+## 最快入口
+
+<div class="grid cards" markdown>
+
+-   :material-run-fast:{ .lg .middle } __今天先跑通__
+
+    从最小示例开始，先建立手感，再理解动作、断言和输出。
+
+    [Lesson 01](01-hello-world.md)
+
+-   :material-table-eye:{ .lg .middle } __我想先做表格抓取__
+
+    最适合第一次看到“本地页面 -> 提取数据 -> 写出 JSON”的闭环。
+
+    [Lesson 03](03-capture-table.md)
+
+-   :material-check-decagram-outline:{ .lg .middle } __我想先学断言__
+
+    想尽快掌握页面状态检查和可见性判断。
+
+    [Lesson 10](10-assert-page-state.md)
+
+-   :material-file-sync-outline:{ .lg .middle } __我想先学批量导入__
+
+    想直接进入 `foreach`、CSV 和局部恢复。
+
+    [Lesson 22](22-foreach-batch-import-csv.md)
+
+-   :material-account-lock-open-outline:{ .lg .middle } __我想先学登录态与会话__
+
+    想掌握 `storage_state`、命名会话和认证页流程。
+
+    [Lesson 36](36-save-storage-state.md)
+
+-   :material-robot-outline:{ .lg .middle } __我想直接看 MCP__
+
+    想先理解 MCP 工具链和 `finalize_flow` 路线。
+
+    [Lesson 111](111-mcp-list-actions.md)
+
+</div>
+
+## 按场景快速进入
+
+| 场景 | 推荐入口 |
+| --- | --- |
+| 第一条可运行示例 | [01](01-hello-world.md)、[02](02-local-page-select-option.md) |
+| 本地表格 / 文本提取 | [03](03-capture-table.md)、[04](04-extract-text-and-html.md)、[12](12-custom-json-output.md) |
+| 稳定性与控制流 | [16](16-retry-flaky-action.md)、[17](17-wait-until-ready.md)、[21](21-if-optional-login.md)、[23](23-on-error-import-recovery.md) |
+| 文件与批量处理 | [13](13-read-csv-basics.md)、[22](22-foreach-batch-import-csv.md)、[24](24-read-excel-basics.md)、[27](27-on-error-import-excel-writeback.md) |
+| 登录态与认证流程 | [36](36-save-storage-state.md)、[42](42-use-named-session.md)、[44](44-session-import-with-login.md)、[57](57-use-session-import-export-round-trip.md) |
+| MCP / Agent | [111](111-mcp-list-actions.md)、[113](113-mcp-observe-page.md)、[120](120-mcp-finalize-flow.md) |
+
 ## 两条学习路线
 
 ### 路线 A：今天就能开始跑的实战线
