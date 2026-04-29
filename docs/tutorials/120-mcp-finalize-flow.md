@@ -57,7 +57,7 @@ go run . -action mcp-tool -tool tsplay.finalize_flow -args-file script/tutorials
 
 如果你是按课程体系推进，  
 可以回到：
-[track-intermediate.md](track-intermediate.md)
+[track-intermediate.zh-CN.md](track-intermediate.zh-CN.md)
 
 如果你想继续进入高级阶段的安全边界模块，  
 可以继续看：

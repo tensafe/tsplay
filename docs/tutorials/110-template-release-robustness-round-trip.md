@@ -91,7 +91,7 @@ go run . -flow script/tutorials/110_template_release_robustness_round_trip.flow.
 
 如果你是按课程体系推进，  
 可以回到：
-[track-intermediate.md](track-intermediate.md)
+[track-intermediate.zh-CN.md](track-intermediate.zh-CN.md)
 
 如果你想继续往 MCP 这一层推进，  
 可以继续看：

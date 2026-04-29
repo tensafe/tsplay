@@ -103,6 +103,65 @@ steps:
 	}
 }
 
+func TestParseFlowRejectsBooleanBrowserUseSessionYAML(t *testing.T) {
+	_, err := ParseFlow([]byte(`
+schema_version: "1"
+name: bad_browser_session_type
+browser:
+  use_session: true
+steps:
+  - action: navigate
+    url: https://example.com
+`), "yaml")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Code != "invalid_type" {
+		t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+	}
+	if parseErr.Issue.Field != "use_session" {
+		t.Fatalf("unexpected field: %#v", parseErr.Issue)
+	}
+	if !strings.Contains(parseErr.Issue.Message, "must be a string, got boolean") {
+		t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+	}
+}
+
+func TestParseFlowRejectsBooleanBrowserUseSessionJSON(t *testing.T) {
+	_, err := ParseFlow([]byte(`{
+  "schema_version": "1",
+  "name": "bad_browser_session_type_json",
+  "browser": {
+    "use_session": true
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`), "json")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+
+	var parseErr *FlowParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected FlowParseError, got %T", err)
+	}
+	if parseErr.Issue.Code != "invalid_type" {
+		t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+	}
+	if parseErr.Issue.Field != "use_session" {
+		t.Fatalf("unexpected field: %#v", parseErr.Issue)
+	}
+}
+
 func TestBuildActionArgsResolvesVars(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
@@ -394,6 +453,144 @@ func TestRunFlowAppendVarAndWriteResults(t *testing.T) {
 	}
 	if !strings.Contains(string(csvContent), "3,failed,boom") {
 		t.Fatalf("missing csv row: %s", string(csvContent))
+	}
+}
+
+func TestRunFlowWriteExcelAndReadBack(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "write_excel_round_trip",
+		Steps: []FlowStep{
+			{
+				Action: "append_var",
+				SaveAs: "import_results",
+				With: map[string]any{
+					"value": map[string]any{
+						"source_row": 2,
+						"status":     "success",
+					},
+				},
+			},
+			{
+				Action: "append_var",
+				SaveAs: "import_results",
+				With: map[string]any{
+					"value": map[string]any{
+						"source_row": 3,
+						"status":     "failed",
+						"error":      "boom",
+					},
+				},
+			},
+			{
+				Action: "write_excel",
+				Args: []any{
+					"reports/import-results.xlsx",
+					"{{import_results}}",
+					[]any{"source_row", "status", "error"},
+					"Results",
+				},
+			},
+			{
+				Action:   "read_excel",
+				FilePath: "reports/import-results.xlsx",
+				Sheet:    "Results",
+				SaveAs:   "reloaded",
+			},
+			{
+				Action: "set_var",
+				SaveAs: "reloaded_error",
+				Value:  "{{reloaded[1].error}}",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	xlsxPath := filepath.Join(root, "reports", "import-results.xlsx")
+	if _, err := os.Stat(xlsxPath); err != nil {
+		t.Fatalf("stat xlsx: %v", err)
+	}
+	if got := result.Vars["reloaded_error"]; got != "boom" {
+		t.Fatalf("reloaded_error = %#v", got)
+	}
+}
+
+func TestRunFlowWriteExcelWorkbookAndReadNamedSheet(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	root := t.TempDir()
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "write_excel_workbook_round_trip",
+		Steps: []FlowStep{
+			{
+				Action:   "write_excel",
+				FilePath: "reports/workbook.xlsx",
+				With: map[string]any{
+					"value": map[string]any{
+						"sheets": []any{
+							map[string]any{
+								"name": "Summary",
+								"value": []any{
+									map[string]any{
+										"count":  2,
+										"active": true,
+									},
+								},
+							},
+							map[string]any{
+								"name":    "Errors",
+								"headers": []any{"source_row", "error"},
+								"value": []any{
+									[]any{3, "boom"},
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				Action:   "read_excel",
+				FilePath: "reports/workbook.xlsx",
+				Sheet:    "Errors",
+				SaveAs:   "errors",
+			},
+			{
+				Action: "set_var",
+				SaveAs: "error_message",
+				Value:  "{{errors[0].error}}",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	if got := result.Vars["error_message"]; got != "boom" {
+		t.Fatalf("error_message = %#v", got)
 	}
 }
 

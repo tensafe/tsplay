@@ -50,7 +50,7 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | 能力类别 | 典型能力 | Flow | Lua | MCP | 建议 |
 | --- | --- | --- | --- | --- | --- |
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 应保持同步 |
-| 文件与表格 I/O | `screenshot`、`save_html`、`read_csv`、`read_excel`、`write_json`、`write_csv` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
+| 文件与表格 I/O | `screenshot`、`save_html`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_file_access` 约束 |
 | HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_http`、`allow_file_access` 和文件根目录 |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_redis` |
 | 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_database`，`db_transaction` 会自动提交或回滚 |
@@ -207,7 +207,7 @@ go run . -action mcp-tool -tool tsplay.observe_page -args-file script/tutorials/
 - 变量：`vars`、`save_as`、`set_var`、`append_var`
 - 控制流：`retry`、`if`、`foreach`、`on_error`、`wait_until`
 - 页面动作：点击、输入、等待、断言、截图、上传、下载
-- 数据动作：`http_request`、`json_extract`、`read_csv`、`read_excel`、`write_json`、`write_csv`
+- 数据动作：`http_request`、`json_extract`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`
 - 浏览器状态：`use_session`、`storage_state`、`save_storage_state`
 
 ## 核心能力
@@ -384,7 +384,7 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 | --- | --- |
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`、`evaluate` |
-| `allow_file_access=true` | `screenshot`、`save_html`、`read_csv`、`read_excel`、上传下载、`write_json`、`write_csv` |
+| `allow_file_access=true` | `screenshot`、`save_html`、`read_csv`、`read_excel`、上传下载、`write_json`、`write_csv`、`write_excel` |
 | `allow_browser_state=true` | Cookie / Storage State / `browser.use_session` / persistent profile |
 | `allow_http=true` | `http_request` |
 | `allow_redis=true` | `redis_get`、`redis_set`、`redis_del`、`redis_incr`、`foreach.with.progress_key` |
@@ -432,6 +432,9 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 
 - `read_csv` 默认把第一行非空行当表头
 - `read_excel` 当前支持 `.xlsx`
+- `write_excel` 当前支持 `.xlsx`
+- `write_excel` 支持 `value = { sheets = [...] }` 这种多工作表写法
+- `write_excel` 会把数字和布尔值写成原生 Excel 单元格类型
 - `read_excel.range` 支持 `A2:B20` 这类矩形范围
 - 可配 `with.start_row`、`with.limit`、`with.row_number_field` 做断点续跑
 

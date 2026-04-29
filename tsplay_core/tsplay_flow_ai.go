@@ -31,7 +31,7 @@ func BuildFlowJSONSchema() map[string]any {
 		"script":            map[string]any{"type": "string"},
 		"code":              map[string]any{"type": "string"},
 		"attribute":         map[string]any{"type": "string"},
-		"sheet":             map[string]any{"type": "string", "description": "Optional Excel sheet name for read_excel."},
+		"sheet":             map[string]any{"type": "string", "description": "Optional Excel sheet name for read_excel or write_excel."},
 		"key":               map[string]any{"type": "string"},
 		"connection":        map[string]any{"type": "string", "description": "Optional named external connection such as a Redis alias."},
 		"file_path":         map[string]any{"type": "string"},
@@ -316,6 +316,57 @@ func flowSpecialActionSchemaConstraint(action string) map[string]any {
 									flowParamJSONSchema("file_path"),
 									map[string]any{},
 									map[string]any{"oneOf": []any{map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, flowPlaceholderJSONSchema()}},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	if action == "write_excel" {
+		return map[string]any{
+			"if": map[string]any{
+				"properties": map[string]any{"action": map[string]any{"const": action}},
+				"required":   []string{"action"},
+			},
+			"then": map[string]any{
+				"description": fmt.Sprintf("Constraints for action %q.", action),
+				"anyOf": []any{
+					map[string]any{
+						"required": []string{"action", "file_path", "value"},
+						"not":      map[string]any{"required": []string{"args"}},
+					},
+					map[string]any{
+						"required": []string{"action", "file_path", "with"},
+						"not":      map[string]any{"required": []string{"args"}},
+						"properties": map[string]any{
+							"with": map[string]any{
+								"type":     "object",
+								"required": []string{"value"},
+							},
+						},
+					},
+					map[string]any{
+						"required": []string{"action", "args"},
+						"properties": map[string]any{
+							"args": map[string]any{
+								"type":     "array",
+								"minItems": 2,
+								"maxItems": 4,
+								"prefixItems": []any{
+									flowParamJSONSchema("file_path"),
+									map[string]any{},
+									map[string]any{"oneOf": []any{
+										map[string]any{"type": "string"},
+										map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+										flowPlaceholderJSONSchema(),
+									}},
+									map[string]any{"oneOf": []any{
+										map[string]any{"type": "string"},
+										map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+										flowPlaceholderJSONSchema(),
+									}},
 								},
 							},
 						},

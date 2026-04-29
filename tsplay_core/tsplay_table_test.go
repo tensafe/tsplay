@@ -265,6 +265,165 @@ func TestRunFlowReadExcelResumeWindow(t *testing.T) {
 	}
 }
 
+func TestWriteExcelValueAndReadBack(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "reports.xlsx")
+
+	result, err := writeExcelValue(xlsxPath, []any{
+		map[string]any{
+			"source_row": 2,
+			"status":     "success",
+		},
+		map[string]any{
+			"source_row": 3,
+			"status":     "failed",
+			"error":      "boom",
+		},
+	}, excelWriteOptions{
+		Sheet:   "Results",
+		Headers: []string{"source_row", "status", "error"},
+	})
+	if err != nil {
+		t.Fatalf("write excel: %v", err)
+	}
+	if got := result["sheet"]; got != "Results" {
+		t.Fatalf("sheet = %#v", got)
+	}
+
+	rows, err := loadExcelRows(xlsxPath, excelReadOptions{Sheet: "Results"})
+	if err != nil {
+		t.Fatalf("read excel: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows len = %d", len(rows))
+	}
+
+	first, ok := rows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first row = %#v", rows[0])
+	}
+	if first["source_row"] != "2" || first["status"] != "success" {
+		t.Fatalf("first row = %#v", first)
+	}
+
+	second, ok := rows[1].(map[string]any)
+	if !ok {
+		t.Fatalf("second row = %#v", rows[1])
+	}
+	if second["source_row"] != "3" || second["status"] != "failed" || second["error"] != "boom" {
+		t.Fatalf("second row = %#v", second)
+	}
+}
+
+func TestWriteExcelValueWorkbookMultiSheet(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "workbook.xlsx")
+
+	result, err := writeExcelValue(xlsxPath, map[string]any{
+		"sheets": []any{
+			map[string]any{
+				"name": "Summary",
+				"value": []any{
+					map[string]any{
+						"count":  2,
+						"active": true,
+					},
+				},
+			},
+			map[string]any{
+				"name":    "Errors",
+				"headers": []any{"source_row", "error"},
+				"value": []any{
+					[]any{3, "boom"},
+				},
+			},
+		},
+	}, excelWriteOptions{})
+	if err != nil {
+		t.Fatalf("write workbook: %v", err)
+	}
+	if got := result["sheet_count"]; got != 2 {
+		t.Fatalf("sheet_count = %#v", got)
+	}
+	sheets, ok := result["sheets"].([]any)
+	if !ok || len(sheets) != 2 {
+		t.Fatalf("sheets = %#v", result["sheets"])
+	}
+
+	summaryRows, err := loadExcelRows(xlsxPath, excelReadOptions{Sheet: "Summary"})
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	if len(summaryRows) != 1 {
+		t.Fatalf("summary len = %d", len(summaryRows))
+	}
+	summary, ok := summaryRows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("summary row = %#v", summaryRows[0])
+	}
+	if summary["count"] != "2" || summary["active"] != "true" {
+		t.Fatalf("summary row = %#v", summary)
+	}
+
+	errorRows, err := loadExcelRows(xlsxPath, excelReadOptions{Sheet: "Errors"})
+	if err != nil {
+		t.Fatalf("read errors: %v", err)
+	}
+	if len(errorRows) != 1 {
+		t.Fatalf("errors len = %d", len(errorRows))
+	}
+	errorRow, ok := errorRows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("error row = %#v", errorRows[0])
+	}
+	if errorRow["source_row"] != "3" || errorRow["error"] != "boom" {
+		t.Fatalf("error row = %#v", errorRow)
+	}
+}
+
+func TestWriteExcelValueUsesNativeNumberAndBoolCells(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "typed.xlsx")
+
+	_, err := writeExcelValue(xlsxPath, []any{
+		map[string]any{
+			"name":   "Alice",
+			"score":  12.5,
+			"active": true,
+		},
+	}, excelWriteOptions{
+		Sheet:   "Typed",
+		Headers: []string{"name", "score", "active"},
+	})
+	if err != nil {
+		t.Fatalf("write typed workbook: %v", err)
+	}
+
+	archive, err := zip.OpenReader(xlsxPath)
+	if err != nil {
+		t.Fatalf("open xlsx: %v", err)
+	}
+	defer archive.Close()
+
+	sheetXML, ok, err := readZipFile(&archive.Reader, "xl/worksheets/sheet1.xml")
+	if err != nil {
+		t.Fatalf("read sheet xml: %v", err)
+	}
+	if !ok {
+		t.Fatalf("sheet1.xml not found")
+	}
+	content := string(sheetXML)
+	if !strings.Contains(content, `<c r="B2"><v>12.5</v></c>`) {
+		t.Fatalf("expected numeric cell in xml: %s", content)
+	}
+	if !strings.Contains(content, `<c r="C2" t="b"><v>1</v></c>`) {
+		t.Fatalf("expected bool cell in xml: %s", content)
+	}
+	if strings.Contains(content, `<c r="B2" t="inlineStr">`) || strings.Contains(content, `<c r="C2" t="inlineStr">`) {
+		t.Fatalf("numeric/bool cells should not be inline strings: %s", content)
+	}
+}
+
 func TestValidateFlowRejectsInvalidReadExcelRange(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",

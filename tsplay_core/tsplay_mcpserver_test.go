@@ -75,15 +75,24 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 	}
 
 	foundNavigate := false
+	foundWriteExcel := false
 	for _, action := range actions {
 		item, ok := action.(map[string]any)
-		if ok && item["name"] == "navigate" {
+		if !ok {
+			continue
+		}
+		if item["name"] == "navigate" {
 			foundNavigate = true
-			break
+		}
+		if item["name"] == "write_excel" {
+			foundWriteExcel = true
 		}
 	}
 	if !foundNavigate {
 		t.Fatalf("navigate action not found in manifest")
+	}
+	if !foundWriteExcel {
+		t.Fatalf("write_excel action not found in manifest")
 	}
 }
 

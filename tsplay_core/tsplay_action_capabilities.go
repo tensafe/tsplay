@@ -270,6 +270,7 @@ func buildFlowActionCapabilitiesRegistry() map[string]FlowActionCapabilities {
 		"read_excel",
 		"write_json",
 		"write_csv",
+		"write_excel",
 		"json_extract",
 		"redis_get",
 		"redis_set",

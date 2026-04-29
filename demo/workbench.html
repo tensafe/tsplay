@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TSPlay Workbench</title>
+    <link rel="stylesheet" href="./workbench.css" />
+  </head>
+  <body>
+    <div class="wb-shell">
+      <header class="wb-topbar">
+        <div class="wb-brand">
+          <p class="wb-eyebrow">TSPlay Workbench</p>
+          <h1>TSPlay Workbench</h1>
+          <p class="wb-subtitle">本地识别页面、接口和数据线索，生成可执行 Flow。</p>
+        </div>
+
+        <div class="wb-topbar-side">
+          <div class="wb-topbar-inline">
+            <span>当前站点：<strong id="currentSiteHeader">未选择</strong></span>
+            <span>状态：<strong id="currentSiteStatus">未选择</strong></span>
+          </div>
+
+          <div class="wb-inline wb-inline-wrap wb-topbar-actions">
+            <button id="refreshAllButton" class="wb-button wb-button-ghost wb-developer-only" type="button">刷新</button>
+            <button class="wb-button" form="exploreForm" type="submit">重新探索</button>
+            <button id="openSiteConfigButton" class="wb-button wb-button-ghost" type="button">切换站点</button>
+          </div>
+
+          <div class="wb-view-switch" role="tablist" aria-label="视图模式">
+            <button id="modeNoviceButton" class="wb-view-button is-active" data-view-mode="novice" type="button">
+              工作台视图
+            </button>
+            <button id="modeDeveloperButton" class="wb-view-button" data-view-mode="developer" type="button">
+              开发者详情
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section class="wb-overview" aria-label="系统概览">
+        <div class="wb-overview-main">
+          <h2>系统概览</h2>
+          <p>先识别当前站点的页面、接口和数据线索，再按任务需求生成可执行 Flow。</p>
+        </div>
+
+        <div class="wb-overview-points">
+          <span>识别当前站点</span>
+          <span>沉淀页面 / API / 实体</span>
+          <span>生成可执行 Flow</span>
+        </div>
+      </section>
+
+      <section class="wb-progress" aria-label="任务进度">
+        <article id="stepSiteCard" class="wb-progress-step is-active">
+          <span class="wb-progress-index">1</span>
+          <div>
+            <strong>站点接入</strong>
+            <p id="stepSiteCopy">先选择一个已保存站点，或者填一个地址保存下来。</p>
+          </div>
+        </article>
+
+        <article id="stepExploreCard" class="wb-progress-step">
+          <span class="wb-progress-index">2</span>
+          <div>
+            <strong>探索完成</strong>
+            <p id="stepExploreCopy">开始探索后，系统会沉淀页面、接口和实体线索。</p>
+          </div>
+        </article>
+
+        <article id="stepPlanCard" class="wb-progress-step">
+          <span class="wb-progress-index">3</span>
+          <div>
+            <strong>生成 Flow</strong>
+            <p id="stepPlanCopy">输入任务需求后，先看步骤卡片，再决定要不要执行。</p>
+          </div>
+        </article>
+      </section>
+
+      <main class="wb-stack">
+        <section class="wb-panel wb-context-panel">
+          <div class="wb-panel-header wb-panel-header-compact">
+            <div>
+              <h2>当前站点</h2>
+              <p>只展示当前站点摘要，其它信息按需展开。</p>
+            </div>
+          </div>
+
+          <div id="currentSiteOverview" class="wb-site-overview">
+            <article class="wb-empty-card">
+              <h3>还没有选中站点</h3>
+              <p>先展开下面的“切换站点与接入配置”，选择一个已保存站点，或者填一个地址保存下来。</p>
+            </article>
+          </div>
+
+          <details id="siteConfigDetails" class="wb-details">
+            <summary>切换站点与接入配置</summary>
+            <div class="wb-details-stack">
+              <div class="wb-block">
+                <label class="wb-label" for="sitePicker">已保存站点</label>
+                <div class="wb-inline">
+                  <select id="sitePicker" class="wb-input"></select>
+                  <button id="loadSiteButton" class="wb-button wb-button-secondary" type="button">加载站点</button>
+                </div>
+              </div>
+
+              <form id="siteForm" class="wb-form">
+                <label>
+                  <span class="wb-label">Start URL</span>
+                  <input
+                    id="siteUrlInput"
+                    class="wb-input"
+                    name="start_url"
+                    placeholder="https://example.com/admin"
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span class="wb-label">Session</span>
+                  <select id="siteSessionSelect" class="wb-input" name="session_name"></select>
+                </label>
+
+                <div id="sessionSummary" class="wb-note">
+                  优先选一个已保存好的登录态；没有的话再展开下面的“开发者配置”。
+                </div>
+
+                <div class="wb-inline wb-inline-wrap">
+                  <button class="wb-button" type="submit">保存站点</button>
+                  <button id="newSiteButton" class="wb-button wb-button-ghost" type="button">新建站点</button>
+                </div>
+
+                <details class="wb-details wb-details-subtle">
+                  <summary>高级：站点命名、安全域名、AI Provider</summary>
+                  <div class="wb-details-stack">
+                    <div class="wb-field-grid">
+                      <label>
+                        <span class="wb-label">站点 ID</span>
+                        <input id="siteIdInput" class="wb-input" name="site_id" placeholder="demo_admin" />
+                      </label>
+                      <label>
+                        <span class="wb-label">显示名称</span>
+                        <input id="siteNameInput" class="wb-input" name="name" placeholder="Demo Admin" />
+                      </label>
+                    </div>
+
+                    <label>
+                      <span class="wb-label">Allowed Domains</span>
+                      <input
+                        id="siteDomainsInput"
+                        class="wb-input"
+                        name="allowed_domains"
+                        placeholder="example.com, api.example.com"
+                      />
+                    </label>
+
+                    <label>
+                      <span class="wb-label">AI Provider</span>
+                      <select id="siteProviderSelect" class="wb-input" name="provider_id"></select>
+                    </label>
+
+                    <div id="providerSummary" class="wb-note">
+                      未显式选择 provider 时，系统会优先尝试已就绪的默认 provider 来自动生成或修复 Flow。
+                    </div>
+                  </div>
+                </details>
+              </form>
+
+              <form id="exploreForm" class="wb-form wb-form-compact">
+                <details class="wb-details wb-details-subtle">
+                  <summary>探索偏好（高级）</summary>
+                  <div class="wb-toolbar">
+                    <label>
+                      <span class="wb-label">Max Pages</span>
+                      <input id="exploreMaxPages" class="wb-input" type="number" min="1" max="30" value="8" />
+                    </label>
+                    <label>
+                      <span class="wb-label">Timeout (ms)</span>
+                      <input id="exploreTimeout" class="wb-input" type="number" min="1000" step="1000" value="30000" />
+                    </label>
+                    <label class="wb-toggle">
+                      <input id="exploreHeadless" type="checkbox" checked />
+                      <span>Headless</span>
+                    </label>
+                  </div>
+                </details>
+              </form>
+            </div>
+          </details>
+
+          <details id="siteAdvancedDetails" class="wb-details wb-details-subtle wb-developer-only">
+            <summary>开发者详情：接入配置</summary>
+            <div class="wb-details-stack">
+              <form id="sessionForm" class="wb-form wb-form-compact">
+                <div class="wb-detail-heading">
+                  <h3>保存 Session</h3>
+                  <p>只在第一次接入时需要。后续直接在上面选择即可。</p>
+                </div>
+
+                <label>
+                  <span class="wb-label">Session Name</span>
+                  <input id="sessionNameInput" class="wb-input" name="name" placeholder="demo_admin_user" required />
+                </label>
+
+                <label>
+                  <span class="wb-label">Storage State Path</span>
+                  <input
+                    id="sessionStoragePathInput"
+                    class="wb-input"
+                    name="storage_state_path"
+                    placeholder="artifacts/sessions/example/state.json"
+                  />
+                </label>
+
+                <label>
+                  <span class="wb-label">Profile</span>
+                  <input id="sessionProfileInput" class="wb-input" name="profile" placeholder="chrome-default" />
+                </label>
+
+                <label>
+                  <span class="wb-label">Profile Session</span>
+                  <input id="sessionProfileSessionInput" class="wb-input" name="session" placeholder="default" />
+                </label>
+
+                <p class="wb-note">
+                  `storage_state_path` 和 `profile/profile session` 二选一。这个页面先做最小接入，不处理登录录制。
+                </p>
+
+                <button class="wb-button wb-button-secondary" type="submit">保存 Session</button>
+              </form>
+
+              <form id="providerForm" class="wb-form wb-form-compact wb-form-divider">
+                <div class="wb-detail-heading">
+                  <h3>保存 AI Provider</h3>
+                  <p>需要让系统自动生成 Flow、自动修复，或者后面接模型编排时再配置。</p>
+                </div>
+
+                <div class="wb-field-grid">
+                  <label>
+                    <span class="wb-label">Provider ID</span>
+                    <input id="providerIdInput" class="wb-input" name="provider_id" placeholder="codex_main" required />
+                  </label>
+                  <label>
+                    <span class="wb-label">显示名称</span>
+                    <input id="providerNameInput" class="wb-input" name="name" placeholder="Codex OpenAI" />
+                  </label>
+                </div>
+
+                <label>
+                  <span class="wb-label">Provider Type</span>
+                  <select id="providerTypeSelect" class="wb-input" name="type">
+                    <option value="codex_openai">codex_openai</option>
+                    <option value="openai_compatible">openai_compatible</option>
+                    <option value="ollama">ollama</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span class="wb-label">Base URL</span>
+                  <input id="providerBaseURLInput" class="wb-input" name="base_url" placeholder="https://api.openai.com/v1" />
+                </label>
+
+                <label>
+                  <span class="wb-label">Model</span>
+                  <input id="providerModelInput" class="wb-input" name="model" placeholder="gpt-4.1-mini / qwen2.5-coder:7b" />
+                </label>
+
+                <label>
+                  <span class="wb-label">API Key Env</span>
+                  <input id="providerAPIKeyEnvInput" class="wb-input" name="api_key_env" placeholder="OPENAI_API_KEY" />
+                </label>
+
+                <label>
+                  <span class="wb-label">API Key</span>
+                  <input id="providerAPIKeyInput" class="wb-input" name="api_key" type="password" placeholder="可留空，优先走环境变量" />
+                </label>
+
+                <label>
+                  <span class="wb-label">System Prompt（可选）</span>
+                  <textarea
+                    id="providerSystemPromptInput"
+                    class="wb-textarea"
+                    rows="4"
+                    name="system_prompt"
+                    placeholder="例如：你是一个只返回 YAML 的 TSPlay 助手。"
+                  ></textarea>
+                </label>
+
+                <label class="wb-toggle">
+                  <input id="providerEnabledInput" type="checkbox" checked />
+                  <span>启用 Provider</span>
+                </label>
+
+                <p class="wb-note">
+                  `codex_openai` 会优先尝试 `OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL`；
+                  `openai_compatible` 和 `ollama` 则按你填写的 `Base URL + Model` 调用。
+                </p>
+
+                <button class="wb-button wb-button-secondary" type="submit">保存 Provider</button>
+              </form>
+            </div>
+          </details>
+        </section>
+
+        <section class="wb-panel">
+          <div class="wb-panel-header wb-panel-header-compact">
+            <div>
+              <h2>探索结果</h2>
+              <p>首页只讲结论，运行信息和观察证据按需展开。</p>
+            </div>
+          </div>
+
+          <div id="exploreMeta" class="wb-metric-grid">
+            <div class="wb-meta-card">
+              <span>页面</span>
+              <strong>0</strong>
+            </div>
+            <div class="wb-meta-card">
+              <span>API</span>
+              <strong>0</strong>
+            </div>
+            <div class="wb-meta-card">
+              <span>实体</span>
+              <strong>0</strong>
+            </div>
+            <div class="wb-meta-card">
+              <span>事件</span>
+              <strong>0</strong>
+            </div>
+          </div>
+
+          <div id="exploreLifecycle" class="wb-summary">
+            <h3>运行结论</h3>
+            <p>开始探索后，这里会先展示结论，运行细节放到折叠区里。</p>
+          </div>
+        </section>
+
+        <section class="wb-panel wb-panel-knowledge">
+          <div class="wb-panel-header wb-panel-header-compact">
+            <div>
+              <h2>知识卡片</h2>
+              <p>默认看摘要，需要时再展开接口、事件和 Observation 证据。</p>
+            </div>
+          </div>
+
+          <div class="wb-tabs" role="tablist" aria-label="知识卡片切换">
+            <button class="wb-tab is-active" data-tab="pages" data-label="页面" type="button">页面</button>
+            <button class="wb-tab" data-tab="apis" data-label="API" type="button">API</button>
+            <button class="wb-tab" data-tab="entities" data-label="实体" type="button">实体</button>
+          </div>
+
+          <div id="apiSearchBar" class="wb-search-bar is-hidden" aria-live="polite">
+            <label class="wb-search-field" for="apiSearchInput">
+              <span class="wb-label">搜索 API</span>
+              <input
+                id="apiSearchInput"
+                class="wb-input"
+                type="search"
+                placeholder="搜索 API 路径 / method / content-type"
+              />
+            </label>
+            <button id="clearAPISearchButton" class="wb-button wb-button-ghost" type="button">清空搜索</button>
+            <p id="apiSearchMeta" class="wb-data-note"></p>
+          </div>
+
+          <div id="cardList" class="wb-card-list">
+            <article class="wb-empty-card">
+              <h3>还没有卡片</h3>
+              <p>先保存站点并执行一次探索，再回来看页面、API 和实体卡片。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="wb-panel wb-panel-plan">
+          <div class="wb-panel-header wb-panel-header-compact">
+            <div>
+              <h2>下一步：生成 Flow</h2>
+              <p>直接描述任务需求，系统会先给出步骤和命中的页面、API 候选。</p>
+            </div>
+          </div>
+
+          <form id="taskForm" class="wb-form">
+            <label>
+              <span class="wb-label">任务需求</span>
+              <textarea
+                id="intentInput"
+                class="wb-textarea"
+                rows="6"
+                placeholder="例如：帮我分析上周未发货订单，找出超过 3 天未处理的订单。"
+                required
+              ></textarea>
+            </label>
+
+            <div class="wb-inline wb-inline-wrap">
+              <label class="wb-toggle">
+                <input id="runHeadlessInput" type="checkbox" checked />
+                <span>Headless 执行</span>
+              </label>
+              <button class="wb-button" type="submit">生成 Flow</button>
+              <button id="runFlowButton" class="wb-button wb-button-ghost" type="button">执行当前 Flow</button>
+            </div>
+
+            <div id="planContextPreview" class="wb-note">
+              生成 Flow 时，系统会优先带上当前站点里最相关页面卡片的 URL、标题和 Observation。
+            </div>
+          </form>
+
+          <div id="planSummary" class="wb-summary">
+            <h3>规划结果</h3>
+            <p>输入任务需求后，这里会先告诉你系统打算怎么做。</p>
+          </div>
+
+          <div id="flowStoryboard" class="wb-card-list">
+            <article class="wb-empty-card">
+              <h3>还没有步骤卡片</h3>
+              <p>输入需求并生成 Flow 后，这里会先用人话展示执行步骤。</p>
+            </article>
+          </div>
+
+          <div id="planCandidates" class="wb-candidate-list"></div>
+
+          <div class="wb-flow-dev-grid wb-developer-only">
+            <section class="wb-code-block">
+              <div class="wb-code-header">
+                <span>Original Flow YAML</span>
+                <button id="copyOriginalFlowButton" class="wb-button wb-button-ghost" type="button">复制原文</button>
+              </div>
+              <textarea id="originalFlowViewer" class="wb-code-editor" spellcheck="false" readonly># 还没有生成原始 Flow</textarea>
+            </section>
+
+            <section class="wb-code-block">
+              <div class="wb-code-header">
+                <span>Current Flow YAML</span>
+                <button id="copyFlowButton" class="wb-button wb-button-ghost" type="button">复制当前版</button>
+              </div>
+              <textarea id="flowEditor" class="wb-code-editor" spellcheck="false"># 还没有生成 Flow</textarea>
+            </section>
+          </div>
+
+          <div id="runResultPanel" class="wb-summary">
+            <h3>执行结果</h3>
+            <p>生成 Flow 后，可以在这里执行，并查看当前执行结果摘要。</p>
+          </div>
+
+          <div id="runRecoveryActions" class="wb-inline wb-inline-wrap wb-result-actions is-hidden">
+            <button id="smartRecoverFlowButton" class="wb-button wb-button-secondary" type="button">智能修复 Flow</button>
+            <button id="regenerateFlowButton" class="wb-button wb-button-ghost" type="button">重新生成 Flow</button>
+            <button id="runRecoveredFlowButton" class="wb-button wb-button-ghost" type="button">执行修复版 Flow</button>
+          </div>
+
+          <details class="wb-details wb-details-subtle wb-developer-only">
+            <summary>开发者详情：执行 Trace 与 Repair</summary>
+
+            <div class="wb-inline wb-inline-wrap wb-result-actions">
+              <button id="replayFlowButton" class="wb-button wb-button-ghost" type="button">回放当前 Flow</button>
+              <button id="repairFlowButton" class="wb-button wb-button-ghost" type="button">生成 Repair Context</button>
+              <button id="autoRepairFlowButton" class="wb-button wb-button-ghost" type="button">自动修复 Flow</button>
+              <button id="runRepairedFlowButton" class="wb-button wb-button-secondary" type="button">执行修复版 Flow</button>
+            </div>
+
+            <div id="repairPanel" class="wb-summary">
+              <h3>Repair 面板</h3>
+              <p>执行失败后，这里会展示失败步骤、修复提示、相关 DOM 证据和可发送给 AI 的 repair prompt。</p>
+            </div>
+
+            <div id="runTraceList" class="wb-candidate-list"></div>
+          </details>
+        </section>
+      </main>
+
+      <footer id="statusBar" class="wb-status">就绪</footer>
+    </div>
+
+    <script src="./workbench.js"></script>
+  </body>
+</html>

@@ -50,7 +50,7 @@ The goal of this matrix is not to force every capability into mechanical 1:1 par
 | Capability Area | Typical Actions | Flow | Lua | MCP | Recommendation |
 | --- | --- | --- | --- | --- | --- |
 | page primitives | `navigate`, `click`, `type_text`, `select_option` | Yes | Yes | Yes | Keep aligned |
-| file and spreadsheet I/O | `screenshot`, `save_html`, `read_csv`, `read_excel`, `write_json`, `write_csv` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
+| file and spreadsheet I/O | `screenshot`, `save_html`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
 | HTTP requests | `http_request`, `json_extract` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_http`, `allow_file_access`, and file-root constraints |
 | Redis operations | `redis_get`, `redis_set`, `redis_del`, `redis_incr` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_redis` |
 | database operations | `db_insert`, `db_insert_many`, `db_upsert`, `db_query`, `db_query_one`, `db_execute`, `db_transaction` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_database`, and `db_transaction` auto-commits or rolls back |
@@ -207,7 +207,7 @@ Common Flow capabilities include:
 - variables: `vars`, `save_as`, `set_var`, `append_var`
 - control flow: `retry`, `if`, `foreach`, `on_error`, `wait_until`
 - page actions: click, type, wait, assert, screenshot, upload, download
-- data actions: `http_request`, `json_extract`, `read_csv`, `read_excel`, `write_json`, `write_csv`
+- data actions: `http_request`, `json_extract`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`
 - browser state: `use_session`, `storage_state`, `save_storage_state`
 
 ## Core Capabilities
@@ -386,7 +386,7 @@ Explicit `allow_*` flags override the corresponding fields inside `security_pres
 | --- | --- |
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`, `evaluate` |
-| `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv` |
+| `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel` |
 | `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile |
 | `allow_http=true` | `http_request` |
 | `allow_redis=true` | `redis_get`, `redis_set`, `redis_del`, `redis_incr`, `foreach.with.progress_key` |
@@ -435,6 +435,9 @@ Useful for batch import, chunked execution, and writing results back into a ledg
 
 - `read_csv` treats the first non-empty row as the header by default
 - `read_excel` currently supports `.xlsx`
+- `write_excel` currently supports `.xlsx`
+- `write_excel` supports multi-sheet workbook values shaped like `value = { sheets = [...] }`
+- `write_excel` writes numbers and booleans as native Excel cell types
 - `read_excel.range` supports rectangular ranges such as `A2:B20`
 - you can combine `with.start_row`, `with.limit`, and `with.row_number_field` for resumable processing
 

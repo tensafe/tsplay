@@ -41,7 +41,7 @@ func TestExtractBundledAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read extracted file: %v", err)
 	}
-	if !strings.Contains(string(content), "TSPlay Step-by-Step 教程") {
+	if !strings.Contains(string(content), "TSPlay Step-by-Step Tutorials") {
 		t.Fatalf("unexpected extracted content")
 	}
 }
