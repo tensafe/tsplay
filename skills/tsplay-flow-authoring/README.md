@@ -6,6 +6,7 @@
 
 - 用自然语言把需求收敛成 TSPlay `.flow.yaml`
 - 修已有 Flow 的 selector、等待、断言、变量链路、会话复用
+- 读取本地 JSON 配置或前一步 artifact，并继续驱动后续 Flow
 - 编写邮件通知、失败告警、附件邮件等 `send_email` Flow
 - 用中文或英文提问
 - 按场景快速找到起手示例
@@ -131,6 +132,16 @@ $CODEX_HOME/skills/tsplay-flow-authoring
 - 输入: <关键词 / 文件 / 条件，没有就写无>
 - 输出: <save_as / JSON / CSV / Excel / artifact 路径>
 - 授权: <readonly / browser_write / full_automation / allow_*>
+```
+
+## 一个读 JSON 的模板
+
+```text
+帮我写一条 TSPlay Flow 读取本地 JSON。
+- 文件: <json 文件路径>
+- 目标: <读取后要提取哪些字段，或后续要做什么>
+- 输出: <save_as / JSON / CSV / 下游变量>
+- 授权: <如果在受限上下文里，说明文件权限>
 ```
 
 ## 一个中文修 Flow 模板

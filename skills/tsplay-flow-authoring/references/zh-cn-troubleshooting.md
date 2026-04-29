@@ -164,7 +164,41 @@
 - 数据区域没有表头时明确写 `with.headers`
 - MCP 下需要文件读写时补 `browser_write` 或对应 `allow_file_access`
 
-## 常见报错 6: `write_json` / `write_csv` 写不出去
+## 常见报错 6: `read_json` 读不到或解析失败
+
+常见现象：
+
+- `read_json open ...` 报错
+- `read_json parse ...` 报错
+- 读取成功了，但后面的字段引用拿不到值
+
+优先检查：
+
+- JSON 文件路径是不是对的
+- 文件内容是不是合法 JSON
+- 后续字段路径是不是写对了，比如 `{{payload.meta.status}}`
+- 受限上下文里是否补了文件访问权限
+
+优先修法：
+
+- 先确认文件实际存在
+- 如果是前一步刚写出的 artifact，确认写入路径和读取路径一致
+- 先把整个 JSON `save_as: payload`，再逐步提字段
+- 用业务语义变量名，不要一上来就写很长、很难读的字段链路
+
+修法示例：
+
+```yaml
+- action: read_json
+  file_path: artifacts/payload.json
+  save_as: payload
+
+- action: set_var
+  save_as: status
+  value: "{{payload.meta.status}}"
+```
+
+## 常见报错 7: `write_json` / `write_csv` 写不出去
 
 常见现象：
 
@@ -184,7 +218,7 @@
 - 保持 artifact 路径稳定
 - JSON 和 CSV 尽量靠近同一任务目录
 
-## 常见报错 7: 登录态失效、`use_session` 不生效
+## 常见报错 8: 登录态失效、`use_session` 不生效
 
 常见现象：
 
@@ -210,7 +244,7 @@ browser:
   use_session: admin
 ```
 
-## 常见报错 8: `foreach` 中断，整批任务全挂
+## 常见报错 9: `foreach` 中断，整批任务全挂
 
 常见现象：
 
@@ -243,7 +277,7 @@ browser:
               error: "{{last_error}}"
 ```
 
-## 常见报错 9: 页面状态不稳定，需要重试或轮询
+## 常见报错 10: 页面状态不稳定，需要重试或轮询
 
 常见现象：
 
@@ -256,7 +290,7 @@ browser:
 - 状态轮询用 `wait_until`
 - 断言业务结果，不要只断 click 执行了
 
-## 常见报错 10: MCP `finalize_flow` 没有直接 ready
+## 常见报错 11: MCP `finalize_flow` 没有直接 ready
 
 常见现象：
 
@@ -277,7 +311,7 @@ browser:
 下一步优先补 <缺的输入 / 缺的权限 / 修复上下文>，再继续 finalize 或 repair。
 ```
 
-## 常见报错 11: `send_email` 被安全策略拦住
+## 常见报错 12: `send_email` 被安全策略拦住
 
 常见现象：
 
@@ -293,7 +327,7 @@ browser:
 
 - 除了 `allow_email`，还要补文件访问权限
 
-## 常见报错 12: 邮件发不出去或 SMTP 配置不对
+## 常见报错 13: 邮件发不出去或 SMTP 配置不对
 
 常见现象：
 
@@ -313,7 +347,7 @@ browser:
 - 一次性验证可以临时用 `with.smtp`
 - 如果是 465 这类隐式 TLS，确认 `tls_mode: tls`
 
-## 常见报错 13: 附件邮件失败
+## 常见报错 14: 附件邮件失败
 
 常见现象：
 
@@ -332,7 +366,7 @@ browser:
 - 单个附件可用路径字符串或对象，多个附件用列表
 - 需要更清楚文件名时，用 `{path, name, content_type}`
 
-## 常见报错 14: 把问题修复杂了
+## 常见报错 15: 把问题修复杂了
 
 常见现象：
 

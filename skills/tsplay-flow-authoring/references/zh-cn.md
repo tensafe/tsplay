@@ -61,7 +61,7 @@
 - 某一行失败但整体继续: `on_error`
 - 页面状态要轮询: `wait_until`
 - 页面易抖动、要重试: `retry`
-- 读本地 CSV 或 Excel: `read_csv`, `read_excel`
+- 读本地 JSON / CSV / Excel: `read_json`, `read_csv`, `read_excel`
 - 写结果到 JSON 或 CSV: `write_json`, `write_csv`
 - 发邮件通知: `send_email`
 - 复用登录态: 顶层 `browser.use_session`
@@ -98,6 +98,14 @@
 
 - `example-index.md` 里的 Import Flows
 - `actions.md` 里的 `read_csv`, `read_excel`, `foreach`, `append_var`
+
+### 本地 JSON 输入
+
+先看：
+
+- `example-index.md` 里的 JSON And Artifact Input Flows
+- `actions.md` 里的 `read_json`
+- `zh-cn-business-templates.md` 里的本地 JSON 模板
 
 ### 登录态复用
 

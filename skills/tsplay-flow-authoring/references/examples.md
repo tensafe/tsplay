@@ -119,6 +119,17 @@ For repo-backed starting points grouped by category, read `example-index.md`.
 - 授权: 需要说明 allow_email；如果有附件，也说明文件权限
 ```
 
+## Template 10: Read Local JSON
+
+```text
+帮我写一条 TSPlay Flow 读取本地 JSON。
+- 文件: <json 文件路径>
+- 目标: <提取状态 / 提取列表 / 驱动后续步骤 / 继续写出新结果>
+- 需要的字段: <例如 payload.meta.status, payload.items[1].name>
+- 输出: <save_as / JSON / CSV / 下游变量>
+- 授权: 需要说明文件权限
+```
+
 ## Good Input Shape
 
 The highest-signal Flow requests usually include:
@@ -137,6 +148,7 @@ The highest-signal Flow requests usually include:
 - On-error recovery flow: `script/tutorials/27_on_error_import_excel_writeback.flow.yaml`
 - Review readability example: `script/tutorials/131_review_readability_after.flow.yaml`
 - MCP schema and example discovery: `docs/tutorials/112-mcp-flow-schema-and-examples.md`
+- Local JSON read pattern: `tsplay_core/tsplay_table_test.go` in `TestRunFlowReadJSONValue`
 - Email notification flow: `script/tutorials/send_email_qq_test.flow.yaml`
 - Email attachment flow: `script/tutorials/send_email_qq_attachment_test.flow.yaml`
 
@@ -271,9 +283,29 @@ steps:
       body: "{{body_text}}"
 ```
 
+### Snippet 5: Read Local JSON And Reuse Fields
+
+```yaml
+schema_version: "1"
+name: read_local_json_flow
+steps:
+  - action: read_json
+    file_path: artifacts/payload.json
+    save_as: payload
+
+  - action: set_var
+    save_as: status
+    value: "{{payload.meta.status}}"
+
+  - action: set_var
+    save_as: second_name
+    value: "{{payload.items[1].name}}"
+```
+
 ## 中文使用建议
 
 - 如果目标是“能跑一次”，先写最小 Flow，不要一上来就做很重的抽象。
 - 如果目标是“给团队复用”，优先把 `name`、`description`、`save_as`、artifact 路径写清楚。
 - 如果用户不知道 selector，先考虑 MCP 的 `observe_page` 路线，不要逼用户自己贴 HTML。
+- 如果目标是“读本地 JSON 再继续处理”，优先先确认文件路径和要用的字段路径。
 - 如果目标是“发通知”，优先先决定 SMTP 来源是 `connection` 还是 `with.smtp`，再决定是否带附件。

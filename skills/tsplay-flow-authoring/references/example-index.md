@@ -60,6 +60,14 @@ If the repository is not available, fall back to `examples.md` and `flow-authori
 - Use when the workbook contains a larger sheet but only one bounded range matters.
 - Good first template for `read_excel` with `sheet`, `range`, and explicit header handling.
 
+## JSON And Artifact Input Flows / JSON 与工件输入类 Flow
+
+### Start Here: Read one local JSON payload
+
+- `references/examples.md` snippet `Read Local JSON And Reuse Fields`
+- Use when a local JSON artifact already exists and later steps should extract fields from it.
+- Good first template for `read_json` plus nested field reuse.
+
 ## Email And Notification Flows / 邮件与通知类 Flow
 
 ### Start Here: Send one notification email

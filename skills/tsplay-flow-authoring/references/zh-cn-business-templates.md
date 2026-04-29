@@ -107,7 +107,25 @@
 - 抓表格后再做比对
 - 抓表格后写入别的系统
 
-## 模板 6: MCP Finalize
+## 模板 6: 读取本地 JSON
+
+```text
+帮我写一条 TSPlay Flow 读取本地 JSON。
+- 文件: <json 文件路径>
+- 目标: <提取哪些字段，或后续要继续做什么>
+- 需要的字段: <例如 payload.meta.status / payload.items[0].name>
+- 输出: <save_as / JSON / CSV / 下游变量>
+- 授权: <如果在受限上下文里，说明文件权限>
+- 要求: 变量名要清楚，字段引用要可 review
+```
+
+适用场景：
+
+- 读取前一步写出的 JSON artifact
+- 读取本地配置文件
+- 读取交接 payload 后继续跑 Flow
+
+## 模板 7: MCP Finalize
 
 ```text
 帮我按 TSPlay MCP 的 finalize 思路把需求收敛成 Flow。
@@ -125,7 +143,7 @@
 - selector 不确定
 - 需要先用 MCP 收敛，再修 Flow
 
-## 模板 7: 邮件通知
+## 模板 8: 邮件通知
 
 ```text
 帮我写一条 TSPlay Flow 发送邮件通知。
@@ -145,7 +163,7 @@
 - 失败后发告警
 - 生成 Excel 或 CSV 后发附件
 
-## 模板 8: 修已有 Flow
+## 模板 9: 修已有 Flow
 
 ```text
 帮我修这条 TSPlay Flow。
@@ -163,7 +181,7 @@
 - 导入导出结果不对
 - MCP finalize 后需要落到具体修复
 
-## 模板 9: 做成教程风格
+## 模板 10: 做成教程风格
 
 ```text
 帮我按 TSPlay 教程风格写一条 Flow。
@@ -180,7 +198,7 @@
 - 新增教程
 - 把业务流程沉淀成教学素材
 
-## 模板 10: 先排查再修
+## 模板 11: 先排查再修
 
 ```text
 帮我先排查这条 TSPlay Flow，再决定怎么修。

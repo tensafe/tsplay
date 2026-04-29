@@ -75,6 +75,15 @@ Use when the Flow should send a completion notice, failure summary, or exported 
 - use `connection` for environment-driven SMTP or `with.smtp` for inline SMTP
 - remember that restricted Flow or MCP contexts require `allow_email=true`
 
+### Pattern 6: Read Local JSON And Continue
+
+Use when a previous task already produced a JSON artifact, or when local configuration should drive later browser or data steps.
+
+- call `read_json`
+- save the decoded object into a business variable such as `payload` or `config`
+- extract only the fields you need with variable expressions
+- continue with assertions, loops, writes, or email notification
+
 ### Pattern 1: Page Assert And Extract
 
 Use for readiness checks, smoke checks, and lightweight data capture.

@@ -20,7 +20,7 @@ Use this file when you know the business goal but need help choosing the right T
 - 局部容错继续执行: `on_error`
 - 轮询直到满足条件: `wait_until`
 - 重试易抖动步骤: `retry`
-- 读 CSV 或 Excel: `read_csv`, `read_excel`
+- 读 JSON / CSV / Excel: `read_json`, `read_csv`, `read_excel`
 - 写 JSON 或 CSV: `write_json`, `write_csv`
 - 发邮件通知: `send_email`
 
@@ -333,6 +333,31 @@ Useful optional fields:
 
 ## 5. File Input And Output / 文件输入输出
 
+### `read_json`
+
+Use to read any local JSON file into a Flow variable. This works well for local config, previous run artifacts, handoff payloads, or decoded API results saved earlier.
+
+```yaml
+- action: read_json
+  file_path: artifacts/import-results.json
+  save_as: payload
+```
+
+Required fields:
+
+- `file_path`
+
+Recommended fields:
+
+- `save_as`
+
+Notes:
+
+- Returns the decoded JSON value as an object, list, primitive, or null depending on the file content.
+- UTF-8 BOM is accepted and ignored when present.
+- After `save_as`, later steps can reference nested fields such as `{{payload.meta.status}}` or `{{payload.items[1].name}}`.
+- Restricted Flow or MCP contexts require file access permission.
+
 ### `read_csv`
 
 Use to load structured CSV rows into a list variable.
@@ -526,6 +551,7 @@ browser:
 
 - Search or form submit: `navigate` + `wait_for_selector` + `type_text` + `click` + `assert_text`
 - Simple scrape: `navigate` + `wait_for_selector` + `extract_text` + `set_var` + `write_json`
+- Local JSON driven flow: `read_json` + `set_var` or direct variable references
 - Table flow: `navigate` + `wait_for_selector` + `capture_table`
 - Batch import: `read_excel` or `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - Resilient import: `foreach` + `on_error` + `append_var`
@@ -535,6 +561,7 @@ browser:
 
 - 搜索或提交表单: `navigate` + `wait_for_selector` + `type_text` + `click` + `assert_text`
 - 提取页面摘要: `navigate` + `wait_for_selector` + `extract_text` + `set_var` + `write_json`
+- 本地 JSON 驱动流程: `read_json` + `set_var` 或直接变量引用
 - 抓取表格: `navigate` + `wait_for_selector` + `capture_table`
 - 批量导入: `read_excel` 或 `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - 带容错的导入: `foreach` + `on_error` + `append_var`
