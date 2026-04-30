@@ -9,7 +9,7 @@
 ./tsplay -action quickstart-demo
 ```
 
-如果你还没有二进制，最短路径直接看 [快速开始](../../getting-started.md) 里的平台命令。
+如果你还没有二进制，最短路径直接看 [快速开始](../../getting-started.md) 里的 `sh / PowerShell` 安装脚本。
 
 ## 它会做什么
 

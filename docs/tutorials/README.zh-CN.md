@@ -1,16 +1,105 @@
-# TSPlay Step-by-Step 教程
+---
+hide:
+  - toc
+  - title
+---
 
 [English](README.md) | 简体中文
 
-这套教程专门解决一个上手问题：
+<div class="tsplay-landing" markdown="1">
 
-- 不从大而全的概念开始
-- 同一个功能，同时给出 `Lua` 和 `Flow` 两种写法
-- 先跑通，再逐步理解为什么日常交付更推荐 `Flow`
+<section class="tsplay-cosmos" markdown="1">
 
-仓库里当前使用的是 `docs/` 目录，所以这套教程统一放在这里，而不是单独建 `doc/`。
+<p class="tsplay-cosmos__kicker">Tutorial Pyramid</p>
 
-## 先看结论
+# 教程不平铺，按四层金字塔进入
+
+<p class="tsplay-cosmos__lede">这套教程不再默认把 <code>160</code> 节课直接摊给你自己筛，而是先给一条默认上升路径：先跑通动作，再组织成 Flow，再接进真实交付，最后再进入 Agent、MCP 和标准化。这样第一页就能告诉你今天该做什么，而不是一上来把所有概念堆在一起。</p>
+
+<div class="tsplay-pill-row">
+<span class="tsplay-pill tsplay-pill--accent">默认从第 1 层开始</span>
+<span class="tsplay-pill">Lua 与 Flow 对照</span>
+<span class="tsplay-pill tsplay-pill--mint">支持 Skills / MCP / 交付闭环</span>
+<span class="tsplay-pill">完整课表仍然保留</span>
+</div>
+
+```bash
+curl -fsSL https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.sh | sh
+./tsplay -action file-srv -addr :8000
+./tsplay -flow script/tutorials/10_assert_page_state.flow.yaml
+```
+
+<p class="tsplay-terminal__note">如果你还没跑通本地环境，先去 <a href="../../getting-started.md">快速开始</a>；等拿到第一次成功结果，再回来选教程路线。</p>
+
+<div class="grid cards" markdown="1">
+
+-   __第 1 层：先跑通基本动作__
+
+    回答的问题是：`tsplay` 能不能跑、我能不能拿到可见结果。
+
+    Lesson 范围：`01-12`
+
+    [进入新手路线](track-newbie.zh-CN.md)
+
+-   __第 2 层：把动作组织成小流程__
+
+    回答的问题是：我能不能把文件、变量、控制流、会话接成稳定 Flow。
+
+    Lesson 范围：`13-57`
+
+    [进入初级路线](track-junior.zh-CN.md)
+
+-   __第 3 层：进入真实交付闭环__
+
+    回答的问题是：我能不能把浏览器结果接进外部系统和交付物。
+
+    Lesson 范围：`58-100`
+
+    [进入中级路线](track-intermediate.zh-CN.md)
+
+-   __第 4 层：进入 Agent 与标准化__
+
+    回答的问题是：我能不能把 TSPlay 变成团队能力，而不只是个人脚本。
+
+    Lesson 范围：`101-160`
+
+    [进入高级路线](track-advanced.zh-CN.md)
+
+-   __不是从大而全开始__
+
+    同一个功能继续保留 `Lua` 和 `Flow` 两种写法，但默认先带你拿到可重复的成功体验。
+
+    [看金字塔课程总图](curriculum-overview.zh-CN.md)
+
+-   __大表没有消失，只是退到第二层__
+
+    如果你就是要按 lesson 编号查脚本、Flow、能力点，完整教程地图仍然保留在本页下方。
+
+    [稍后展开完整地图](#tutorial-map)
+
+</div>
+
+<div class="grid cards" markdown="1">
+
+-   __如果环境还没跑通__
+
+    先看 [快速开始](../../getting-started.md)，先拿到第一次运行结果，再回来进教程。
+
+-   __如果你正在搭培训体系__
+
+    先看 [金字塔课程总图](curriculum-overview.zh-CN.md)，再按四层路线拆班级与作业。
+
+</div>
+
+</section>
+
+<section class="tsplay-lane" markdown="1">
+
+<p class="tsplay-section-kicker">Default Paths</p>
+
+## 默认主线
+
+<p class="tsplay-lane__lede">先判断你现在属于哪一层，再从下面四条默认路径里选一条继续，不要先去翻完整 lesson 大表。</p>
 
 这套教程不要按 `160` 节平铺去看。  
 更适合的方式，是按一座四层金字塔往上走：
@@ -20,136 +109,130 @@
 3. 再进入真实交付闭环
 4. 最后再进入 Agent、边界和标准化
 
-只有下层稳定了，上层才值得学。这样不会一上来就把 `MCP / repair / Redis / 数据库事务 / 授权边界` 混在一起。
-
-## 金字塔四层
-
-| 层级 | 回答什么问题 | Lesson 范围 | 完成标志 | 入口 |
-| --- | --- | --- | --- | --- |
-| 第 1 层：跑通基本动作 | `tsplay` 能不能跑，我能不能看到结果 | `01-12` | 能完成本地页面交互、提取、断言和 JSON 输出 | [track-newbie.zh-CN.md](track-newbie.zh-CN.md) |
-| 第 2 层：结构化小流程 | 我能不能把单点动作组织成小流程 | `13-57` | 能处理文件、控制流、会话和受保护页面 | [track-junior.zh-CN.md](track-junior.zh-CN.md) |
-| 第 3 层：真实交付闭环 | 我能不能把浏览器结果接进外部系统和交付物 | `58-100` | 能完成 Redis / Postgres / 对账 / 交接 / 模板化闭环 | [track-intermediate.zh-CN.md](track-intermediate.zh-CN.md) |
-| 第 4 层：Agent 与标准化 | 我能不能把 TSPlay 变成团队能力 | `101-160` | 能处理 MCP、授权边界、review、单二进制交付和课程演进 | [track-advanced.zh-CN.md](track-advanced.zh-CN.md) |
-
 如果你要看整座金字塔的设计逻辑，不是继续往下翻大表，而是直接去看 [金字塔课程总图](curriculum-overview.zh-CN.md)。
 
-## 如果环境还没跑通
-
-如果你还没把本地环境跑通，先去 [../../getting-started.md](../../getting-started.md)。
-
-第一次上手最短只需要这两到三步：
-
-```bash
-go mod download
-go run . -flow script/tutorials/01_hello_world.flow.yaml
-# 只有要练本地 demo 页面时再执行这条
-go run . -action file-srv -addr :8000
-```
-
-前两条用来确认 TSPlay 能跑，第三条只在你要练本地 demo 页面时再开。
-
-## 默认主线
-
-### 1. 30 分钟起步线
-
-第一次接触 TSPlay，不要分心，先拿到 3 到 4 次成功体验：
-
-1. [Lesson 01](01-hello-world.md)
-2. [Lesson 02](02-local-page-select-option.md)
-3. [Lesson 03](03-capture-table.md)
-4. [Lesson 10](10-assert-page-state.md)
-5. [Lesson 12](12-custom-json-output.md)
-
-这一段的目标只有一个：确认你已经站稳在“第 1 层”。
-
-### 2. 半天结构化线
-
-跑通以后，再开始把动作组织成小流程：
-
-1. 文件输入输出：[13](13-read-csv-basics.md)、[14](14-write-csv-basics.md)、[15](15-read-transform-write-csv.md)
-2. 稳定性控制流：[16](16-retry-flaky-action.md)、[17](17-wait-until-ready.md)、[21](21-if-optional-login.md)、[23](23-on-error-import-recovery.md)
-3. 批量与 Excel：[22](22-foreach-batch-import-csv.md)、[24](24-read-excel-basics.md)、[26](26-foreach-batch-import-excel.md)、[27](27-on-error-import-excel-writeback.md)
-
-这一段的目标，是进入“第 2 层”。
-
-### 3. 一天交付闭环
-
-当你准备碰真实页面和业务数据，再走这条线：
-
-1. 浏览器状态基础：[28](28-inspect-storage-state.md)、[36](36-save-storage-state.md)、[37](37-load-saved-storage-state.md)
-2. 命名会话：[40](40-save-named-session.md)、[42](42-use-named-session.md)
-3. 认证页闭环：[44](44-session-import-with-login.md)、[47](47-use-session-import-single.md)、[57](57-use-session-import-export-round-trip.md)
-4. 外部系统与对账：[58](58-sync-import-report-summary-to-redis.md)、[61](61-db-insert-import-batch-summary.md)、[71](71-external-system-round-trip.md)、[80](80-external-sync-lifecycle-round-trip.md)
-
-这一段的目标，是把“浏览器结果 -> 外部系统 -> 交付物”串起来，进入“第 3 层”。
-
-### 4. Agent / MCP 线
-
-建议先有一点本地 Flow 和交付闭环手感，再进入这条线：
-
-1. 工具面：[111](111-mcp-list-actions.md)、[112](112-mcp-flow-schema-and-examples.md)
-2. 最短闭环：[113](113-mcp-observe-page.md)、[114](114-mcp-draft-flow.md)、[115](115-mcp-validate-drafted-flow.md)
-3. 收敛主线：[119](119-mcp-chain-overview.md)、[120](120-mcp-finalize-flow.md)
-
-这一段的目标，是进入“第 4 层”，而不是跳过前面三层。
-
-## 四层入口
-
-<div class="grid cards" markdown>
-
--   :material-numeric-1-circle-outline:{ .lg .middle } __第 1 层：先跑通__
-
-    先建立手感，不抢跑抽象，不先碰外部系统。
-
-    [新手路线](track-newbie.zh-CN.md)
-
--   :material-numeric-2-circle-outline:{ .lg .middle } __第 2 层：会组织小流程__
-
-    把文件、变量、控制流和会话接起来。
-
-    [初级路线](track-junior.zh-CN.md)
-
--   :material-numeric-3-circle-outline:{ .lg .middle } __第 3 层：能做真实交付__
-
-    把导入导出、Redis、数据库、对账和交接做成闭环。
-
-    [中级路线](track-intermediate.zh-CN.md)
-
--   :material-numeric-4-circle-outline:{ .lg .middle } __第 4 层：进入 Agent 与标准化__
-
-    把 MCP、边界、review、交付包和课程演进接起来。
-
-    [高级路线](track-advanced.zh-CN.md)
-
+<div class="tsplay-path-grid">
+  <div class="tsplay-path-card">
+    <h3>30 分钟起步线</h3>
+    <p>第一次接触 TSPlay，不要分心，先拿到 3 到 4 次成功体验。</p>
+    <p><strong>建议顺序：</strong><a href="01-hello-world.md">Lesson 01</a>、<a href="02-local-page-select-option.md">Lesson 02</a>、<a href="03-capture-table.md">Lesson 03</a>、<a href="10-assert-page-state.md">Lesson 10</a>、<a href="12-custom-json-output.md">Lesson 12</a></p>
+    <p><strong>目标：</strong>确认你已经站稳在“第 1 层”。</p>
+  </div>
+  <div class="tsplay-path-card">
+    <h3>半天结构化线</h3>
+    <p>跑通以后，再开始把动作组织成小流程。</p>
+    <p><strong>建议顺序：</strong><a href="13-read-csv-basics.md">13</a>、<a href="14-write-csv-basics.md">14</a>、<a href="15-read-transform-write-csv.md">15</a>、<a href="16-retry-flaky-action.md">16</a>、<a href="17-wait-until-ready.md">17</a>、<a href="21-if-optional-login.md">21</a>、<a href="23-on-error-import-recovery.md">23</a>、<a href="24-read-excel-basics.md">24</a>、<a href="26-foreach-batch-import-excel.md">26</a>、<a href="27-on-error-import-excel-writeback.md">27</a></p>
+    <p><strong>目标：</strong>进入“第 2 层”。</p>
+  </div>
+  <div class="tsplay-path-card">
+    <h3>一天交付闭环</h3>
+    <p>当你准备碰真实页面和业务数据，再走这条线。</p>
+    <p><strong>建议顺序：</strong><a href="28-inspect-storage-state.md">28</a>、<a href="36-save-storage-state.md">36</a>、<a href="37-load-saved-storage-state.md">37</a>、<a href="40-save-named-session.md">40</a>、<a href="42-use-named-session.md">42</a>、<a href="44-session-import-with-login.md">44</a>、<a href="47-use-session-import-single.md">47</a>、<a href="57-use-session-import-export-round-trip.md">57</a>、<a href="58-sync-import-report-summary-to-redis.md">58</a>、<a href="61-db-insert-import-batch-summary.md">61</a>、<a href="71-external-system-round-trip.md">71</a>、<a href="80-external-sync-lifecycle-round-trip.md">80</a></p>
+    <p><strong>目标：</strong>把“浏览器结果 -&gt; 外部系统 -&gt; 交付物”串起来，进入“第 3 层”。</p>
+  </div>
+  <div class="tsplay-path-card">
+    <h3>Agent / MCP 线</h3>
+    <p>建议先有一点本地 Flow 和交付闭环手感，再进入这条线。</p>
+    <p><strong>建议顺序：</strong><a href="111-mcp-list-actions.md">Lesson 111</a>、<a href="112-mcp-flow-schema-and-examples.md">112</a>、<a href="113-mcp-observe-page.md">113</a>、<a href="114-mcp-draft-flow.md">114</a>、<a href="115-mcp-validate-drafted-flow.md">115</a>、<a href="119-mcp-chain-overview.md">119</a>、<a href="120-mcp-finalize-flow.md">120</a></p>
+    <p><strong>目标：</strong>进入“第 4 层”，而不是跳过前面三层。</p>
+  </div>
 </div>
+
+<p class="tsplay-section-kicker">Entry Routes</p>
 
 ## 按角色分流
 
-| 你的角色 | 建议从哪一层开始 | 第一站 |
-| --- | --- | --- |
-| 测试 / 运营 / 实施 | 第 1 层 | [track-newbie.zh-CN.md](track-newbie.zh-CN.md) |
-| 自动化开发 / Flow 编写者 | 第 2 层，但先补完第 1 层关键课 | [track-junior.zh-CN.md](track-junior.zh-CN.md) |
-| AI / 平台工程师 | 第 2-3 层之后再进入第 4 层 | [119](119-mcp-chain-overview.md) |
-| 讲师 / 体系设计者 | 先看整座金字塔，再看四层路线 | [curriculum-overview.zh-CN.md](curriculum-overview.zh-CN.md) |
+<p class="tsplay-lane__lede">如果你不是按练习顺序学，而是带着岗位目标进入，这里会比逐节翻教程更省时间。</p>
+
+<div class="tsplay-mini-grid">
+  <div class="tsplay-mini-card">
+    <h3>测试 / 运营 / 实施</h3>
+    <p>建议从第 1 层开始，先建立页面动作、提取和断言的手感。</p>
+    <a class="tsplay-card-link" href="track-newbie.zh-CN.md">从新手路线进入</a>
+  </div>
+  <div class="tsplay-mini-card">
+    <h3>自动化开发 / Flow 编写者</h3>
+    <p>可以从第 2 层开始，但先补完第 1 层关键课，再往后走会更稳。</p>
+    <a class="tsplay-card-link" href="track-junior.zh-CN.md">从初级路线进入</a>
+  </div>
+  <div class="tsplay-mini-card">
+    <h3>AI / 平台工程师</h3>
+    <p>先在第 2-3 层建立 Flow 直觉，再进入 <code>finalize_flow</code>、repair、session 和 MCP 主链。</p>
+    <a class="tsplay-card-link" href="119-mcp-chain-overview.md">从 MCP 教程入口进入</a>
+  </div>
+  <div class="tsplay-mini-card">
+    <h3>讲师 / 体系设计者</h3>
+    <p>先看整座金字塔，再看四层路线，最后才去排逐课演练和作业。</p>
+    <a class="tsplay-card-link" href="curriculum-overview.zh-CN.md">先看课程总图</a>
+  </div>
+</div>
+
+<p class="tsplay-section-kicker">Expand Later</p>
 
 ## 什么时候再往下展开细节
 
-- 你只想今天先跑通：停在“30 分钟起步线”就够了
-- 你想系统学习：按“四层入口”逐层走，不要直接按课号跳
-- 你要查某个具体 lesson 编号：再展开下面的完整教程地图
-- 你要看环境、依赖和续跑说明：再展开下面的详细准备指南
+<p class="tsplay-lane__lede">只有在需要查 lesson 编号、看环境依赖，或者准备排课搭班时，再继续往下展开更重的内容。</p>
+
+<div class="grid cards" markdown="1">
+
+-   __你只想今天先跑通__
+
+    停在“30 分钟起步线”就够了，不需要继续往下翻完整地图。
+
+-   __你想系统学习__
+
+    按“四层入口”逐层走，不要直接按课号跳。
+
+-   __你要查某个具体 lesson 编号__
+
+    再展开下面的完整教程地图。
+
+-   __你要看环境、依赖和续跑说明__
+
+    再展开下面的详细准备指南。
+
+</div>
+
+</section>
+
+<section class="tsplay-lane" markdown="1">
+
+<p class="tsplay-section-kicker">Training View</p>
 
 ## 如果你是培训 / 体系设计视角
 
-直接按这组顺序进入，比逐节翻教程更稳：
+<p class="tsplay-lane__lede">这一组更适合排课、分层、布置作业，而不是逐节翻读教程。</p>
 
-1. [金字塔课程总图](curriculum-overview.zh-CN.md)
-2. [新手路线](track-newbie.zh-CN.md)
-3. [初级路线](track-junior.zh-CN.md)
-4. [中级路线](track-intermediate.zh-CN.md)
-5. [高级路线](track-advanced.zh-CN.md)
-6. [160 次迭代路线图](iteration-roadmap-160.md)
-7. [演进手册](evolution-playbook.md)
+直接按这组顺序进入，会比逐节翻教程更稳：
+
+<div class="grid cards" markdown="1">
+
+-   __第 1 步：先看总图__
+
+    [金字塔课程总图](curriculum-overview.zh-CN.md)
+
+-   __第 2 步：再看四层路线__
+
+    [新手路线](track-newbie.zh-CN.md)
+    [初级路线](track-junior.zh-CN.md)
+    [中级路线](track-intermediate.zh-CN.md)
+    [高级路线](track-advanced.zh-CN.md)
+
+-   __第 3 步：再看长期迭代节奏__
+
+    [160 次迭代路线图](iteration-roadmap-160.md)
+
+-   __第 4 步：最后看演进手册__
+
+    [演进手册](evolution-playbook.md)
+
+</div>
+
+</section>
+
+<a id="tutorial-map"></a>
+
+<section class="tsplay-lane tsplay-expanders" markdown="1">
 
 <details markdown="1">
 <summary>需要逐课对照脚本、Flow 和 lesson 编号时，再展开完整教程地图</summary>
@@ -515,15 +598,58 @@ cd ./tsplay-assets
 
 </details>
 
+</section>
+
+<section class="tsplay-lane" markdown="1">
+
+<p class="tsplay-section-kicker">Study Notes</p>
+
 ## 学的时候重点看什么
 
-- `Lua` 更像“我现在一步一步怎么做”
-- `Flow` 更像“这个流程本身是什么，可以怎么被 review、复用和交给 AI 生成”
-- 同一个功能都先看 `Lua` 再看 `Flow`，更容易体会两者的边界
-- 先走“今天能跑通”的实战线，再进入“完整进阶教程体系”，学习曲线会更稳
-- 如果你要长期建设教程，直接结合 [160 次递进迭代路线图](iteration-roadmap-160.md) 和 [教程持续进化手册](evolution-playbook.md)
+<p class="tsplay-lane__lede">继续往下学时，先抓住这些判断点，不要把注意力重新耗回 lesson 号和长表上。</p>
+
+<div class="grid cards" markdown="1">
+
+-   __先看 Lua，再看 Flow__
+
+    `Lua` 更像“我现在一步一步怎么做”；`Flow` 更像“这个流程本身是什么，可以怎么被 review、复用和交给 AI 生成”。
+
+-   __先用同一个功能对照两遍__
+
+    同一个功能都先看 `Lua` 再看 `Flow`，更容易体会两者的边界。
+
+-   __先稳住默认主线__
+
+    先走“今天能跑通”的实战线，再进入“完整进阶教程体系”，学习曲线会更稳。
+
+-   __长期建设再看两张图__
+
+    如果你要长期建设教程，直接结合 [160 次递进迭代路线图](iteration-roadmap-160.md) 和 [教程持续进化手册](evolution-playbook.md)。
+
+</div>
+
+</section>
+
+<section class="tsplay-lane" markdown="1">
+
+<p class="tsplay-section-kicker">Reminders</p>
 
 ## 两个小提醒
 
-- 运行带浏览器的 `Lua` 脚本时，如果不带 `-headless`，脚本执行完成后浏览器会继续保持打开，方便你观察页面；结束时按 `Ctrl+C` 即可
-- 这些教程默认把输出写到 `artifacts/tutorials/`，这样不会把练习产物混进仓库版本里
+<p class="tsplay-lane__lede">这两条默认约定很小，但能少踩不少坑。</p>
+
+<div class="grid cards" markdown="1">
+
+-   __浏览器不带 `-headless` 会保留现场__
+
+    运行带浏览器的 `Lua` 脚本时，如果不带 `-headless`，脚本执行完成后浏览器会继续保持打开，方便你观察页面；结束时按 `Ctrl+C` 即可。
+
+-   __练习产物默认落到 `artifacts/tutorials/`__
+
+    这些教程默认把输出写到 `artifacts/tutorials/`，这样不会把练习产物混进仓库版本里。
+
+</div>
+
+</section>
+
+</div>

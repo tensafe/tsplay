@@ -1,134 +1,149 @@
 ---
 hide:
   - toc
+  - title
 ---
 
-# 快速开始
+<div class="tsplay-landing" markdown="1">
 
-这页先陪你把 TSPlay 跑通，再帮你顺着目标找到更合适的下一站。
+<section class="tsplay-cosmos" markdown="1">
 
-## 默认快速路径
+<p class="tsplay-cosmos__kicker">Quick Start</p>
 
-如果你现在只是想确认 TSPlay 能不能跑，不要先在 `Lua / Flow / MCP / 二进制` 之间做选择。
-也不需要先装 Go，或者先等 Playwright 下载完。
+# 一条命令就能跑通第一次体验
 
-先执行这条默认路径：
+<p class="tsplay-cosmos__lede">这里默认走 <strong>bin-first</strong> 路线，不要求你先装 Go，也不要求你先等 Playwright 下载完。目标很简单：自动识别系统、下载对应二进制、生成一条最小 demo Flow，并在 <code>artifacts/quickstart/</code> 下留下结构化结果。</p>
 
-- `curl` 直接下载最新 release 二进制
-- 自动生成一条最小 demo Flow
-- 立刻执行它
-- 在 `artifacts/quickstart/` 下留下结果
+<div class="tsplay-pill-row">
+<span class="tsplay-pill tsplay-pill--accent">一步到位体验</span>
+<span class="tsplay-pill">自动识别当前系统</span>
+<span class="tsplay-pill tsplay-pill--mint">不先下载 Playwright</span>
+<span class="tsplay-pill">先拿到可见结果</span>
+</div>
 
-=== "macOS Apple 芯片"
+```bash
+curl -fsSL https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.sh | sh
+```
 
-    ```bash
-    curl -L -o tsplay https://github.com/tensafe/tsplay/releases/latest/download/tsplay-darwin-arm64
-    chmod +x tsplay
-    ./tsplay -action quickstart-demo
-    ```
+<p class="tsplay-terminal__note">如果你需要 Windows，往下切到对应平台命令即可；如果你想把二进制装到固定目录，也保留了手动安装写法。</p>
 
-=== "macOS Intel"
-
-    ```bash
-    curl -L -o tsplay https://github.com/tensafe/tsplay/releases/latest/download/tsplay-darwin-amd64
-    chmod +x tsplay
-    ./tsplay -action quickstart-demo
-    ```
-
-=== "Linux x86_64"
+=== "macOS / Linux"
 
     ```bash
-    curl -L -o tsplay https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-amd64
-    chmod +x tsplay
-    ./tsplay -action quickstart-demo
+    curl -fsSL https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.sh | sh
     ```
 
-=== "Linux ARM64"
+    如果你想把二进制装到指定目录：
 
     ```bash
-    curl -L -o tsplay https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-arm64
-    chmod +x tsplay
-    ./tsplay -action quickstart-demo
+    curl -fsSLO https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.sh
+    sh ./tsplay-quickstart.sh --install-dir ./bin
     ```
 
-=== "Windows x86_64"
+=== "Windows"
 
     ```powershell
-    curl.exe -L -o tsplay.exe https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-amd64.exe
-    .\tsplay.exe -action quickstart-demo
+    Invoke-WebRequest https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.ps1 -OutFile tsplay-quickstart.ps1
+    powershell -ExecutionPolicy Bypass -File .\tsplay-quickstart.ps1
     ```
 
-### 这一步会帮你完成什么
+    如果你想把二进制装到指定目录：
 
-- 生成 `artifacts/quickstart/quickstart-demo.flow.yaml`
-- 立刻执行这条 Flow
-- 写出 `artifacts/quickstart/quickstart-demo-output.json`
-- 在终端打印结构化执行结果
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File .\tsplay-quickstart.ps1 -InstallDir .\bin
+    ```
 
-### 这一步暂时不会做什么
+<div class="grid cards" markdown="1">
 
-- 不会先下载 Playwright
-- 不会先打开浏览器
-- 不要求你先准备 Go 开发环境
+-   __这一步会自动帮你完成什么__
 
-## 如果你想立刻切到页面自动化
+    生成 `artifacts/quickstart/quickstart-demo.flow.yaml`，立刻执行它，并写出 `quickstart-demo-output.json`。
 
-`quickstart-demo` 跑通后，再多走两步就能切到真正的页面动作。
+-   __这一步暂时不会做什么__
 
-### 1. 先起本地 demo 页面
+    不会先下载 Playwright，不会先打开浏览器，也不要求你先准备 Go 开发环境。
 
-```bash
-./tsplay -action file-srv -addr :8000
-```
+-   __如果你要手动挑平台__
 
-然后访问：
+    仍然可以直接下载 release 二进制，适合内网分发、培训包或手工部署场景。
 
-- `http://127.0.0.1:8000/demo/demo.html`
-- `http://127.0.0.1:8000/demo/extract.html`
+</div>
 
-### 2. 再跑第一条浏览器 Flow
+</section>
 
-```bash
-./tsplay -flow script/tutorials/10_assert_page_state.flow.yaml
-```
+### 如果你需要手动选择平台二进制
 
-这一步第一次如果需要浏览器，TSPlay 才会自动下载 Playwright。
+| 平台 | 二进制 |
+| --- | --- |
+| macOS Apple Silicon | [tsplay-darwin-arm64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-darwin-arm64) |
+| macOS Intel | [tsplay-darwin-amd64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-darwin-amd64) |
+| Linux x86_64 | [tsplay-linux-amd64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-amd64) |
+| Linux ARM64 | [tsplay-linux-arm64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-arm64) |
+| Windows x86_64 | [tsplay-windows-amd64.exe](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-amd64.exe) |
 
-## 如果你更想从源码开始
+<p class="tsplay-section-kicker">Next Move</p>
 
-如果你已经在仓库里，或者本来就准备参与开发，再切到源码模式会更顺手。
+## 跑通后下一步做什么
 
-### 1. 先准备这两个基础条件
+<div class="grid cards" markdown="1">
 
-- Go `1.23.6+`
-- 一台能启动 Chromium 的机器
+-   __立刻切到页面自动化__
 
-### 2. 在仓库根目录安装依赖
+    先起本地 demo 页，再跑第一条浏览器 Flow。第一次真的需要浏览器时，TSPlay 才会自动下载 Playwright。
 
-```bash
-go mod download
-```
+    ```bash
+    ./tsplay -action file-srv -addr :8000
+    ./tsplay -flow script/tutorials/10_assert_page_state.flow.yaml
+    ```
 
-### 3. 先跑第一条最小 Flow
+    页面入口：`http://127.0.0.1:8000/demo/demo.html`、`http://127.0.0.1:8000/demo/extract.html`
 
-```bash
-go run . -flow script/tutorials/01_hello_world.flow.yaml
-```
+-   __直接切到源码模式__
 
-### 4. 如果你想练本地 demo 页面，再开一个终端
+    如果你已经在仓库里，或者本来就准备参与开发，再切到源码模式会更顺手。
 
-```bash
-go run . -action file-srv -addr :8000
-```
+    ```bash
+    go mod download
+    go run . -flow script/tutorials/01_hello_world.flow.yaml
+    go run . -action file-srv -addr :8000
+    ```
+
+    基础条件：Go `1.23.6+`，以及一台能启动 Chromium 的机器。
+
+-   __继续保持二进制模式__
+
+    适合下载即用、培训包、单二进制交付和内置资源验证。
+
+    ```bash
+    ./tsplay -action extract-assets -extract-root ./tsplay-assets
+    ./tsplay -action file-srv -addr :8000
+    ```
+
+-   __先走 MCP / Agent 路线__
+
+    如果你更关心工具链和能力面，可以先把 MCP 服务起起来，再看工具清单和 `finalize_flow` 主链。
+
+    ```bash
+    go run . -action srv
+    go run . -action mcp-tool -tool tsplay.list_actions
+    ```
+
+</div>
 
 ## 首次运行完成后的检查点
 
 满足下面 2 到 3 条，就算环境已经准备好了：
 
-- `quickstart-demo` 或 `go run . -flow ...` 能正常结束
-- 命令输出里能看到结构化执行结果
-- `artifacts/quickstart/` 或 `artifacts/` 下出现运行产物
-- 如果你启了 `file-srv`，本地 demo 页面能打开
+<div class="grid cards" markdown="1">
+
+-   __可以视为已准备好__
+
+    - `quickstart-demo` 或 `go run . -flow ...` 能正常结束
+    - 命令输出里能看到结构化执行结果
+    - `artifacts/quickstart/` 或 `artifacts/` 下出现运行产物
+    - 如果你启了 `file-srv`，本地 demo 页面能打开
+
+</div>
 
 ## 后续路径
 
@@ -211,14 +226,25 @@ go run . -action file-srv -addr :8000
 
 首次运行后，下面这 4 个问题最常见：
 
-- 已经能跑 `Lesson 01`，但不知道下一步看哪条线。
-  默认继续去 [教程总站](docs/tutorials/README.zh-CN.md) 或 [基础学习路线](docs/tutorials/track-newbie.zh-CN.md)。
-- 想直接让 Agent 出 Flow，却还没搞懂默认 MCP 主路径。
-  先看 [AI 协作入门](docs/training/ai-intent-to-flow.md)，再看 [Lesson 120](docs/tutorials/120-mcp-finalize-flow.md)。
-- 构建了二进制，但不知道 `list-assets`、`extract-assets`、`file-srv` 该先用哪个。
-  先看 [Lesson 142](docs/tutorials/142-list-assets-for-beginners.md)、[Lesson 143](docs/tutorials/143-extract-assets-for-beginners.md)、[Lesson 147](docs/tutorials/147-file-srv-dev-vs-release.md)。
-- 看到 `artifacts/` 有文件，但不知道哪些才是交付证据。
-  先看 [Lesson 87](docs/tutorials/87-build-handoff-artifact-manifest.md)、[Lesson 88](docs/tutorials/88-build-handoff-summary.md)。
+<div class="grid cards" markdown="1">
+
+-   __已经能跑 `Lesson 01`，但不知道下一步看哪条线__
+
+    默认继续去 [教程总站](docs/tutorials/README.zh-CN.md) 或 [基础学习路线](docs/tutorials/track-newbie.zh-CN.md)。
+
+-   __想直接让 Agent 出 Flow，却还没搞懂默认 MCP 主路径__
+
+    先看 [AI 协作入门](docs/training/ai-intent-to-flow.md)，再看 [Lesson 120](docs/tutorials/120-mcp-finalize-flow.md)。
+
+-   __构建了二进制，但不知道 `list-assets`、`extract-assets`、`file-srv` 该先用哪个__
+
+    先看 [Lesson 142](docs/tutorials/142-list-assets-for-beginners.md)、[Lesson 143](docs/tutorials/143-extract-assets-for-beginners.md)、[Lesson 147](docs/tutorials/147-file-srv-dev-vs-release.md)。
+
+-   __看到 `artifacts/` 有文件，但不知道哪些才是交付证据__
+
+    先看 [Lesson 87](docs/tutorials/87-build-handoff-artifact-manifest.md) 和 [Lesson 88](docs/tutorials/88-build-handoff-summary.md)。
+
+</div>
 
 ## 常用命令速查
 
@@ -235,8 +261,28 @@ go run . -action extract-assets -extract-root ./tsplay-assets
 
 ## 如果你想继续看全貌
 
-- [项目总览（中文）](README.zh-CN.md)
-- [Project Overview](ReadMe.md)
-- [文档入口](docs/README.md)
-- [文档健康检查](docs/doc-health-audit.md)
-- [核心功能执行面板](docs/product/core-feature-execution-board.md)
+<div class="grid cards" markdown="1">
+
+-   __项目总览（中文）__
+
+    [打开项目总览（中文）](README.zh-CN.md)
+
+-   __Project Overview__
+
+    [Open Project Overview](ReadMe.md)
+
+-   __文档入口__
+
+    [打开文档入口](docs/README.md)
+
+-   __文档健康检查__
+
+    [打开文档健康检查](docs/doc-health-audit.md)
+
+-   __核心功能执行面板__
+
+    [打开核心功能执行面板](docs/product/core-feature-execution-board.md)
+
+</div>
+
+</div>

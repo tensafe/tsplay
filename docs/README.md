@@ -2,6 +2,8 @@
 
 根目录 [../ReadMe.md](../ReadMe.md) 提供英文项目入口，[../README.zh-CN.md](../README.zh-CN.md) 提供中文对应版本；教程入口层现在也采用相同策略：英文默认文件名，中文使用 `.zh-CN.md` 副本。`docs/` 负责承载更适合团队长期使用的材料，尤其是培训、Enablement 和交付规范。
 
+教程默认也不再把 `160` 节课直接摊给你自己筛，而是先按四层金字塔进入：先跑通动作，再组织成 Flow，再接进真实交付，最后再进入 Agent、MCP 和标准化。
+
 ## 常用入口
 
 <div class="grid cards" markdown>
@@ -14,7 +16,7 @@
 
 -   :material-play-box-outline:{ .lg .middle } __快速开始__
 
-    按默认路径完成一次运行，再继续理解 Flow、会话和 MCP。
+    先拿到一次成功运行，再按四层金字塔决定今天进入哪一层。
 
     [进入教程总站](tutorials/README.zh-CN.md)
 
@@ -77,7 +79,7 @@
 ## 高频跳转
 
 这一栏按“最常被点开的入口”组织，不代表推荐阅读顺序。
-如果你想按顺序学习教程，请从 [tutorials/track-newbie.zh-CN.md](tutorials/track-newbie.zh-CN.md) 开始。
+如果你想按顺序学习教程，不要先去翻 `160` 节课表；先从 [tutorials/README.zh-CN.md](tutorials/README.zh-CN.md) 进入，按四层金字塔选层，再按 lesson 往下走。
 
 ### 基础起步
 

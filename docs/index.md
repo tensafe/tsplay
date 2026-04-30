@@ -4,17 +4,19 @@
 
 这个站点把 `项目总览 / 教程 / 培训 / MCP / Flow 交付` 整理在一起，方便新同学、实施同学、讲师和集成人员沿同一条路径进入。
 
+教程入口默认也不是把 `160` 节课平铺给你自己筛，而是先用一条四层上升路径告诉你今天该做什么：先跑通动作，再组织成 Flow，再接进真实交付，最后再进入 Agent、MCP 和标准化。
+
 ## 从哪里开始
 
 ### 第一次接触 TSPlay
 
 - 看 [项目总览（中文）](../README.zh-CN.md)
 - 如果你更习惯英文，看 [Project Overview](../ReadMe.md)
-- 如果你只想先跑起来，优先看 [Step-by-Step 教程](tutorials/README.zh-CN.md)
+- 如果你想按教程进入，不要先翻完整课表，优先看 [四层金字塔教程入口](tutorials/README.zh-CN.md)
 
 ### 想先进入 Flow 主线
 
-- 从 [教程索引（中文）](tutorials/README.zh-CN.md) 进入
+- 从 [四层金字塔教程入口（中文）](tutorials/README.zh-CN.md) 进入
 - 想走 Agent 路线，直接看 [AI 协作入门](training/ai-intent-to-flow.md)
 - 想系统提升，继续看 [学习路径](training/learning-path.md)
 
@@ -57,7 +59,7 @@
 
 | 目标 | 先看什么 | 下一步 |
 | --- | --- | --- |
-| 完成首次自动化运行 | [项目总览（中文）](../README.zh-CN.md) | [教程 Lesson 01](tutorials/01-hello-world.md) |
+| 完成首次自动化运行 | [项目总览（中文）](../README.zh-CN.md) | [四层金字塔教程入口](tutorials/README.zh-CN.md) |
 | 让 Codex / Agent 协助生成 Flow | [AI 协作入门](training/ai-intent-to-flow.md) | MCP 相关 `101-120` 课 |
 | 给团队准备培训路径 | [培训体系总览](training/README.md) | [Bootcamp 课程表](training/bootcamp-plan.md) |
 
@@ -69,7 +71,7 @@
 - [Skills 介绍](skills/README.md)：`skill` 在 Codex / Agent 协作里的角色说明
 - [支持行为清单](capability-actions/README.md)：`navigate / click / read_csv / db_query / retry` 这层动作词典
 - [CLI `-action` 参考](actions/README.md)：命令行 `-action` 支持列表与逐项说明
-- [教程索引（中文）](tutorials/README.zh-CN.md)：160 节递进式教程
+- [教程索引（中文）](tutorials/README.zh-CN.md)：不是平铺 `160` 节课，而是按四层金字塔进入的教程入口
 - [金字塔课程总图](tutorials/curriculum-overview.zh-CN.md)：先跑通、再结构化、再交付、再标准化的总图
 - [English Tutorial Map](tutorials/README.md)：英文课程地图
 - [培训体系](training/README.md)：学习路径、课程表、实验、考核、讲师材料

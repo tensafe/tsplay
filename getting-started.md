@@ -11,7 +11,22 @@ Markdown keep working outside the generated site.
 
 ## Smallest First Run
 
-If you want the binary-first path, use the latest GitHub release directly:
+If you want the binary-first path, use the release installer script first:
+
+```bash
+curl -fsSL https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.sh | sh
+```
+
+On Windows, download and run the PowerShell installer:
+
+```powershell
+Invoke-WebRequest https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.ps1 -OutFile tsplay-quickstart.ps1
+powershell -ExecutionPolicy Bypass -File .\tsplay-quickstart.ps1
+```
+
+The installer script detects the platform, downloads the matching binary, runs `quickstart-demo`, and writes `artifacts/quickstart/quickstart-demo-output.json` without requiring Playwright first.
+
+If you prefer the manual per-platform downloads instead:
 
 | Platform | Download |
 | --- | --- |
@@ -20,15 +35,6 @@ If you want the binary-first path, use the latest GitHub release directly:
 | Linux x86_64 | [tsplay-linux-amd64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-amd64) |
 | Linux ARM64 | [tsplay-linux-arm64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-arm64) |
 | Windows x86_64 | [tsplay-windows-amd64.exe](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-amd64.exe) |
-
-After download, the shortest run is:
-
-```bash
-chmod +x tsplay
-./tsplay -action quickstart-demo
-```
-
-`quickstart-demo` generates a minimal Flow, executes it immediately, writes `artifacts/quickstart/quickstart-demo-output.json`, and does not require Playwright.
 
 If you prefer the source-first path instead:
 

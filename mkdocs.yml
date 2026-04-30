@@ -16,26 +16,23 @@ theme:
   icon:
     repo: fontawesome/brands/github
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: custom
-      accent: custom
-      toggle:
-        icon: material/weather-night
-        name: 切换到深色模式
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    - scheme: slate
       primary: custom
       accent: custom
       toggle:
         icon: material/weather-sunny
         name: 切换到浅色模式
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色模式
   features:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
     - navigation.top
-    - navigation.path
     - toc.follow
     - search.highlight
     - search.suggest
@@ -113,7 +110,7 @@ nav:
       - MCP 教程入口: docs/tutorials/119-mcp-chain-overview.md
   - 培训与交付:
       - 培训体系总览: docs/training/README.md
-      - AI 无感入门: docs/training/ai-intent-to-flow.md
+      - AI 协作入门: docs/training/ai-intent-to-flow.md
       - 学习路径: docs/training/learning-path.md
       - 训练营课程表: docs/training/bootcamp-plan.md
       - 实训实验: docs/training/labs.md
