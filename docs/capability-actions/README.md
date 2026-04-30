@@ -83,6 +83,6 @@
 ## 相关入口
 
 - [项目总览（中文）](../../README.zh-CN.md)
-- [AI 无感入门](../training/ai-intent-to-flow.md)
+- [AI 协作入门](../training/ai-intent-to-flow.md)
 - [Lesson 111](../tutorials/111-mcp-list-actions.md)
 - [Lesson 112](../tutorials/112-mcp-flow-schema-and-examples.md)

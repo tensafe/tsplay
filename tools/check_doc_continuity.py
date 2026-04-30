@@ -52,13 +52,13 @@ REPO_RULES: tuple[ContinuityRule, ...] = (
         path="site-src/getting-started.md",
         title="Docs-site quick start keeps default branches and common gaps",
         required_snippets=(
-            "跑通后下一步做什么",
             "docs/tutorials/119-mcp-chain-overview.md",
             "docs/tutorials/142-list-assets-for-beginners.md",
             "docs/product/core-feature-roadmap.md",
         ),
         required_any_groups=(
-            ("常见断层提醒", "几个常见卡点", "常见卡点"),
+            ("跑通后下一步做什么", "下一步"),
+            ("常见断层提醒", "几个常见卡点", "常见卡点", "常见问题"),
         ),
     ),
     ContinuityRule(
@@ -108,12 +108,12 @@ SITE_RULES: tuple[ContinuityRule, ...] = (
         path="getting-started.md",
         title="Generated quick-start page keeps default branches and common gaps",
         required_snippets=(
-            "跑通后下一步做什么",
             "docs/tutorials/119-mcp-chain-overview.md",
             "docs/tutorials/142-list-assets-for-beginners.md",
         ),
         required_any_groups=(
-            ("常见断层提醒", "几个常见卡点", "常见卡点"),
+            ("跑通后下一步做什么", "下一步"),
+            ("常见断层提醒", "几个常见卡点", "常见卡点", "常见问题"),
         ),
     ),
     ContinuityRule(

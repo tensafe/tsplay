@@ -15,7 +15,7 @@
 ### 想先进入 Flow 主线
 
 - 从 [教程索引（中文）](tutorials/README.zh-CN.md) 进入
-- 想走 Agent 路线，直接看 [AI 无感入门](training/ai-intent-to-flow.md)
+- 想走 Agent 路线，直接看 [AI 协作入门](training/ai-intent-to-flow.md)
 - 想系统提升，继续看 [学习路径](training/learning-path.md)
 
 ### 想先查命令入口
@@ -33,8 +33,8 @@
 ### 想先看 Skills
 
 - 看 [Skills 介绍](skills/README.md)
-- 适合先弄清楚 `skill` 和 `action / Flow / MCP` 的关系
-- 如果你希望 Codex 按稳定套路协作，这一层值得先看
+- 适合先在 Codex 中生成、修改或修复 Flow
+- 如果你希望 Codex 按统一方式协作，这一层值得先看
 
 ### 想准备培训或团队推广
 
@@ -57,8 +57,8 @@
 
 | 目标 | 先看什么 | 下一步 |
 | --- | --- | --- |
-| 今天先跑通一条自动化 | [项目总览（中文）](../README.zh-CN.md) | [教程 Lesson 01](tutorials/01-hello-world.md) |
-| 让 Codex / Agent 协助生成 Flow | [AI 无感入门](training/ai-intent-to-flow.md) | MCP 相关 `101-120` 课 |
+| 完成首次自动化运行 | [项目总览（中文）](../README.zh-CN.md) | [教程 Lesson 01](tutorials/01-hello-world.md) |
+| 让 Codex / Agent 协助生成 Flow | [AI 协作入门](training/ai-intent-to-flow.md) | MCP 相关 `101-120` 课 |
 | 给团队准备培训路径 | [培训体系总览](training/README.md) | [Bootcamp 课程表](training/bootcamp-plan.md) |
 
 ## 这个站点包含什么

@@ -7,12 +7,12 @@ hide:
 
 这页先陪你把 TSPlay 跑通，再帮你顺着目标找到更合适的下一站。
 
-## 一步到位默认路径
+## 默认快速路径
 
 如果你现在只是想确认 TSPlay 能不能跑，不要先在 `Lua / Flow / MCP / 二进制` 之间做选择。
 也不需要先装 Go，或者先等 Playwright 下载完。
 
-先走这条最短路径：
+先执行这条默认路径：
 
 - `curl` 直接下载最新 release 二进制
 - 自动生成一条最小 demo Flow
@@ -121,7 +121,7 @@ go run . -flow script/tutorials/01_hello_world.flow.yaml
 go run . -action file-srv -addr :8000
 ```
 
-## 跑通后的判断标准
+## 首次运行完成后的检查点
 
 满足下面 2 到 3 条，就算环境已经准备好了：
 
@@ -130,7 +130,7 @@ go run . -action file-srv -addr :8000
 - `artifacts/quickstart/` 或 `artifacts/` 下出现运行产物
 - 如果你启了 `file-srv`，本地 demo 页面能打开
 
-## 跑通后的常见分支
+## 后续路径
 
 默认路径跑通后，再按你现在最想继续的方向往下走。
 
@@ -185,36 +185,36 @@ go run . -action file-srv -addr :8000
     - 想先看工具链和能力面
     - 后面会走 `finalize_flow`、repair 和命名会话路线
 
-## 跑通后下一步做什么
+## 下一步
 
 <div class="grid cards" markdown>
 
--   :material-play-circle-outline:{ .lg .middle } __我想继续熟悉基础动作__
+-   :material-play-circle-outline:{ .lg .middle } __基础动作__
 
     看 [Lesson 01](docs/tutorials/01-hello-world.md) 和 [教程总站](docs/tutorials/README.zh-CN.md)。
 
--   :material-file-document-edit-outline:{ .lg .middle } __我想尽快学写 Flow__
+-   :material-file-document-edit-outline:{ .lg .middle } __Flow 编写__
 
-    看 [新手学习路线](docs/tutorials/track-newbie.zh-CN.md) 和 [学习路径](docs/training/learning-path.md)。
+    看 [基础学习路线](docs/tutorials/track-newbie.zh-CN.md) 和 [学习路径](docs/training/learning-path.md)。
 
--   :material-robot-love-outline:{ .lg .middle } __我想先走 Agent 路线__
+-   :material-robot-love-outline:{ .lg .middle } __Agent 集成__
 
-    看 [AI 无感入门](docs/training/ai-intent-to-flow.md) 和 [MCP 教程入口](docs/tutorials/119-mcp-chain-overview.md)。
+    看 [AI 协作入门](docs/training/ai-intent-to-flow.md) 和 [MCP 教程入口](docs/tutorials/119-mcp-chain-overview.md)。
 
--   :material-package-variant-closed:{ .lg .middle } __我想先看单二进制交付__
+-   :material-package-variant-closed:{ .lg .middle } __单二进制交付__
 
     看 [Lesson 142](docs/tutorials/142-list-assets-for-beginners.md)、[Lesson 144](docs/tutorials/144-single-binary-delivery-flow.md) 和 [核心功能路线图](docs/product/core-feature-roadmap.md)。
 
 </div>
 
-## 几个常见卡点
+## 常见问题
 
-第一次跑通后，下面这 4 个地方最容易让人停下来犹豫一下：
+首次运行后，下面这 4 个问题最常见：
 
 - 已经能跑 `Lesson 01`，但不知道下一步看哪条线。
-  默认继续去 [教程总站](docs/tutorials/README.zh-CN.md) 或 [新手学习路线](docs/tutorials/track-newbie.zh-CN.md)。
+  默认继续去 [教程总站](docs/tutorials/README.zh-CN.md) 或 [基础学习路线](docs/tutorials/track-newbie.zh-CN.md)。
 - 想直接让 Agent 出 Flow，却还没搞懂默认 MCP 主路径。
-  先看 [AI 无感入门](docs/training/ai-intent-to-flow.md)，再看 [Lesson 120](docs/tutorials/120-mcp-finalize-flow.md)。
+  先看 [AI 协作入门](docs/training/ai-intent-to-flow.md)，再看 [Lesson 120](docs/tutorials/120-mcp-finalize-flow.md)。
 - 构建了二进制，但不知道 `list-assets`、`extract-assets`、`file-srv` 该先用哪个。
   先看 [Lesson 142](docs/tutorials/142-list-assets-for-beginners.md)、[Lesson 143](docs/tutorials/143-extract-assets-for-beginners.md)、[Lesson 147](docs/tutorials/147-file-srv-dev-vs-release.md)。
 - 看到 `artifacts/` 有文件，但不知道哪些才是交付证据。

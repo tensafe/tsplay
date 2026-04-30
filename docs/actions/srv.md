@@ -33,6 +33,6 @@ go run . -action srv -addr :8081 -flow-root script -artifact-root artifacts
 
 ## 相关文档
 
-- [AI 无感入门](../training/ai-intent-to-flow.md)
+- [AI 协作入门](../training/ai-intent-to-flow.md)
 - [Lesson 111](../tutorials/111-mcp-list-actions.md)
 - [Lesson 119](../tutorials/119-mcp-chain-overview.md)

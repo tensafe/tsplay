@@ -44,5 +44,5 @@ print(result)
 
 ## 相关教程
 
-- [AI 无感入门](../training/ai-intent-to-flow.md)
+- [AI 协作入门](../training/ai-intent-to-flow.md)
 - [学习路径](../training/learning-path.md)
