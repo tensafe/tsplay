@@ -4,6 +4,8 @@
 
 这条线只做一件事：让一个从没用过 TSPlay 的人，按顺序拿到第一个、第二个、第三个成功体验。
 
+这是教程金字塔的第 `1` 层：先跑通基本动作。
+
 这里强调的是：
 
 - 不跳跃
@@ -16,6 +18,17 @@
 - 第一天接触 TSPlay
 - 只知道“它是自动化工具”，还不知道该从哪里下手
 - 对 `Lua`、`Flow`、`MCP`、`artifact` 这些词还没有稳定概念
+
+## 如果你今天只有 30 分钟
+
+先不要试图学完整条线，只做下面这 4 步：
+
+1. 跑通第一条 Flow：[Lesson 01](01-hello-world.md)
+2. 做一次页面交互：[Lesson 02](02-local-page-select-option.md)
+3. 把页面内容抓出来：[Lesson 03](03-capture-table.md)
+4. 做一次页面断言：[Lesson 10](10-assert-page-state.md)
+
+这 4 步都跑通后，再回来看本页其余内容，会轻松很多。
 
 ## 这一层的学习目标
 
@@ -37,6 +50,13 @@
 3. 完成第一次数据提取：[Lesson 03](03-capture-table.md)、[Lesson 04](04-extract-text-and-html.md)
 4. 理解本地 JSON 请求与结果写出：[Lesson 05](05-http-request-json.md)
 5. 学会页面断言与结果校验：[Lesson 10](10-assert-page-state.md)、[Lesson 11](11-select-another-option.md)、[Lesson 12](12-custom-json-output.md)
+
+## 新手阶段不要先做什么
+
+- 不要一上来就挑带登录、带外部系统、带权限边界的课
+- 不要先纠结 `Lua` 和 `Flow` 哪个更“正确”
+- 不要只读文档不跑命令
+- 不要把“理解全部概念”当成开始条件
 
 ## 补充理解课
 
@@ -97,6 +117,16 @@ TSPlay 不是只看概念就能真正学会的工具。
 - 能独立运行新手本地练习链路：`Lesson 01-05` 和 `Lesson 08-12`
 - 能说清楚 `Lua` 与 `Flow` 的差异
 - 能把页面文本、HTML 片段、表格、JSON 请求结果写到文件里
+
+## 最短毕业检查表
+
+如果你只想确认自己能不能从新手线毕业，先核对这 5 条：
+
+- 能独立运行 [Lesson 01](01-hello-world.md)
+- 能独立运行 [Lesson 03](03-capture-table.md)
+- 能独立运行 [Lesson 10](10-assert-page-state.md)
+- 知道结果去哪看：`artifacts/tutorials/`
+- 知道下一站该去哪：[track-junior.zh-CN.md](track-junior.zh-CN.md)
 
 ## 学完之后去哪里
 

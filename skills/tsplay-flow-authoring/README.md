@@ -23,7 +23,44 @@
 
 ## 安装方式
 
-### 方式 1：复制到 Codex skills 目录
+### 方式 1：运行安装脚本
+
+如果你是把 skill 目录先解压到任意临时目录，推荐直接运行安装脚本：
+
+macOS / Linux:
+
+```bash
+cd tsplay-flow-authoring
+sh ./install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+Set-Location .\tsplay-flow-authoring
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Windows CMD:
+
+```bat
+cd tsplay-flow-authoring
+install.cmd
+```
+
+如果你使用了自定义 `CODEX_HOME`：
+
+```bash
+sh ./install.sh --codex-home /path/to/codex-home
+```
+
+如果 `tsplay` 已经在 PATH 里，也可以安装后顺手释放内置参考资料：
+
+```bash
+sh ./install.sh --extract-assets ./tsplay-assets
+```
+
+### 方式 2：复制到 Codex skills 目录
 
 把整个目录复制到：
 
@@ -37,7 +74,7 @@
 $CODEX_HOME/skills/tsplay-flow-authoring
 ```
 
-### 方式 2：直接分发压缩包后解压
+### 方式 3：直接分发压缩包后解压
 
 把压缩包解压到：
 
@@ -50,6 +87,9 @@ $CODEX_HOME/skills/tsplay-flow-authoring
 ```text
 ~/.codex/skills/tsplay-flow-authoring/
   SKILL.md
+  install.sh
+  install.cmd
+  install.ps1
   agents/openai.yaml
   references/
 ```
@@ -103,6 +143,9 @@ $CODEX_HOME/skills/tsplay-flow-authoring
 ## 文件说明
 
 - `SKILL.md`: skill 触发条件和主工作流
+- `install.sh`: macOS / Linux 安装脚本
+- `install.cmd`: Windows CMD 入口脚本
+- `install.ps1`: Windows PowerShell 安装脚本
 - `agents/openai.yaml`: Codex UI 元数据
 - `references/flow-authoring.md`: Flow 编写主指南
 - `references/actions.md`: 高频 action 速查

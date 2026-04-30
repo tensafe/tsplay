@@ -34,6 +34,9 @@ jobs:
       - name: Install docs dependencies
         run: pip install -r requirements-docs.txt
 
+      - name: Check docs suite
+        run: python3 tools/check_docs_suite.py
+
       - name: Prepare site source
         run: python3 tools/prepare_docs_site.py
 

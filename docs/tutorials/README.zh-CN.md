@@ -10,7 +10,30 @@
 
 仓库里当前使用的是 `docs/` 目录，所以这套教程统一放在这里，而不是单独建 `doc/`。
 
-## 先别急着选课
+## 先看结论
+
+这套教程不要按 `160` 节平铺去看。  
+更适合的方式，是按一座四层金字塔往上走：
+
+1. 先跑通
+2. 再结构化
+3. 再进入真实交付闭环
+4. 最后再进入 Agent、边界和标准化
+
+只有下层稳定了，上层才值得学。这样不会一上来就把 `MCP / repair / Redis / 数据库事务 / 授权边界` 混在一起。
+
+## 金字塔四层
+
+| 层级 | 回答什么问题 | Lesson 范围 | 完成标志 | 入口 |
+| --- | --- | --- | --- | --- |
+| 第 1 层：跑通基本动作 | `tsplay` 能不能跑，我能不能看到结果 | `01-12` | 能完成本地页面交互、提取、断言和 JSON 输出 | [track-newbie.zh-CN.md](track-newbie.zh-CN.md) |
+| 第 2 层：结构化小流程 | 我能不能把单点动作组织成小流程 | `13-57` | 能处理文件、控制流、会话和受保护页面 | [track-junior.zh-CN.md](track-junior.zh-CN.md) |
+| 第 3 层：真实交付闭环 | 我能不能把浏览器结果接进外部系统和交付物 | `58-100` | 能完成 Redis / Postgres / 对账 / 交接 / 模板化闭环 | [track-intermediate.zh-CN.md](track-intermediate.zh-CN.md) |
+| 第 4 层：Agent 与标准化 | 我能不能把 TSPlay 变成团队能力 | `101-160` | 能处理 MCP、授权边界、review、单二进制交付和课程演进 | [track-advanced.zh-CN.md](track-advanced.zh-CN.md) |
+
+如果你要看整座金字塔的设计逻辑，不是继续往下翻大表，而是直接去看 [金字塔课程总图](curriculum-overview.zh-CN.md)。
+
+## 如果环境还没跑通
 
 如果你还没把本地环境跑通，先去 [../../getting-started.md](../../getting-started.md)。
 
@@ -25,250 +48,111 @@ go run . -action file-srv -addr :8000
 
 前两条用来确认 TSPlay 能跑，第三条只在你要练本地 demo 页面时再开。
 
-## 最快入口
+## 默认主线
+
+### 1. 30 分钟起步线
+
+第一次接触 TSPlay，不要分心，先拿到 3 到 4 次成功体验：
+
+1. [Lesson 01](01-hello-world.md)
+2. [Lesson 02](02-local-page-select-option.md)
+3. [Lesson 03](03-capture-table.md)
+4. [Lesson 10](10-assert-page-state.md)
+5. [Lesson 12](12-custom-json-output.md)
+
+这一段的目标只有一个：确认你已经站稳在“第 1 层”。
+
+### 2. 半天结构化线
+
+跑通以后，再开始把动作组织成小流程：
+
+1. 文件输入输出：[13](13-read-csv-basics.md)、[14](14-write-csv-basics.md)、[15](15-read-transform-write-csv.md)
+2. 稳定性控制流：[16](16-retry-flaky-action.md)、[17](17-wait-until-ready.md)、[21](21-if-optional-login.md)、[23](23-on-error-import-recovery.md)
+3. 批量与 Excel：[22](22-foreach-batch-import-csv.md)、[24](24-read-excel-basics.md)、[26](26-foreach-batch-import-excel.md)、[27](27-on-error-import-excel-writeback.md)
+
+这一段的目标，是进入“第 2 层”。
+
+### 3. 一天交付闭环
+
+当你准备碰真实页面和业务数据，再走这条线：
+
+1. 浏览器状态基础：[28](28-inspect-storage-state.md)、[36](36-save-storage-state.md)、[37](37-load-saved-storage-state.md)
+2. 命名会话：[40](40-save-named-session.md)、[42](42-use-named-session.md)
+3. 认证页闭环：[44](44-session-import-with-login.md)、[47](47-use-session-import-single.md)、[57](57-use-session-import-export-round-trip.md)
+4. 外部系统与对账：[58](58-sync-import-report-summary-to-redis.md)、[61](61-db-insert-import-batch-summary.md)、[71](71-external-system-round-trip.md)、[80](80-external-sync-lifecycle-round-trip.md)
+
+这一段的目标，是把“浏览器结果 -> 外部系统 -> 交付物”串起来，进入“第 3 层”。
+
+### 4. Agent / MCP 线
+
+建议先有一点本地 Flow 和交付闭环手感，再进入这条线：
+
+1. 工具面：[111](111-mcp-list-actions.md)、[112](112-mcp-flow-schema-and-examples.md)
+2. 最短闭环：[113](113-mcp-observe-page.md)、[114](114-mcp-draft-flow.md)、[115](115-mcp-validate-drafted-flow.md)
+3. 收敛主线：[119](119-mcp-chain-overview.md)、[120](120-mcp-finalize-flow.md)
+
+这一段的目标，是进入“第 4 层”，而不是跳过前面三层。
+
+## 四层入口
 
 <div class="grid cards" markdown>
 
--   :material-run-fast:{ .lg .middle } __今天先跑通__
+-   :material-numeric-1-circle-outline:{ .lg .middle } __第 1 层：先跑通__
 
-    从最小示例开始，先建立手感，再理解动作、断言和输出。
+    先建立手感，不抢跑抽象，不先碰外部系统。
 
-    [Lesson 01](01-hello-world.md)
+    [新手路线](track-newbie.zh-CN.md)
 
--   :material-table-eye:{ .lg .middle } __我想先做表格抓取__
+-   :material-numeric-2-circle-outline:{ .lg .middle } __第 2 层：会组织小流程__
 
-    最适合第一次看到“本地页面 -> 提取数据 -> 写出 JSON”的闭环。
+    把文件、变量、控制流和会话接起来。
 
-    [Lesson 03](03-capture-table.md)
+    [初级路线](track-junior.zh-CN.md)
 
--   :material-check-decagram-outline:{ .lg .middle } __我想先学断言__
+-   :material-numeric-3-circle-outline:{ .lg .middle } __第 3 层：能做真实交付__
 
-    想尽快掌握页面状态检查和可见性判断。
+    把导入导出、Redis、数据库、对账和交接做成闭环。
 
-    [Lesson 10](10-assert-page-state.md)
+    [中级路线](track-intermediate.zh-CN.md)
 
--   :material-file-sync-outline:{ .lg .middle } __我想先学批量导入__
+-   :material-numeric-4-circle-outline:{ .lg .middle } __第 4 层：进入 Agent 与标准化__
 
-    想直接进入 `foreach`、CSV 和局部恢复。
+    把 MCP、边界、review、交付包和课程演进接起来。
 
-    [Lesson 22](22-foreach-batch-import-csv.md)
-
--   :material-account-lock-open-outline:{ .lg .middle } __我想先学登录态与会话__
-
-    想掌握 `storage_state`、命名会话和认证页流程。
-
-    [Lesson 36](36-save-storage-state.md)
-
--   :material-robot-outline:{ .lg .middle } __我想直接看 MCP__
-
-    想先理解 MCP 工具链和 `finalize_flow` 路线。
-
-    [Lesson 111](111-mcp-list-actions.md)
+    [高级路线](track-advanced.zh-CN.md)
 
 </div>
 
-## 按主题快速进入
+## 按角色分流
 
-这一栏是“高频入口”，不是“学习顺序”。
-如果你想按稳定主线从头走，请直接看 [新手学习路线](track-newbie.zh-CN.md)。
+| 你的角色 | 建议从哪一层开始 | 第一站 |
+| --- | --- | --- |
+| 测试 / 运营 / 实施 | 第 1 层 | [track-newbie.zh-CN.md](track-newbie.zh-CN.md) |
+| 自动化开发 / Flow 编写者 | 第 2 层，但先补完第 1 层关键课 | [track-junior.zh-CN.md](track-junior.zh-CN.md) |
+| AI / 平台工程师 | 第 2-3 层之后再进入第 4 层 | [119](119-mcp-chain-overview.md) |
+| 讲师 / 体系设计者 | 先看整座金字塔，再看四层路线 | [curriculum-overview.zh-CN.md](curriculum-overview.zh-CN.md) |
 
-### 基础起步
+## 什么时候再往下展开细节
 
-- 第一条可运行示例：[01](01-hello-world.md)、[02](02-local-page-select-option.md)
-- 本地表格与文本提取：[03](03-capture-table.md)、[04](04-extract-text-and-html.md)、[12](12-custom-json-output.md)
-- 稳定性与控制流：[16](16-retry-flaky-action.md)、[17](17-wait-until-ready.md)、[21](21-if-optional-login.md)、[23](23-on-error-import-recovery.md)
-- 文件与批量处理：[13](13-read-csv-basics.md)、[22](22-foreach-batch-import-csv.md)、[24](24-read-excel-basics.md)、[27](27-on-error-import-excel-writeback.md)
+- 你只想今天先跑通：停在“30 分钟起步线”就够了
+- 你想系统学习：按“四层入口”逐层走，不要直接按课号跳
+- 你要查某个具体 lesson 编号：再展开下面的完整教程地图
+- 你要看环境、依赖和续跑说明：再展开下面的详细准备指南
 
-### 会话与认证
+## 如果你是培训 / 体系设计视角
 
-- 浏览器状态保存与复用：[36](36-save-storage-state.md)、[42](42-use-named-session.md)
-- 登录后的导入流程：[44](44-session-import-with-login.md)
-- 认证导入导出闭环：[57](57-use-session-import-export-round-trip.md)
+直接按这组顺序进入，比逐节翻教程更稳：
 
-### MCP 与 Agent
+1. [金字塔课程总图](curriculum-overview.zh-CN.md)
+2. [新手路线](track-newbie.zh-CN.md)
+3. [初级路线](track-junior.zh-CN.md)
+4. [中级路线](track-intermediate.zh-CN.md)
+5. [高级路线](track-advanced.zh-CN.md)
+6. [160 次迭代路线图](iteration-roadmap-160.md)
+7. [演进手册](evolution-playbook.md)
 
-- MCP 能力总览：[111](111-mcp-list-actions.md)
-- 页面观察入口：[113](113-mcp-observe-page.md)
-- `finalize_flow` 收敛路径：[120](120-mcp-finalize-flow.md)
-
-## 两条学习路线
-
-### 路线 A：今天就能开始跑的实战线
-
-适合今天就想把 `tsplay` 跑起来、先建立手感的同学。
-
-1. [Lesson 01: Hello World，不打开网页也能先跑通](01-hello-world.md)
-2. [Lesson 02: 打开本地页面并选择下拉框选项](02-local-page-select-option.md)
-3. [Lesson 03: 抓取本地表格并写出 JSON](03-capture-table.md)
-4. [Lesson 04: 提取文本和 HTML 片段](04-extract-text-and-html.md)
-5. [Lesson 05: 请求本地 JSON 并提取字段](05-http-request-json.md)
-6. [Lesson 06: Redis 基础读写和计数](06-redis-round-trip.md)
-7. [Lesson 07: Postgres 基础查询与写入](07-db-postgres-basics.md)
-8. [Lesson 08: 理解内置资源和 `artifacts/` 输出目录](08-bundled-assets-and-artifacts.md)
-9. [Lesson 09: 启动本地 demo 服务并拆解页面动作](09-local-demo-anatomy.md)
-10. [Lesson 10: 对本地页面做可见性和文本断言](10-assert-page-state.md)
-11. [Lesson 11: 改选另一个选项并验证结果](11-select-another-option.md)
-12. [Lesson 12: 把页面交互结果整理成自定义 JSON](12-custom-json-output.md)
-13. [Lesson 13: 读取本地 CSV 并写出 JSON](13-read-csv-basics.md)
-14. [Lesson 14: 写出第一份 CSV](14-write-csv-basics.md)
-15. [Lesson 15: 读取、整理、再写出 CSV](15-read-transform-write-csv.md)
-16. [Lesson 16: 用 `retry` 处理偶发失败动作](16-retry-flaky-action.md)
-17. [Lesson 17: 用 `wait_until` 等异步状态完成](17-wait-until-ready.md)
-18. [Lesson 18: 上传单个本地文件](18-upload-single-file.md)
-19. [Lesson 19: 上传多个本地文件](19-upload-multiple-files.md)
-20. [Lesson 20: 下载本地报表并回读验证](20-download-report.md)
-21. [Lesson 21: 用 `if` 处理可选登录分支](21-if-optional-login.md)
-22. [Lesson 22: 用 `foreach` 批量导入 CSV](22-foreach-batch-import-csv.md)
-23. [Lesson 23: 用 `on_error` 做局部恢复并回写结果](23-on-error-import-recovery.md)
-24. [Lesson 24: 读取第一份 Excel](24-read-excel-basics.md)
-25. [Lesson 25: 读取 Excel 指定区域并显式声明表头](25-read-excel-range-headers.md)
-26. [Lesson 26: 用 Excel 驱动批量导入](26-foreach-batch-import-excel.md)
-27. [Lesson 27: Excel 批量导入、局部恢复与结果回写](27-on-error-import-excel-writeback.md)
-28. [Lesson 28: 读取当前浏览器的 Storage State](28-inspect-storage-state.md)
-29. [Lesson 29: 读取当前浏览器的 Cookie 字符串](29-read-cookies-string.md)
-30. [Lesson 30: 生成一份浏览器状态快照](30-browser-state-snapshot-pack.md)
-31. [Lesson 31: 截一张完整页面截图](31-full-page-screenshot.md)
-32. [Lesson 32: 截一张元素级截图](32-element-screenshot.md)
-33. [Lesson 33: 保存当前页面的 HTML](33-save-html-basics.md)
-34. [Lesson 34: 生成一份调试产物包](34-debug-artifact-pack.md)
-35. [Lesson 35: 在失败分支里保存错误现场](35-error-evidence-pack.md)
-36. [Lesson 36: 把当前浏览器状态保存到文件](36-save-storage-state.md)
-37. [Lesson 37: 从保存好的状态文件直接复用登录态](37-load-saved-storage-state.md)
-38. [Lesson 38: 验证加载后的状态到底是不是你想要的](38-verify-loaded-storage-state.md)
-39. [Lesson 39: 把“保存状态”和“复用状态”连成一次完整 round trip](39-storage-state-round-trip.md)
-40. [Lesson 40: 把状态文件注册成命名会话](40-save-named-session.md)
-41. [Lesson 41: 查看和导出命名会话信息](41-inspect-named-session.md)
-42. [Lesson 42: 用命名会话直接复用登录态](42-use-named-session.md)
-43. [Lesson 43: 删除一个已经不用的命名会话](43-delete-named-session.md)
-44. [Lesson 44: 登录受会话保护的导入页并完成一条导入](44-session-import-with-login.md)
-45. [Lesson 45: 用状态文件直接跳过登录进入受保护导入页](45-storage-state-auth-import.md)
-46. [Lesson 46: 把状态文件注册成导入专用命名会话](46-save-import-session.md)
-47. [Lesson 47: 用命名会话直接进入受保护导入页](47-use-session-import-single.md)
-48. [Lesson 48: 用命名会话驱动 CSV 批量导入](48-use-session-batch-import-csv.md)
-49. [Lesson 49: 用命名会话做带恢复的 CSV 批量导入](49-use-session-import-recovery-csv.md)
-50. [Lesson 50: 用命名会话驱动 Excel 批量导入](50-use-session-batch-import-excel.md)
-51. [Lesson 51: 用命名会话做带恢复的 Excel 批量导入](51-use-session-import-recovery-excel.md)
-52. [Lesson 52: 抓取认证导入页上的结果表](52-use-session-capture-import-table.md)
-53. [Lesson 53: 把认证导入页上的结果表写成本地 CSV](53-use-session-capture-import-table-to-csv.md)
-54. [Lesson 54: 下载认证导入页当前导出的 CSV](54-use-session-download-import-report.md)
-55. [Lesson 55: 把认证导出 CSV 下载后再读回来](55-use-session-download-import-report-readback.md)
-56. [Lesson 56: 把认证页面结果表和下载文件放在一起比对](56-use-session-compare-table-and-download.md)
-57. [Lesson 57: 跑通认证导入到导出的完整 round trip](57-use-session-import-export-round-trip.md)
-58. [Lesson 58: 把认证导出 CSV 的摘要写入 Redis](58-sync-import-report-summary-to-redis.md)
-59. [Lesson 59: 给认证导出结果分配 Redis 批次 key](59-save-import-batch-key-to-redis.md)
-60. [Lesson 60: 把最新 Redis 批次重新读回本地](60-read-latest-import-batch-from-redis.md)
-61. [Lesson 61: 把认证导出结果写成一条 Postgres 批次摘要](61-db-insert-import-batch-summary.md)
-62. [Lesson 62: 查询多条 Postgres 批次摘要](62-db-query-import-batch-summaries.md)
-63. [Lesson 63: 用 `db_upsert` 更新 Postgres 批次摘要](63-db-upsert-import-batch-summary.md)
-64. [Lesson 64: 在一个事务里写入批次摘要和明细行](64-db-transaction-import-batch-and-rows.md)
-65. [Lesson 65: 把最新 Redis 批次摘要同步到 Postgres](65-sync-latest-redis-batch-to-postgres-summary.md)
-66. [Lesson 66: 一次读回 Redis 和 Postgres 的共享批次摘要](66-query-shared-batch-summary-from-redis-and-postgres.md)
-67. [Lesson 67: 用共享批次号把明细行写入 Postgres](67-transaction-store-shared-batch-rows.md)
-68. [Lesson 68: 读回共享批次的 Postgres 明细行](68-query-shared-batch-detail-rows.md)
-69. [Lesson 69: 把源 CSV 和 DB 明细行放到一起比](69-compare-source-csv-and-db-rows.md)
-70. [Lesson 70: 生成一份 CSV、Redis、Postgres 三边对账包](70-build-reconciliation-pack-from-csv-redis-db.md)
-71. [Lesson 71: 跑通一次完整的外部系统 round trip](71-external-system-round-trip.md)
-72. [Lesson 72: 用同一个批次号重跑同步，但不产生重复数据](72-rerun-shared-batch-idempotently.md)
-73. [Lesson 73: 验证重跑后没有重复行](73-verify-rerun-does-not-duplicate-rows.md)
-74. [Lesson 74: 遇到坏数据时，保留有效行并写出异常台账](74-recover-external-sync-with-anomaly-ledger.md)
-75. [Lesson 75: 给外部同步写入一条审计记录](75-write-external-sync-audit-row.md)
-76. [Lesson 76: 读回某个批次的审计历史](76-query-external-sync-audit-history.md)
-77. [Lesson 77: 把审计历史导出成 CSV](77-export-external-sync-audit-history.md)
-78. [Lesson 78: 清理最新批次的运行数据，但保留审计](78-cleanup-latest-external-batch.md)
-79. [Lesson 79: 验证批次清理后，审计仍然保留](79-verify-external-batch-cleanup.md)
-80. [Lesson 80: 跑通一条完整的外部同步生命周期](80-external-sync-lifecycle-round-trip.md)
-81. [Lesson 81: 从生命周期 CSV 里读回批次证据](81-read-lifecycle-evidence.md)
-82. [Lesson 82: 按生命周期证据回放一个新批次](82-replay-batch-from-lifecycle-evidence.md)
-83. [Lesson 83: 用生命周期证据验证回放批次](83-verify-replay-batch-against-lifecycle-evidence.md)
-84. [Lesson 84: 给回放批次补写一条审计记录](84-write-replay-audit-row.md)
-85. [Lesson 85: 把原批次和回放批次的审计导出成对照 CSV](85-export-original-and-replay-audits.md)
-86. [Lesson 86: 生成一份回放后的对账包](86-build-post-replay-reconciliation-pack.md)
-87. [Lesson 87: 生成一份交接 artifact manifest](87-build-handoff-artifact-manifest.md)
-88. [Lesson 88: 把交接 manifest 整理成交付摘要](88-build-handoff-summary.md)
-89. [Lesson 89: 生成发布前检查清单](89-build-pre-release-checklist.md)
-90. [Lesson 90: 跑通一条“生命周期证据 -> 回放 -> 交接包”的完整 round trip](90-handoff-round-trip-from-lifecycle-evidence.md)
-91. [Lesson 91: 读交接 manifest，识别每份产物的角色](91-read-handoff-manifest-roles.md)
-92. [Lesson 92: 把交接产物整理成模板目录](92-build-template-artifact-catalog.md)
-93. [Lesson 93: 把交接链整理成 Input -> Process -> Output 模板](93-build-input-process-output-template.md)
-94. [Lesson 94: 把交接链整理成 Collect -> Verify -> Save 模板](94-build-collect-verify-save-template.md)
-95. [Lesson 95: 把交接链整理成 Replay -> Audit -> Handoff 模板](95-build-replay-audit-handoff-template.md)
-96. [Lesson 96: 把几份模板整理成统一索引](96-build-template-index.md)
-97. [Lesson 97: 验证模板索引仍然覆盖完整交接链](97-verify-template-covers-handoff-chain.md)
-98. [Lesson 98: 生成一份“场景 -> 模板”的学习矩阵](98-build-template-lesson-matrix.md)
-99. [Lesson 99: 给模板包生成发布前检查清单](99-build-template-preflight-checklist.md)
-100. [Lesson 100: 跑通一条“交接产物 -> 模板包”的完整 round trip](100-template-round-trip-from-handoff-artifacts.md)
-101. [Lesson 101: 先确认模板发布卡片真的在页面上](101-assert-visible-template-release-card.md)
-102. [Lesson 102: 继续确认模板发布状态文字对不对](102-assert-text-template-release-status.md)
-103. [Lesson 103: 用 `retry` 跑通模板发布 gate](103-retry-template-release-gate.md)
-104. [Lesson 104: 用 `wait_until` 等模板发布检查完成](104-wait-until-template-release-ready.md)
-105. [Lesson 105: 用 `on_error` 接住模板发布校验失败](105-on-error-template-release-validation.md)
-106. [Lesson 106: 等一条延迟出现的发布说明项](106-wait-for-delayed-release-note.md)
-107. [Lesson 107: 用 `retry` 接住一次偶发失败点击](107-retry-flaky-publish-click.md)
-108. [Lesson 108: `reload` 之后再验证一次恢复结果](108-reload-and-retry-release-recovery.md)
-109. [Lesson 109: 给模板发布页留一份调试证据包](109-template-release-artifact-pack.md)
-110. [Lesson 110: 跑通一条完整的模板发布稳定性 round trip](110-template-release-robustness-round-trip.md)
-111. [Lesson 111: 先用 `tsplay.list_actions` 看清 MCP 到底能做什么](111-mcp-list-actions.md)
-112. [Lesson 112: 用 `flow_schema` 和 `flow_examples` 看清 Flow 长什么样](112-mcp-flow-schema-and-examples.md)
-113. [Lesson 113: 先用 `observe_page` 观察模板发布页](113-mcp-observe-page.md)
-114. [Lesson 114: 用 `draft_flow` 把 observation 变成第一份 Flow 草稿](114-mcp-draft-flow.md)
-115. [Lesson 115: 先校验草稿，再决定能不能运行](115-mcp-validate-drafted-flow.md)
-116. [Lesson 116: 运行刚刚起草并校验过的 Flow](116-mcp-run-drafted-flow.md)
-117. [Lesson 117: 先故意跑坏一次，再生成 repair context](117-mcp-repair-flow-context.md)
-118. [Lesson 118: 用 repair context 生成真正可用的修复请求](118-mcp-repair-flow.md)
-119. [Lesson 119: 把 `observe -> draft -> validate -> run -> repair` 串成一条线](119-mcp-chain-overview.md)
-120. [Lesson 120: 用 `finalize_flow` 收成一份更短的默认入口](120-mcp-finalize-flow.md)
-121. [Lesson 121: 用 `allow_lua` 放行一条最小 Lua Flow](121-allow-lua-boundary.md)
-122. [Lesson 122: 用 `allow_http` 放行一条最小 HTTP Flow](122-allow-http-boundary.md)
-123. [Lesson 123: 用 `allow_file_access` 放行一条最小文件输出 Flow](123-allow-file-access-boundary.md)
-124. [Lesson 124: 用 `allow_browser_state` 放行浏览器状态动作](124-allow-browser-state-boundary.md)
-125. [Lesson 125: 用 `allow_redis` 放行 Redis 动作](125-allow-redis-boundary.md)
-126. [Lesson 126: 用 `allow_database` 放行数据库动作](126-allow-database-boundary.md)
-127. [Lesson 127: 对比本地 Flow 和 MCP 的权限边界](127-compare-local-flow-and-mcp-boundaries.md)
-128. [Lesson 128: 为什么教程不能跳过权限边界](128-why-security-boundaries-come-first.md)
-129. [Lesson 129: 理解 `security_preset` 和显式 `allow_*` 覆盖](129-security-preset-and-override.md)
-130. [Lesson 130: 完成安全边界模块的第一轮 checkpoint](130-security-boundary-learning-checkpoint.md)
-131. [Lesson 131: 先把 Flow 名字和描述写得可 review](131-review-flow-name-and-description.md)
-132. [Lesson 132: 继续把 `save_as` 变量名写得可 review](132-review-save-as-variable-names.md)
-133. [Lesson 133: 把 artifact 目录也整理成可 review 的结构](133-review-artifact-directory-layout.md)
-134. [Lesson 134: 用一份 checklist 正式 review 教程示例](134-review-example-with-checklist.md)
-135. [Lesson 135: review 时，什么时候才允许 Lua escape hatch](135-review-when-lua-is-allowed.md)
-136. [Lesson 136: review 时，什么时候应该把 Lua 抽回 Flow](136-review-when-to-extract-lua-to-flow.md)
-137. [Lesson 137: review 时，什么时候应该新增 demo 页面](137-review-when-to-add-demo-page.md)
-138. [Lesson 138: review 时，一节教程至少该带哪些交付物](138-review-required-deliverables.md)
-139. [Lesson 139: 设计一个大型 Flow 示例包的目录骨架](139-large-flow-package-layout.md)
-140. [Lesson 140: 复盘为什么教程也需要 code review 思维](140-why-tutorials-need-code-review-thinking.md)
-141. [Lesson 141: 为什么要把 `ReadMe.md`、`docs/`、`script/`、`demo/` 一起打进二进制](141-why-embed-docs-script-demo.md)
-142. [Lesson 142: 新手怎么读懂 `list-assets`](142-list-assets-for-beginners.md)
-143. [Lesson 143: 新手怎么跑通 `extract-assets`](143-extract-assets-for-beginners.md)
-144. [Lesson 144: 设计“只发一个二进制给用户”的交付流程](144-single-binary-delivery-flow.md)
-145. [Lesson 145: 设计“离线环境也能跑基础教程”的交付流程](145-offline-learning-delivery-flow.md)
-146. [Lesson 146: 设计“哪些资源必须内置，哪些资源可以不带”的规则](146-embedded-asset-policy.md)
-147. [Lesson 147: `file-srv` 的开发态和发布态有什么区别](147-file-srv-dev-vs-release.md)
-148. [Lesson 148: 新用户第一次打开二进制时，应该先看到什么](148-first-run-entry-strategy.md)
-149. [Lesson 149: 课程包版本号和资源版本号应该怎么维护](149-release-asset-version-strategy.md)
-150. [Lesson 150: 复盘“单二进制 + 内置教程”对交付的意义](150-single-binary-delivery-summary.md)
-151. [Lesson 151: 设计一个新手结业题](151-newbie-capstone-brief.md)
-152. [Lesson 152: 设计一个初级结业题](152-junior-capstone-brief.md)
-153. [Lesson 153: 设计一个中级结业题](153-intermediate-capstone-brief.md)
-154. [Lesson 154: 设计一个高级结业题](154-advanced-capstone-brief.md)
-155. [Lesson 155: 设计一套“新人 7 天计划”](155-new-hire-7-day-plan.md)
-156. [Lesson 156: 设计一套“实施同学 2 周计划”](156-implementer-2-week-plan.md)
-157. [Lesson 157: 设计一套“讲师备课顺序”](157-trainer-prep-sequence.md)
-158. [Lesson 158: 设计一套“教程缺口复盘机制”](158-tutorial-gap-review-cycle.md)
-159. [Lesson 159: 设计一套“每 10 次迭代回看一次”的检查机制](159-every-10-iteration-review.md)
-160. [Lesson 160: 通过高级阶段检查，并为下一圈教程扩展做准备](160-curriculum-continuation-plan.md)
-
-### 路线 B：完整进阶教程体系
-
-适合要把 TSPlay 做成一套系统学习路径，而不是只跑几个 demo 的同学。
-
-1. [完整课程总览](curriculum-overview.zh-CN.md)
-2. [新手教程](track-newbie.zh-CN.md)
-3. [初级教程](track-junior.zh-CN.md)
-4. [中级教程](track-intermediate.zh-CN.md)
-5. [高级教程](track-advanced.zh-CN.md)
-6. [160 次递进迭代路线图](iteration-roadmap-160.md)
-7. [教程持续进化手册](evolution-playbook.md)
+<details markdown="1">
+<summary>需要逐课对照脚本、Flow 和 lesson 编号时，再展开完整教程地图</summary>
 
 ## 教程地图
 
@@ -444,6 +328,11 @@ go run . -action file-srv -addr :8000
 | 中级教程 | 已能独立写基础 Flow 的实施 / QA / 开发 | 形成可复用模板、数据驱动流程、健壮性设计、MCP 基础 | [track-intermediate.zh-CN.md](track-intermediate.zh-CN.md) |
 | 高级教程 | 要交付、评审、培训、集成 TSPlay 的同学 | 建立规范、架构、安全边界、发布包、repair 和课程演进能力 | [track-advanced.zh-CN.md](track-advanced.zh-CN.md) |
 | 160 次迭代路线图 | 希望长期持续推进课程建设的人 | 把教程演进拆成 160 个不跳跃的迭代点 | [iteration-roadmap-160.md](iteration-roadmap-160.md) |
+
+</details>
+
+<details markdown="1">
+<summary>需要完整环境、依赖和续跑说明时，再展开详细准备指南</summary>
 
 ## 开始前
 
@@ -623,6 +512,8 @@ cd ./tsplay-assets
 ```
 
 这样 `demo/data/*.csv`、`demo/data/*.xlsx`、`demo/data/*.pdf`、`demo/data/*.png` 这些示例文件才会真正出现在本地磁盘上，方便 `read_csv`、`read_excel`、`upload_file`、`upload_multiple_files`、`download_file` 这些动作直接复用。
+
+</details>
 
 ## 学的时候重点看什么
 

@@ -9,20 +9,21 @@ search:
   <div class="tsplay-hero__eyebrow">TSPlay Docs</div>
   <h1>面向交付与 AI 协作的<br>浏览器自动化文档站</h1>
   <p>
-    用一套资料收住 <code>Flow DSL</code>、<code>MCP</code>、会话复用、失败修复与教程交付，
+    用一套资料收住 <code>Flow DSL</code>、<code>MCP</code>、<code>Skills</code>、会话复用、失败修复与教程交付，
     适合研发、实施、测试、培训和 Agent 集成共同使用。
   </p>
   <div class="tsplay-hero__actions">
     <a class="md-button md-button--primary" href="getting-started/">快速开始</a>
-    <a class="md-button" href="docs/tutorials/README.zh-CN/">教程总览</a>
   </div>
   <div class="tsplay-hero__minor">
     想直接走智能体路线：<a href="docs/training/ai-intent-to-flow/">查看 AI 无感入门</a>
+    <span> · </span>
+    想让 Codex 按固定套路协作：<a href="docs/skills/">查看 Skills 介绍</a>
   </div>
   <div class="tsplay-hero__facts">
     <span>Flow-first</span>
     <span>MCP-ready</span>
-    <span>160 节教程</span>
+    <span>Skills-guided</span>
     <span>单二进制交付</span>
   </div>
 </div>
@@ -30,16 +31,15 @@ search:
 ## 小白先看这里
 
 第一次接触 TSPlay，先不要纠结 `Lua / Flow / MCP`。
-先照抄下面三步，跑通一次再继续学：
+先照抄下面这条最短路径，跑通一次再继续学：
 
 ```bash
-go mod download
-go run . -flow script/tutorials/01_hello_world.flow.yaml
-# 只有要练本地 demo 页面时再执行这条
-go run . -action file-srv -addr :8000
+curl -L -o tsplay https://github.com/tensafe/tsplay/releases/latest/download/tsplay-darwin-arm64
+chmod +x tsplay
+./tsplay -action quickstart-demo
 ```
 
-前两条用来确认运行时，第三条只在你要练本地 demo 页面时再开。
+这条会直接下载二进制、生成最小 demo Flow 并立刻执行，而且还不需要先下载 Playwright。
 [看完整开箱步骤](getting-started.md)
 
 ## 按目标进入
@@ -62,6 +62,14 @@ go run . -action file-srv -addr :8000
 
     [进入 AI 无感入门](docs/training/ai-intent-to-flow.md)
 
+-   :material-shape-plus-outline:{ .lg .middle } __我要用 Skills__
+
+    ---
+
+    想让 Codex 在“写 Flow / 修 Flow / review Flow”时按稳定套路协作。
+
+    [进入 Skills 介绍](docs/skills/README.md)
+
 -   :material-school-outline:{ .lg .middle } __我要做培训和推广__
 
     ---
@@ -70,13 +78,25 @@ go run . -action file-srv -addr :8000
 
     [进入培训体系](docs/training/README.md)
 
--   :material-book-open-page-variant-outline:{ .lg .middle } __我要先看全貌__
+</div>
 
-    ---
+## Skills 是什么
 
-    想先理解定位、三层能力、安全边界和项目结构。
+<div class="grid cards" markdown>
 
-    [看中文总览](README.zh-CN.md)
+-   :material-lightbulb-on-outline:{ .lg .middle } __不是 action 清单__
+
+    `skill` 不是单个能力参数表，而是一套让 Codex 更稳定协作的提示、规则和参考资料。
+
+-   :material-file-tree-outline:{ .lg .middle } __不是替代 Flow__
+
+    `Flow` 仍然是最终交付物；`skill` 解决的是“怎么更稳地得到这条 Flow”。
+
+-   :material-rocket-launch-outline:{ .lg .middle } __当前已附带一个可分享 Skill__
+
+    仓库里已经提供 `tsplay-flow-authoring`，适合写 Flow、修 Flow、review Flow 和邮件通知场景。
+
+    [查看 Skills 介绍](docs/skills/README.md)
 
 </div>
 
@@ -123,13 +143,13 @@ go run . -action file-srv -addr :8000
 -   __教程总站__
     [docs/tutorials/README.zh-CN.md](docs/tutorials/README.zh-CN.md)
 
+-   __Skills 介绍__
+    [docs/skills/README.md](docs/skills/README.md)
+
 -   __英文课程地图__
     [docs/tutorials/README.md](docs/tutorials/README.md)
 
 -   __文档总地图__
     [docs/README.md](docs/README.md)
-
--   __GitHub Pages 发布说明__
-    [docs/github-pages.md](docs/github-pages.md)
 
 </div>

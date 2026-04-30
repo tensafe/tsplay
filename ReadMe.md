@@ -169,6 +169,9 @@ Recommended rule of thumb:
 - Orchestration capabilities such as `retry / foreach / on_error / wait_until` belong more naturally in `Flow DSL` and do not need to be translated into Lua extension functions.
 - Semantic actions such as `extract_text / assert_text / assert_visible` can start as higher-level Flow actions; if Lua users keep rebuilding the same patterns, then a Lua sugar layer is worth adding.
 
+If you want the capability-action layer explained systematically, start with [docs/capability-actions/README.md](docs/capability-actions/README.md).  
+If you want the command-line `-action` entry points instead, see [docs/actions/README.md](docs/actions/README.md).
+
 ## Quick Start
 
 If you only want the shortest setup path, use the [5-Minute Quick Start](#5-minute-quick-start) above first.
@@ -201,6 +204,8 @@ go mod download
 | list bundled assets inside the binary | `go run . -action list-assets` |
 | extract bundled docs/script/demo assets | `go run . -action extract-assets -extract-root ./tsplay-assets` |
 | start the MCP server | `go run . -action srv` |
+
+If you want one place that explains every supported command-line `-action`, start with [docs/actions/README.md](docs/actions/README.md).
 
 Add `-headless` if you want to hide the browser window.
 
@@ -607,6 +612,8 @@ This README covers project positioning and quick start. Training, enablement, an
 | Content | Description | Entry |
 | --- | --- | --- |
 | docs index | repository-wide documentation map and recommended reading order | [docs/README.md](docs/README.md) |
+| skills overview | explains what a Codex skill solves and what TSPlay currently provides | [docs/skills/README.md](docs/skills/README.md) |
+| tutorial pyramid overview | explains why the curriculum is organized as four layers instead of a flat lesson list | [docs/tutorials/curriculum-overview.zh-CN.md](docs/tutorials/curriculum-overview.zh-CN.md) |
 | training overview | a single entry for implementers, testers, developers, and trainers | [docs/training/README.md](docs/training/README.md) |
 | AI intent to Flow | hands-on guide for the agent path from user intent to MCP to Flow to execution and repair | [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md) |
 | learning path | roadmap from beginner to MCP integrator / trainer | [docs/training/learning-path.md](docs/training/learning-path.md) |
@@ -638,5 +645,6 @@ If this is your first time with TSPlay, this reading order works well:
 
 1. start with this page to understand the three layers and quick start
 2. continue with [docs/README.md](docs/README.md) to locate the rest of the materials
-3. if you want to learn Flow delivery, focus on [docs/training/learning-path.md](docs/training/learning-path.md)
-4. if you want to integrate agents or MCP, focus on [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md)
+3. if you want the system view first, read [docs/tutorials/curriculum-overview.zh-CN.md](docs/tutorials/curriculum-overview.zh-CN.md)
+4. if you want to learn Flow delivery, focus on [docs/training/learning-path.md](docs/training/learning-path.md)
+5. if you want to integrate agents or MCP, focus on [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md)

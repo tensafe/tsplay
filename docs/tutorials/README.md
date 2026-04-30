@@ -18,6 +18,20 @@ Use this page to understand the structure, pick the right lesson range, and ente
 
 The repository already uses `docs/`, so the tutorial system lives here instead of a separate `doc/` folder.
 
+## If You Only Want One Starting Point Today
+
+Do not try to absorb the full curriculum first.
+Pick the shortest path that matches your goal:
+
+| Goal | Go here first | What counts as success today |
+| --- | --- | --- |
+| confirm TSPlay runs locally | [Lesson 01](01-hello-world.md) | run the first Flow and see output |
+| learn page extraction first | [Lesson 03](03-capture-table.md) | write a local table into JSON |
+| learn assertions first | [Lesson 10](10-assert-page-state.md) | verify page state against expectations |
+| learn batch processing first | [Lesson 22](22-foreach-batch-import-csv.md) | finish one CSV-driven `foreach` run |
+| learn session reuse first | [Lesson 36](36-save-storage-state.md) | save and reload browser state |
+| jump to Agent / MCP | [Lesson 111](111-mcp-list-actions.md) | understand the MCP toolchain and next step |
+
 ## Before You Pick Lessons
 
 If you have not brought the local environment up yet, start with [../../getting-started.md](../../getting-started.md) first.
@@ -100,31 +114,66 @@ If you want the stable first-time path, start with the [Newbie Track](track-newb
 - page observation entry: [113](113-mcp-observe-page.md)
 - `finalize_flow` convergence path: [120](120-mcp-finalize-flow.md)
 
-## Two Learning Tracks
+## Recommended Learning Order
 
-### Track A: The Hands-On Path You Can Start Today
+### 1. The 30-Minute Starter Path
 
-This is the fastest way to build intuition.
-The path is intentionally staged so you do not hit MCP, repair, or delivery design too early.
+This is the best path for day one.
+It is intentionally short so you can accumulate a few wins before the curriculum widens.
 
-1. Local foundations: [Lessons 01-12](01-hello-world.md)
-   Learn the binary, bundled assets, local pages, extraction, assertions, and basic JSON output.
-2. Files and control flow: [Lessons 13-27](13-read-csv-basics.md)
-   Add CSV, Excel, upload/download, `retry`, `wait_until`, `if`, `foreach`, and `on_error`.
-3. Browser state and sessions: [Lessons 28-57](28-inspect-storage-state.md)
-   Learn storage state, screenshots, HTML, named sessions, protected pages, and authenticated import flows.
-4. External systems and lifecycle: [Lessons 58-80](58-sync-import-report-summary-to-redis.md)
-   Connect browser results to Redis and Postgres, then build reconciliation, audit, cleanup, and replayable lifecycles.
-5. Handoff and templates: [Lessons 81-100](81-read-lifecycle-evidence.md)
-   Turn lifecycle evidence into replay batches, handoff artifacts, reusable templates, and release checklists.
-6. MCP workflow: [Lessons 101-120](101-assert-visible-template-release-card.md)
-   Move from template-release robustness into `observe -> draft -> validate -> run -> repair -> finalize`.
-7. Security and review thinking: [Lessons 121-140](121-allow-lua-boundary.md)
-   Understand `allow_*`, `security_preset`, review rules, naming, artifact layout, and larger Flow packaging.
-8. Delivery and curriculum operations: [Lessons 141-160](141-why-embed-docs-script-demo.md)
-   Cover bundled assets, single-binary delivery, capstones, onboarding plans, trainer prep, and tutorial evolution loops.
+1. [Lesson 01](01-hello-world.md)
+2. [Lesson 02](02-local-page-select-option.md)
+3. [Lesson 03](03-capture-table.md)
+4. [Lesson 10](10-assert-page-state.md)
+5. [Lesson 12](12-custom-json-output.md)
 
-### Track B: The Full Curriculum System
+After these, you should already know:
+
+- whether `tsplay` runs on your machine
+- how local interaction, extraction, and assertions feel
+- why outputs are written into `artifacts/`
+- why the later Flow path is worth learning
+
+### 2. The Half-Day Foundations Path
+
+Use this when you want the first practical delivery layer, not just the first demo:
+
+1. file input/output: [13](13-read-csv-basics.md), [14](14-write-csv-basics.md), [15](15-read-transform-write-csv.md)
+2. reliability and control flow: [16](16-retry-flaky-action.md), [17](17-wait-until-ready.md), [21](21-if-optional-login.md), [23](23-on-error-import-recovery.md)
+3. batch and Excel flows: [22](22-foreach-batch-import-csv.md), [24](24-read-excel-basics.md), [26](26-foreach-batch-import-excel.md), [27](27-on-error-import-excel-writeback.md)
+
+### 3. Sessions And Protected Pages
+
+Use this when you are moving toward real authenticated pages:
+
+1. browser-state basics: [28](28-inspect-storage-state.md), [36](36-save-storage-state.md), [37](37-load-saved-storage-state.md)
+2. named sessions: [40](40-save-named-session.md), [42](42-use-named-session.md)
+3. authenticated round trip: [44](44-session-import-with-login.md), [47](47-use-session-import-single.md), [57](57-use-session-import-export-round-trip.md)
+
+### 4. Agent / MCP Path
+
+This path works best after you already have some local Flow intuition:
+
+1. tool surface first: [111](111-mcp-list-actions.md), [112](112-mcp-flow-schema-and-examples.md)
+2. shortest closed loop: [113](113-mcp-observe-page.md), [114](114-mcp-draft-flow.md), [115](115-mcp-validate-drafted-flow.md)
+3. converge to delivery default: [119](119-mcp-chain-overview.md), [120](120-mcp-finalize-flow.md)
+
+## Full Curriculum Map
+
+If you are not a first-time learner, use this table instead of browsing lesson by lesson from the top:
+
+| Phase | Lesson Range | Focus | Good First Stops |
+| --- | --- | --- | --- |
+| Foundations | `01-12` | local pages, extraction, assertions, JSON output | [01](01-hello-world.md), [03](03-capture-table.md), [10](10-assert-page-state.md) |
+| Files and orchestration | `13-27` | CSV, Excel, upload/download, `retry`, `foreach`, `on_error` | [13](13-read-csv-basics.md), [16](16-retry-flaky-action.md), [22](22-foreach-batch-import-csv.md) |
+| Sessions and auth | `28-57` | storage state, named sessions, protected pages | [28](28-inspect-storage-state.md), [36](36-save-storage-state.md), [42](42-use-named-session.md) |
+| External systems | `58-80` | Redis, Postgres, reconciliation, audit, cleanup | [58](58-sync-import-report-summary-to-redis.md), [61](61-db-insert-import-batch-summary.md), [71](71-external-system-round-trip.md) |
+| Handoff and templates | `81-100` | replay evidence, handoff packs, template indexes, preflight checks | [81](81-read-lifecycle-evidence.md), [87](87-build-handoff-artifact-manifest.md), [96](96-build-template-index.md) |
+| MCP chain | `101-120` | release-page robustness, observe/draft/run/repair/finalize | [101](101-assert-visible-template-release-card.md), [111](111-mcp-list-actions.md), [120](120-mcp-finalize-flow.md) |
+| Security and review | `121-140` | `allow_*`, `security_preset`, Flow review, larger package structure | [121](121-allow-lua-boundary.md), [127](127-compare-local-flow-and-mcp-boundaries.md), [134](134-review-example-with-checklist.md) |
+| Delivery and evolution | `141-160` | single-binary delivery, offline learning, capstones, trainer operations | [141](141-why-embed-docs-script-demo.md), [144](144-single-binary-delivery-flow.md), [160](160-curriculum-continuation-plan.md) |
+
+### 5. The Curriculum-Designer Path
 
 Use this when you want a structured learning system instead of a single tutorial chain.
 
@@ -135,19 +184,6 @@ Use this when you want a structured learning system instead of a single tutorial
 5. [Advanced Track](track-advanced.md)
 6. [160-Iteration Roadmap](iteration-roadmap-160.md)
 7. [Evolution Playbook](evolution-playbook.md)
-
-## Tutorial Map
-
-| Phase | Lesson Range | Focus | Good First Stops |
-| --- | --- | --- | --- |
-| Foundations | `01-12` | bundled assets, local demo pages, extraction, assertions | [01](01-hello-world.md), [08](08-bundled-assets-and-artifacts.md), [10](10-assert-page-state.md) |
-| Files and orchestration | `13-27` | CSV/Excel, upload/download, variables, retry, loops, recovery | [13](13-read-csv-basics.md), [16](16-retry-flaky-action.md), [22](22-foreach-batch-import-csv.md) |
-| Browser state and reuse | `28-57` | storage state, screenshots, HTML, named sessions, protected imports | [28](28-inspect-storage-state.md), [36](36-save-storage-state.md), [42](42-use-named-session.md) |
-| External system sync | `58-80` | Redis, Postgres, shared batch IDs, reconciliation, audit, cleanup | [58](58-sync-import-report-summary-to-redis.md), [61](61-db-insert-import-batch-summary.md), [71](71-external-system-round-trip.md) |
-| Replay and handoff | `81-100` | evidence replay, handoff manifests, template catalogs, preflight checks | [81](81-read-lifecycle-evidence.md), [87](87-build-handoff-artifact-manifest.md), [96](96-build-template-index.md) |
-| MCP chain | `101-120` | release-page robustness, MCP observe/draft/run/repair/finalize | [101](101-assert-visible-template-release-card.md), [111](111-mcp-list-actions.md), [120](120-mcp-finalize-flow.md) |
-| Security and review | `121-140` | MCP permission boundaries, presets, Flow review, large-package structure | [121](121-allow-lua-boundary.md), [127](127-compare-local-flow-and-mcp-boundaries.md), [134](134-review-example-with-checklist.md) |
-| Delivery and evolution | `141-160` | bundled delivery, offline learning, capstones, trainer and iteration systems | [141](141-why-embed-docs-script-demo.md), [144](144-single-binary-delivery-flow.md), [160](160-curriculum-continuation-plan.md) |
 
 ## Full Curriculum System
 

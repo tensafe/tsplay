@@ -8,6 +8,9 @@
   --tsplay-hero-accent: #d7ab66;
   --tsplay-ink: #113638;
   --tsplay-muted: #577172;
+  --tsplay-font-sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  --tsplay-font-serif: "Iowan Old Style", "Baskerville", "Palatino Linotype", "Songti SC", "Noto Serif SC", serif;
+  --tsplay-font-mono: "Berkeley Mono", "JetBrains Mono", "SFMono-Regular", "IBM Plex Mono", "Source Code Pro", monospace;
 }
 
 [data-md-color-scheme="default"] {
@@ -35,17 +38,92 @@
 }
 
 body,
-input {
-  font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", "Source Han Sans SC", sans-serif;
+input,
+button,
+textarea,
+select {
+  font-family: var(--tsplay-font-sans);
+  font-feature-settings: "kern" 1, "liga" 1;
+  text-rendering: optimizeLegibility;
 }
 
 h1,
 h2,
 h3,
+h4,
 .md-header__title,
 .tsplay-hero h1 {
-  font-family: "Iowan Old Style", "Palatino Linotype", "Noto Serif SC", serif;
+  font-family: var(--tsplay-font-serif);
   letter-spacing: -0.02em;
+  line-height: 1.16;
+  text-wrap: balance;
+}
+
+.md-typeset,
+.md-nav,
+.md-tabs__link,
+.md-header__topic,
+.md-button {
+  font-family: var(--tsplay-font-sans);
+}
+
+.md-typeset {
+  font-size: 0.81rem;
+  line-height: 1.78;
+}
+
+.md-typeset p,
+.md-typeset li,
+.md-typeset td,
+.md-typeset th {
+  line-height: 1.8;
+}
+
+.md-typeset strong,
+.md-typeset b {
+  font-weight: 750;
+}
+
+.md-typeset h1 {
+  margin-bottom: 0.9rem;
+  font-weight: 760;
+}
+
+.md-typeset h2 {
+  margin-top: 2.6rem;
+  margin-bottom: 0.9rem;
+  font-size: 1.56rem;
+  font-weight: 740;
+}
+
+.md-typeset h3 {
+  margin-top: 1.8rem;
+  margin-bottom: 0.55rem;
+  font-size: 1.16rem;
+  font-weight: 720;
+}
+
+.md-nav__title,
+.md-nav__link,
+.md-tabs__link {
+  font-weight: 620;
+  letter-spacing: 0.01em;
+}
+
+.md-typeset code,
+.md-typeset pre code,
+.md-typeset kbd {
+  font-family: var(--tsplay-font-mono);
+  font-variant-ligatures: none;
+}
+
+.md-typeset code {
+  border-radius: 0.45rem;
+  padding: 0.18em 0.42em;
+}
+
+.md-typeset pre > code {
+  padding: 1rem 1.05rem;
 }
 
 .md-grid {
@@ -215,10 +293,6 @@ h3,
   color: #fff;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-}
-
-.md-typeset h2 {
-  margin-top: 2.4rem;
 }
 
 .md-typeset table:not([class]) {
