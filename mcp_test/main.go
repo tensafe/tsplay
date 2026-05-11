@@ -1,5 +1,3 @@
-//go:build !win7
-
 package main
 
 import (

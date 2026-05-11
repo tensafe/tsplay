@@ -169,7 +169,16 @@ func ExploreWorkbenchSite(options WorkbenchExploreOptions) (*WorkbenchExploreRes
 		if settleTimeout > 5000 {
 			settleTimeout = 5000
 		}
-		log.Printf("workbench explore settle site=%s run_id=%s page_index=%d timeout_ms=%d", site.SiteID, runID, pageIndex, settleTimeout)
+		log.Printf("workbench explore wait_domcontentloaded site=%s run_id=%s page_index=%d timeout_ms=%d", site.SiteID, runID, pageIndex, settleTimeout)
+		_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State:   playwright.LoadStateDomcontentloaded,
+			Timeout: playwright.Float(float64(settleTimeout)),
+		})
+		log.Printf("workbench explore wait_load site=%s run_id=%s page_index=%d timeout_ms=%d", site.SiteID, runID, pageIndex, minWorkbenchInt(settleTimeout, 2500))
+		_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State:   playwright.LoadStateLoad,
+			Timeout: playwright.Float(float64(minWorkbenchInt(settleTimeout, 2500))),
+		})
 		page.WaitForTimeout(float64(minWorkbenchInt(settleTimeout/2, 1200)))
 		log.Printf("workbench explore settled site=%s run_id=%s page_index=%d url=%s", site.SiteID, runID, pageIndex, page.URL())
 		writeWorkbenchExploreStatus(runRoot, map[string]any{
@@ -477,7 +486,7 @@ func newWorkbenchNetworkRecorder(page playwright.Page) *workbenchNetworkRecorder
 		return recorder
 	}
 
-	page.On("request", func(request playwright.Request) {
+	page.OnRequest(func(request playwright.Request) {
 		if request == nil {
 			return
 		}
@@ -500,7 +509,7 @@ func newWorkbenchNetworkRecorder(page playwright.Page) *workbenchNetworkRecorder
 		recorder.mu.Unlock()
 	})
 
-	page.On("response", func(response playwright.Response) {
+	page.OnResponse(func(response playwright.Response) {
 		if response == nil || response.Request() == nil {
 			return
 		}
@@ -520,7 +529,7 @@ func newWorkbenchNetworkRecorder(page playwright.Page) *workbenchNetworkRecorder
 	// page.Evaluate/context.NewPage/page.Screenshot/page.Close 等调用长期不返回。
 	// Workbench 稳定版只采集 request/response 元信息，响应 body/schema 后续应改为异步后处理。
 
-	page.On("requestfailed", func(request playwright.Request) {
+	page.OnRequestFailed(func(request playwright.Request) {
 		if request == nil {
 			return
 		}
@@ -528,7 +537,7 @@ func newWorkbenchNetworkRecorder(page playwright.Page) *workbenchNetworkRecorder
 		index, ok := recorder.indexByReq[request]
 		if ok && index >= 0 && index < len(recorder.records) {
 			if failure := request.Failure(); failure != nil {
-				recorder.records[index].Error = failure.ErrorText
+				recorder.records[index].Error = failure.Error()
 			}
 		}
 		recorder.mu.Unlock()
@@ -546,7 +555,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 		return recorder
 	}
 
-	page.On("framenavigated", func(frame playwright.Frame) {
+	page.OnFrameNavigated(func(frame playwright.Frame) {
 		if frame == nil {
 			return
 		}
@@ -564,7 +573,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 		})
 	})
 
-	page.On("popup", func(popup playwright.Page) {
+	page.OnPopup(func(popup playwright.Page) {
 		if popup == nil {
 			return
 		}
@@ -577,7 +586,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 		})
 	})
 
-	page.On("download", func(download playwright.Download) {
+	page.OnDownload(func(download playwright.Download) {
 		if download == nil {
 			return
 		}
@@ -591,7 +600,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 		})
 	})
 
-	page.On("console", func(message playwright.ConsoleMessage) {
+	page.OnConsole(func(message playwright.ConsoleMessage) {
 		if message == nil {
 			return
 		}
@@ -604,7 +613,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 		})
 	})
 
-	page.On("pageerror", func(pageErr error) {
+	page.OnPageError(func(pageErr error) {
 		if pageErr == nil {
 			return
 		}
@@ -616,7 +625,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 		})
 	})
 
-	page.On("websocket", func(ws playwright.WebSocket) {
+	page.OnWebSocket(func(ws playwright.WebSocket) {
 		if ws == nil {
 			return
 		}
@@ -628,7 +637,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 			URL:       wsURL,
 			Timestamp: time.Now().Format(time.RFC3339Nano),
 		})
-		ws.On("error", func(errText string) {
+		ws.OnSocketError(func(errText string) {
 			recorder.append(WorkbenchPageEvent{
 				Type:      "websocket_error",
 				Level:     "error",
@@ -637,7 +646,7 @@ func newWorkbenchEventRecorder(page playwright.Page) *workbenchEventRecorder {
 				Timestamp: time.Now().Format(time.RFC3339Nano),
 			})
 		})
-		ws.On("close", func() {
+		ws.OnClose(func(playwright.WebSocket) {
 			recorder.append(WorkbenchPageEvent{
 				Type:      "websocket_closed",
 				Level:     "info",

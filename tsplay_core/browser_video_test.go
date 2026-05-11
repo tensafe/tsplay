@@ -17,22 +17,14 @@ func TestPrepareBrowserVideoRecording(t *testing.T) {
 	if recording.OutputPath != output {
 		t.Fatalf("OutputPath = %q, want %q", recording.OutputPath, output)
 	}
-	if recording.Dir != filepath.Dir(output) {
-		t.Fatalf("Dir = %q, want %q", recording.Dir, filepath.Dir(output))
-	}
-	recordVideo := recording.NewContextRecordVideo()
-	if recordVideo == nil {
+	if recording.RecordVideo == nil {
 		t.Fatalf("expected RecordVideo")
 	}
-	if recordVideo.Dir == nil || *recordVideo.Dir != filepath.Dir(output) {
-		t.Fatalf("Dir = %#v, want %q", recordVideo.Dir, filepath.Dir(output))
+	if recording.RecordVideo.Dir != filepath.Dir(output) {
+		t.Fatalf("Dir = %q, want %q", recording.RecordVideo.Dir, filepath.Dir(output))
 	}
-	if recordVideo.Size == nil ||
-		recordVideo.Size.Width == nil ||
-		*recordVideo.Size.Width != 1280 ||
-		recordVideo.Size.Height == nil ||
-		*recordVideo.Size.Height != 720 {
-		t.Fatalf("unexpected size: %#v", recordVideo.Size)
+	if recording.RecordVideo.Size == nil || recording.RecordVideo.Size.Width != 1280 || recording.RecordVideo.Size.Height != 720 {
+		t.Fatalf("unexpected size: %#v", recording.RecordVideo.Size)
 	}
 }
 

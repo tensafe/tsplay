@@ -587,8 +587,8 @@ func run_script(script string) {
 			log.Fatalf("could not prepare browser video: %v", err)
 		}
 		if browserVideo != nil {
-			page, err = browser.NewPage(playwright.BrowserNewContextOptions{
-				RecordVideo: browserVideo.NewContextRecordVideo(),
+			page, err = browser.NewPage(playwright.BrowserNewPageOptions{
+				RecordVideo: browserVideo.RecordVideo,
 			})
 		} else {
 			page, err = browser.NewPage()

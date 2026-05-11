@@ -10,10 +10,8 @@ import (
 )
 
 type BrowserVideoRecording struct {
-	OutputPath string
-	Dir        string
-	Width      int
-	Height     int
+	OutputPath  string
+	RecordVideo *playwright.RecordVideo
 }
 
 func PrepareBrowserVideoRecording(outputPath string, width int, height int) (*BrowserVideoRecording, error) {
@@ -28,60 +26,19 @@ func PrepareBrowserVideoRecording(outputPath string, width int, height int) (*Br
 	if err := os.MkdirAll(filepath.Dir(resolvedPath), 0755); err != nil {
 		return nil, fmt.Errorf("create browser video output dir: %w", err)
 	}
+	recordVideo := &playwright.RecordVideo{
+		Dir: filepath.Dir(resolvedPath),
+	}
+	if width > 0 && height > 0 {
+		recordVideo.Size = &playwright.Size{
+			Width:  width,
+			Height: height,
+		}
+	}
 	return &BrowserVideoRecording{
-		OutputPath: resolvedPath,
-		Dir:        filepath.Dir(resolvedPath),
-		Width:      width,
-		Height:     height,
+		OutputPath:  resolvedPath,
+		RecordVideo: recordVideo,
 	}, nil
-}
-
-func (recording *BrowserVideoRecording) NewContextRecordVideo() *playwright.BrowserNewContextOptionsRecordVideo {
-	if recording == nil {
-		return nil
-	}
-	options := &playwright.BrowserNewContextOptionsRecordVideo{
-		Dir: playwright.String(recording.Dir),
-	}
-	if recording.Width > 0 && recording.Height > 0 {
-		options.Size = &playwright.BrowserNewContextOptionsRecordVideoSize{
-			Width:  playwright.Int(recording.Width),
-			Height: playwright.Int(recording.Height),
-		}
-	}
-	return options
-}
-
-func (recording *BrowserVideoRecording) NewPageRecordVideo() *playwright.BrowserNewPageOptionsRecordVideo {
-	if recording == nil {
-		return nil
-	}
-	options := &playwright.BrowserNewPageOptionsRecordVideo{
-		Dir: playwright.String(recording.Dir),
-	}
-	if recording.Width > 0 && recording.Height > 0 {
-		options.Size = &playwright.BrowserNewPageOptionsRecordVideoSize{
-			Width:  playwright.Int(recording.Width),
-			Height: playwright.Int(recording.Height),
-		}
-	}
-	return options
-}
-
-func (recording *BrowserVideoRecording) PersistentContextRecordVideo() *playwright.BrowserTypeLaunchPersistentContextOptionsRecordVideo {
-	if recording == nil {
-		return nil
-	}
-	options := &playwright.BrowserTypeLaunchPersistentContextOptionsRecordVideo{
-		Dir: playwright.String(recording.Dir),
-	}
-	if recording.Width > 0 && recording.Height > 0 {
-		options.Size = &playwright.BrowserTypeLaunchPersistentContextOptionsRecordVideoSize{
-			Width:  playwright.Int(recording.Width),
-			Height: playwright.Int(recording.Height),
-		}
-	}
-	return options
 }
 
 func SaveBrowserVideo(page playwright.Page, outputPath string) (string, error) {
