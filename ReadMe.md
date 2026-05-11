@@ -153,7 +153,7 @@ The goal of this matrix is not to force every capability into mechanical 1:1 par
 | Capability Area | Typical Actions | Flow | Lua | MCP | Recommendation |
 | --- | --- | --- | --- | --- | --- |
 | page primitives | `navigate`, `click`, `type_text`, `select_option` | Yes | Yes | Yes | Keep aligned |
-| file and spreadsheet I/O | `screenshot`, `save_html`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
+| file and spreadsheet I/O | `screenshot`, `save_html`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
 | HTTP requests | `http_request`, `json_extract` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_http`, `allow_file_access`, and file-root constraints |
 | email delivery | `send_email` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_email` |
 | Redis operations | `redis_get`, `redis_set`, `redis_del`, `redis_incr` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_redis` |
@@ -319,7 +319,7 @@ Common Flow capabilities include:
 - variables: `vars`, `save_as`, `set_var`, `append_var`
 - control flow: `retry`, `if`, `foreach`, `on_error`, `wait_until`
 - page actions: click, type, wait, assert, screenshot, upload, download
-- data actions: `http_request`, `json_extract`, `send_email`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`
+- data actions: `http_request`, `json_extract`, `send_email`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract`
 - browser state: `use_session`, `storage_state`, `save_storage_state`
 
 ## Core Capabilities
@@ -498,7 +498,7 @@ Explicit `allow_*` flags override the corresponding fields inside `security_pres
 | --- | --- |
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`, `evaluate` |
-| `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel` |
+| `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` |
 | `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile |
 | `allow_http=true` | `http_request` |
 | `allow_email=true` | `send_email` |
@@ -580,6 +580,35 @@ Useful for batch import, chunked execution, and writing results back into a ledg
 - `write_excel` writes numbers and booleans as native Excel cell types
 - `read_excel.range` supports rectangular ranges such as `A2:B20`
 - you can combine `with.start_row`, `with.limit`, and `with.row_number_field` for resumable processing
+
+### ZIP Archives
+
+Useful when a Flow needs to package generated reports, unpack a downloaded handoff, or move a folder as one artifact.
+
+```yaml
+- action: zip_compress
+  file_path: artifacts/reports/run.zip
+  files:
+    - artifacts/reports/summary.json
+    - artifacts/reports/results.csv
+  folders:
+    - artifacts/reports/screenshots
+  password: "{{zip_password}}"
+  save_as: archive
+
+- action: zip_extract
+  file_path: "{{archive.file_path}}"
+  save_path: artifacts/unpacked
+  password: "{{zip_password}}"
+```
+
+Additional notes:
+
+- `zip_compress` accepts a single `source_path`, `file`, `folder`, `files`, `folders`, `paths`, or `sources`
+- `with.base_dir` controls the relative paths stored inside the archive
+- `zip_extract` rejects unsafe archive paths that would escape `save_path`
+- password support uses traditional ZipCrypto compatibility
+- restricted Flow / MCP contexts require `allow_file_access=true`
 
 ### Database
 

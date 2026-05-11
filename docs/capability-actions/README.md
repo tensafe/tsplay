@@ -25,7 +25,7 @@
 | 能力类别 | 典型动作 | Flow | Lua | MCP | 建议 | 说明页 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 保持强同步 | [页面原子动作](page-primitives.md) |
-| 文件与表格 I/O | `screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel` | 是 | 是 | 是 | 保持强同步；MCP 下受 `allow_file_access` 约束 | [文件与表格 I/O](file-and-spreadsheet-io.md) |
+| 文件与表格 I/O | `screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`、`zip_compress`、`zip_extract` | 是 | 是 | 是 | 保持强同步；MCP 下受 `allow_file_access` 约束 | [文件与表格 I/O](file-and-spreadsheet-io.md) |
 | HTTP 请求 | `http_request`、`json_extract` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守授权边界 | [HTTP 请求](http-requests.md) |
 | 邮件通知 | `send_email` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守 `allow_email` | [邮件通知](email-delivery.md) |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守 `allow_redis` | [Redis 操作](redis-operations.md) |
@@ -38,7 +38,7 @@
 ## 常查 Action 快速索引
 
 - 页面原子动作：`navigate`、`click`、`type_text`、`select_option`
-- 文件与表格 I/O：`screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`
+- 文件与表格 I/O：`screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`、`zip_compress`、`zip_extract`
 - HTTP 请求：`http_request`、`json_extract`
 - 邮件通知：`send_email`
 - Redis 操作：`redis_get`、`redis_set`、`redis_del`、`redis_incr`

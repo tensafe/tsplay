@@ -1638,6 +1638,8 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["write_json"] = "Write any resolved value to a local JSON file."
 	descriptions["write_csv"] = "Write resolved rows to a local CSV file, optionally with an explicit header order."
 	descriptions["write_excel"] = "Write resolved rows to a local Excel .xlsx file, optionally with an explicit sheet name and header order, or write a workbook object with multiple sheets."
+	descriptions["zip_compress"] = "Create a ZIP archive from one file, a file list, or folders, optionally with a password."
+	descriptions["zip_extract"] = "Extract a ZIP archive into a local directory, optionally with a password."
 	descriptions["redis_get"] = "Read one key from Redis using a named connection resolved from environment variables."
 	descriptions["redis_set"] = "Write one key to Redis with an optional TTL using a named connection resolved from environment variables."
 	descriptions["redis_del"] = "Delete one key from Redis using a named connection resolved from environment variables."
@@ -1917,6 +1919,38 @@ func buildFlowActionManifest() []map[string]any {
 				"Use sheet to override the default Sheet1 worksheet name.",
 				"Use with.headers to control Excel column order when writing single-sheet objects.",
 				"Numbers and booleans are written as native Excel cell types instead of inline strings.",
+			}
+		}
+		if name == "zip_compress" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "source_path", "type": "string|string_list", "required": false},
+				{"name": "file", "type": "string", "required": false},
+				{"name": "files", "type": "string_list", "required": false},
+				{"name": "folder", "type": "string", "required": false},
+				{"name": "folders", "type": "string_list", "required": false},
+				{"name": "password", "type": "string", "required": false},
+				{"name": "with.base_dir", "type": "string", "required": false},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Provide at least one source through source_path, file, files, folder, folders, paths, or sources.",
+				"Folders are archived recursively and keep the folder name unless with.base_dir is provided.",
+				"Password support uses traditional ZipCrypto compatibility.",
+			}
+		}
+		if name == "zip_extract" {
+			item["args"] = []map[string]any{
+				{"name": "file_path", "type": "string", "required": true},
+				{"name": "save_path", "type": "string", "required": true},
+				{"name": "password", "type": "string", "required": false},
+				{"name": "with.overwrite", "type": "bool", "required": false, "default": true},
+			}
+			item["returns"] = "object"
+			item["notes"] = []string{
+				"Extraction rejects unsafe archive paths that would escape save_path.",
+				"Set with.overwrite to false when existing files should fail the flow.",
+				"Password is required only when encrypted entries are present.",
 			}
 		}
 		if name == "send_email" {

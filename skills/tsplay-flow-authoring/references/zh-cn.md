@@ -63,6 +63,7 @@
 - 页面易抖动、要重试: `retry`
 - 读本地 JSON / CSV / Excel: `read_json`, `read_csv`, `read_excel`
 - 写结果到 JSON 或 CSV: `write_json`, `write_csv`
+- 压缩或解压 ZIP: `zip_compress`, `zip_extract`
 - 发邮件通知: `send_email`
 - 复用登录态: 顶层 `browser.use_session`
 

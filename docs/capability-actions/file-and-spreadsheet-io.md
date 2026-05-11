@@ -14,6 +14,8 @@
 | `write_json` | 是 | 是 | 是 | `action: write_json` + `file_path,value` / `write_json(path, value)` | 把任意值写成 JSON。 |
 | `write_csv` | 是 | 是 | 是 | `action: write_csv` + `file_path,value` / `write_csv(path, rows, headers)` | 把行对象写成 CSV。 |
 | `write_excel` | 是 | 是 | 是 | `action: write_excel` + `file_path,value` / `write_excel(path, rows, headers, sheet)` | 把单表或多表数据写成 `.xlsx`。 |
+| `zip_compress` | 是 | 是 | 是 | `action: zip_compress` + `file_path,files/folders` / `zip_compress({file_path=..., files=...})` | 把单文件、文件列表或文件夹压缩成 ZIP，可选密码。 |
+| `zip_extract` | 是 | 是 | 是 | `action: zip_extract` + `file_path,save_path` / `zip_extract({file_path=..., save_path=...})` | 解压 ZIP 到目录，可选密码。 |
 
 ## 最小示例小代码
 
@@ -31,6 +33,11 @@ steps:
     file_path: artifacts/output/orders.json
     with:
       value: "{{rows}}"
+
+  - action: zip_compress
+    file_path: artifacts/output/orders.zip
+    files:
+      - artifacts/output/orders.json
 ```
 
 ### Lua
@@ -38,6 +45,10 @@ steps:
 ```lua
 local rows = read_csv("artifacts/input/orders.csv")
 write_json("artifacts/output/orders.json", rows)
+zip_compress({
+  file_path = "artifacts/output/orders.zip",
+  files = {"artifacts/output/orders.json"},
+})
 screenshot("artifacts/output/orders-page.png")
 ```
 
@@ -46,6 +57,8 @@ screenshot("artifacts/output/orders-page.png")
 - 教程、排障、交付三类场景里，优先把关键产物写到稳定的 `artifacts/` 路径
 - `read_csv / read_excel` 适合配合 `foreach` 做分批处理
 - `write_json / write_csv / write_excel` 更适合留结构化交付物，不只打印终端输出
+- `zip_compress / zip_extract` 适合打包交付物或解开外部交接包；有密码时使用传统 ZipCrypto 兼容格式
+- `zip_extract` 会拦截压缩包内 `../` 这类越界路径，避免解压到目标目录外
 
 ## 相关教程
 

@@ -77,6 +77,8 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 	foundNavigate := false
 	foundWriteExcel := false
 	foundSendEmail := false
+	foundZipCompress := false
+	foundZipExtract := false
 	for _, action := range actions {
 		item, ok := action.(map[string]any)
 		if !ok {
@@ -91,6 +93,12 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 		if item["name"] == "send_email" {
 			foundSendEmail = true
 		}
+		if item["name"] == "zip_compress" {
+			foundZipCompress = true
+		}
+		if item["name"] == "zip_extract" {
+			foundZipExtract = true
+		}
 	}
 	if !foundNavigate {
 		t.Fatalf("navigate action not found in manifest")
@@ -100,6 +108,12 @@ func TestHandleFlowListActionsTool(t *testing.T) {
 	}
 	if !foundSendEmail {
 		t.Fatalf("send_email action not found in manifest")
+	}
+	if !foundZipCompress {
+		t.Fatalf("zip_compress action not found in manifest")
+	}
+	if !foundZipExtract {
+		t.Fatalf("zip_extract action not found in manifest")
 	}
 }
 
