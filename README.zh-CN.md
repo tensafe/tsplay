@@ -41,7 +41,7 @@ TSPlay 组织起来的核心能力包括：
 - Go `1.23.6+`
 - 一台能启动 Chromium 的机器
 
-首次执行浏览器相关命令时，TSPlay 会自动执行 `playwright.Install()` 下载浏览器。
+首次执行浏览器相关命令时，如果二进制旁边有 `playwright/` 目录，TSPlay 会优先使用它；否则会自动执行 `playwright.Install()` 下载 Chromium。
 
 然后在仓库根目录依次执行：
 
@@ -181,7 +181,7 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 
 - Go `1.23.6+`
 - 能运行 Playwright Chromium 的系统环境
-- 首次执行浏览器相关能力时，程序会自动执行 `playwright.Install()` 下载浏览器
+- 首次执行浏览器相关能力时，如果二进制旁边有 `playwright/` 目录，程序会优先使用它；否则会自动执行 `playwright.Install()` 下载 Chromium
 
 ### 安装依赖
 

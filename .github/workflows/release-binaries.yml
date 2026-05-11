@@ -1,6 +1,9 @@
 name: release-binaries
 
 on:
+  push:
+    tags:
+      - "v*"
   release:
     types:
       - published
@@ -10,6 +13,11 @@ on:
         description: Version label used in asset names for manual runs
         required: false
         type: string
+      playwright_offline:
+        description: Build optional playwright-offline packages with TSPlay and Chromium
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -37,6 +45,9 @@ jobs:
           - goos: windows
             goarch: amd64
             archive_ext: zip
+          - goos: windows
+            goarch: arm64
+            archive_ext: zip
 
     steps:
       - name: Check out repository
@@ -57,6 +68,9 @@ jobs:
         shell: bash
         run: |
           version="${{ github.event.release.tag_name }}"
+          if [ -z "$version" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          fi
           if [ -z "$version" ]; then
             version="${{ inputs.version }}"
           fi
@@ -108,6 +122,140 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  build-playwright-offline:
+    if: github.event_name != 'workflow_dispatch' || inputs.playwright_offline
+    name: playwright-offline-${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            runner: macos-15-intel
+            archive_ext: tar.gz
+          - goos: darwin
+            goarch: arm64
+            runner: macos-15
+            archive_ext: tar.gz
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-24.04
+            archive_ext: tar.gz
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-24.04-arm
+            archive_ext: tar.gz
+          - goos: windows
+            goarch: amd64
+            runner: windows-2022
+            archive_ext: zip
+          - goos: windows
+            goarch: arm64
+            runner: windows-11-arm
+            archive_ext: zip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Go modules
+        shell: bash
+        run: go mod download
+
+      - name: Resolve version label
+        id: vars
+        shell: bash
+        run: |
+          version="${{ github.event.release.tag_name }}"
+          if [ -z "$version" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          fi
+          if [ -z "$version" ]; then
+            version="${{ inputs.version }}"
+          fi
+          if [ -z "$version" ]; then
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build playwright-offline archive
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.vars.outputs.version }}
+          ARCHIVE_EXT: ${{ matrix.archive_ext }}
+        run: |
+          set -euo pipefail
+
+          ext=""
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
+
+          package="tsplay_${VERSION}_${GOOS}_${GOARCH}_playwright-offline"
+          stage_dir="$PWD/dist/${package}"
+          module_version="$(go list -m -f '{{.Version}}' github.com/playwright-community/playwright-go)"
+
+          mkdir -p "$stage_dir/playwright/driver" "$stage_dir/playwright/browsers"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "${stage_dir}/tsplay${ext}" .
+          TSPLAY_PLAYWRIGHT_BUNDLE_PATH="$stage_dir/playwright" "${stage_dir}/tsplay${ext}" -action install-playwright
+
+          cp LICENSE "$stage_dir/"
+          cp ReadMe.md "${stage_dir}/README.md"
+          cp README.zh-CN.md "${stage_dir}/README.zh-CN.md"
+          cat > "$stage_dir/PLAYWRIGHT-OFFLINE.md" <<EOF
+          # TSPlay Playwright Offline Package
+
+          This package includes TSPlay plus the Playwright Chromium runtime downloaded by github.com/playwright-community/playwright-go ${module_version}.
+
+          Keep the playwright/ directory next to the tsplay binary. TSPlay will auto-detect playwright/driver and playwright/browsers before falling back to the normal Playwright cache.
+          EOF
+          cat > "$stage_dir/playwright-offline.json" <<EOF
+          {
+            "version": "${VERSION}",
+            "goos": "${GOOS}",
+            "goarch": "${GOARCH}",
+            "playwright_go_module": "${module_version}",
+            "browser": "chromium",
+            "layout": {
+              "binary": "tsplay${ext}",
+              "driver": "playwright/driver",
+              "browsers": "playwright/browsers"
+            }
+          }
+          EOF
+
+          node_path="$stage_dir/playwright/driver/node"
+          if [ "$GOOS" = "windows" ]; then
+            node_path="$stage_dir/playwright/driver/node.exe"
+          fi
+          if [ -x "$node_path" ]; then
+            "$node_path" "$stage_dir/playwright/driver/package/cli.js" --version > "$stage_dir/playwright-version.txt"
+          fi
+
+          if [ "$ARCHIVE_EXT" = "zip" ]; then
+            powershell -NoProfile -Command "Compress-Archive -Path 'dist/${package}' -DestinationPath 'dist/${package}.zip' -Force"
+          else
+            tar -C dist -czf "dist/${package}.tar.gz" "${package}"
+          fi
+
+          rm -rf "$stage_dir"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-playwright-offline-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
   build-skill:
     name: build-skill
     runs-on: ubuntu-latest
@@ -120,6 +268,9 @@ jobs:
         shell: bash
         run: |
           version="${{ github.event.release.tag_name }}"
+          if [ -z "$version" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          fi
           if [ -z "$version" ]; then
             version="${{ inputs.version }}"
           fi
@@ -128,19 +279,42 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Build release skill archive
+      - name: Build release skill archives
         shell: bash
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           set -euo pipefail
 
-          package="tsplay-flow-authoring_${VERSION}.zip"
           mkdir -p dist
+          package="tsplay-flow-authoring_${VERSION}.zip"
           (
             cd skills
             zip -rq "../dist/${package}" "tsplay-flow-authoring"
           )
+
+          cp "dist/${package}" "dist/tsplay-flow-authoring-codex_${VERSION}.zip"
+          cp "dist/${package}" "dist/tsplay-flow-authoring-openclaw_${VERSION}.zip"
+
+          cat > "dist/tsplay-skills_${VERSION}.json" <<EOF
+          {
+            "version": "${VERSION}",
+            "skills": [
+              {
+                "name": "tsplay-flow-authoring",
+                "format": "codex-skill",
+                "archives": [
+                  "tsplay-flow-authoring_${VERSION}.zip",
+                  "tsplay-flow-authoring-codex_${VERSION}.zip",
+                  "tsplay-flow-authoring-openclaw_${VERSION}.zip"
+                ],
+                "install_dir": "tsplay-flow-authoring",
+                "entry": "SKILL.md",
+                "agents": ["codex", "openclaw", "openai-compatible"]
+              }
+            ]
+          }
+          EOF
 
       - name: Copy quickstart installers
         shell: bash
@@ -160,9 +334,10 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'release'
+    if: always() && (github.event_name == 'release' || github.ref_type == 'tag') && needs.build.result == 'success' && needs['build-playwright-offline'].result == 'success' && needs['build-skill'].result == 'success'
     needs:
       - build
+      - build-playwright-offline
       - build-skill
     runs-on: ubuntu-latest
     permissions:
@@ -185,7 +360,7 @@ jobs:
       - name: Upload assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: |
             dist/tsplay-quickstart.sh
             dist/tsplay-quickstart.ps1
@@ -194,4 +369,5 @@ jobs:
             dist/tsplay-windows-*
             dist/*.tar.gz
             dist/*.zip
+            dist/tsplay-skills_*.json
             dist/SHA256SUMS.txt

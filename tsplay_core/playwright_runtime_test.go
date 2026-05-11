@@ -355,6 +355,90 @@ func TestRunFlowStartsPlaywrightWhenBrowserFlowNeedsIt(t *testing.T) {
 	}
 }
 
+func TestDescribePlaywrightRuntimeUsesExplicitBundlePath(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(envPlaywrightBundlePath, root)
+	t.Setenv(envPlaywrightDriverPath, "")
+	t.Setenv(envPlaywrightBrowsersDir, "")
+
+	info := DescribePlaywrightRuntime()
+	if info.BundlePath != root {
+		t.Fatalf("BundlePath = %q, want %q", info.BundlePath, root)
+	}
+	if info.BundleSource != "env:"+envPlaywrightBundlePath {
+		t.Fatalf("BundleSource = %q", info.BundleSource)
+	}
+	if info.DriverPath != filepath.Join(root, playwrightDriverDirName) {
+		t.Fatalf("DriverPath = %q", info.DriverPath)
+	}
+	if info.BrowsersPath != filepath.Join(root, playwrightBrowsersDirName) {
+		t.Fatalf("BrowsersPath = %q", info.BrowsersPath)
+	}
+}
+
+func TestDescribePlaywrightRuntimeUsesExecutableNeighborBundle(t *testing.T) {
+	root := t.TempDir()
+	bundlePath := filepath.Join(root, playwrightBundledDirName)
+	if err := os.MkdirAll(filepath.Join(bundlePath, playwrightDriverDirName), 0700); err != nil {
+		t.Fatalf("create driver dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(bundlePath, playwrightBrowsersDirName), 0700); err != nil {
+		t.Fatalf("create browsers dir: %v", err)
+	}
+	t.Setenv(envPlaywrightBundlePath, "")
+	t.Setenv(envPlaywrightDriverPath, "")
+	t.Setenv(envPlaywrightBrowsersDir, "")
+
+	restore := stubPlaywrightBundleCandidates([]string{bundlePath})
+	defer restore()
+
+	info := DescribePlaywrightRuntime()
+	if info.BundlePath != bundlePath {
+		t.Fatalf("BundlePath = %q, want %q", info.BundlePath, bundlePath)
+	}
+	if info.DriverPath != filepath.Join(bundlePath, playwrightDriverDirName) {
+		t.Fatalf("DriverPath = %q", info.DriverPath)
+	}
+	if info.BrowsersPath != filepath.Join(bundlePath, playwrightBrowsersDirName) {
+		t.Fatalf("BrowsersPath = %q", info.BrowsersPath)
+	}
+}
+
+func TestConfigurePlaywrightRuntimeSetsEnvFromBundle(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(envPlaywrightBundlePath, root)
+	t.Setenv(envPlaywrightDriverPath, "")
+	t.Setenv(envPlaywrightBrowsersDir, "")
+
+	info := configurePlaywrightRuntime()
+	if info.DriverPath != filepath.Join(root, playwrightDriverDirName) {
+		t.Fatalf("DriverPath = %q", info.DriverPath)
+	}
+	if got := os.Getenv(envPlaywrightDriverPath); got != filepath.Join(root, playwrightDriverDirName) {
+		t.Fatalf("%s = %q", envPlaywrightDriverPath, got)
+	}
+	if got := os.Getenv(envPlaywrightBrowsersDir); got != filepath.Join(root, playwrightBrowsersDirName) {
+		t.Fatalf("%s = %q", envPlaywrightBrowsersDir, got)
+	}
+}
+
+func TestDescribePlaywrightRuntimeKeepsExplicitDriverAndBrowsers(t *testing.T) {
+	root := t.TempDir()
+	driverPath := filepath.Join(root, "custom-driver")
+	browsersPath := filepath.Join(root, "custom-browsers")
+	t.Setenv(envPlaywrightBundlePath, filepath.Join(root, "ignored-bundle"))
+	t.Setenv(envPlaywrightDriverPath, driverPath)
+	t.Setenv(envPlaywrightBrowsersDir, browsersPath)
+
+	info := DescribePlaywrightRuntime()
+	if info.DriverPath != driverPath || info.DriverSource != "env:"+envPlaywrightDriverPath {
+		t.Fatalf("driver info = %#v", info)
+	}
+	if info.BrowsersPath != browsersPath || info.BrowsersSource != "env:"+envPlaywrightBrowsersDir {
+		t.Fatalf("browsers info = %#v", info)
+	}
+}
+
 func stubPlaywrightRuntime(t *testing.T, install func() error, run func() (*playwright.Playwright, error)) func() {
 	t.Helper()
 
@@ -375,5 +459,15 @@ func stubPlaywrightRuntime(t *testing.T, install func() error, run func() (*play
 		playwrightInstallMu.Lock()
 		playwrightInstallDone = oldDone
 		playwrightInstallMu.Unlock()
+	}
+}
+
+func stubPlaywrightBundleCandidates(candidates []string) func() {
+	oldCandidates := playwrightBundleCandidatesFunc
+	playwrightBundleCandidatesFunc = func() []string {
+		return candidates
+	}
+	return func() {
+		playwrightBundleCandidatesFunc = oldCandidates
 	}
 }

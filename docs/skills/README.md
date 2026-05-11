@@ -153,6 +153,19 @@ skills/tsplay-flow-authoring/
 1. 运行目录里的安装脚本，把它安装到本地 Codex `skills/` 目录
 2. 直接把整个目录复制到 `~/.codex/skills/` 或 `$CODEX_HOME/skills/`
 
+## Release 包里会生成什么
+
+推送 `v*` 版本 tag 或发布 GitHub Release 时，release workflow 会把这份 skill 打成可分发压缩包：
+
+| 资源 | 用途 |
+| --- | --- |
+| `tsplay-flow-authoring_<version>.zip` | 通用 skill 压缩包 |
+| `tsplay-flow-authoring-codex_<version>.zip` | 给 Codex 分发时更直观的命名 |
+| `tsplay-flow-authoring-openclaw_<version>.zip` | 给 OpenClaw 或同类 Agent 分发时更直观的命名 |
+| `tsplay-skills_<version>.json` | skill 发布 manifest，列出入口文件、安装目录和适配的 Agent 类型 |
+
+安装时把压缩包解到 Codex 的 `skills/` 目录即可，解压后应保留 `tsplay-flow-authoring/SKILL.md` 这一层目录结构。
+
 ## 推荐阅读顺序
 
 1. 先看这页，弄清 Skill 解决的是哪一层问题

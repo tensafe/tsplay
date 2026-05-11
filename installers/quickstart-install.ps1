@@ -24,10 +24,7 @@ function Resolve-ArchTag {
     switch ($arch) {
         "X64" { return "amd64" }
         "AMD64" { return "amd64" }
-        "ARM64" {
-            Write-Host "Windows ARM64 detected. Using the amd64 TSPlay build via x64 emulation."
-            return "amd64"
-        }
+        "ARM64" { return "arm64" }
         default { Fail "Unsupported Windows architecture: $arch" }
     }
 }

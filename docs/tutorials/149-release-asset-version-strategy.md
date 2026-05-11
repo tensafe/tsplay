@@ -44,6 +44,27 @@ go run . -flow script/tutorials/149_release_asset_version_strategy.flow.yaml
 如果命令没变，但内置教程、demo、脚本已经变了一轮，那也应该是可追踪变化。  
 这就是为什么高级阶段要单独讲资源版本。
 
+## Release workflow 怎么接版本 tag
+
+推送版本 tag（例如 `v1.0.2`）或发布 GitHub Release 时，`.github/workflows/release-binaries.yml` 会自动生成：
+
+- macOS / Linux / Windows 的 x86_64 与 ARM64 二进制
+- 对应平台的 `.tar.gz` 或 `.zip` 发布包
+- 可选的 `playwright-offline` 包，包含 TSPlay 二进制、Playwright driver 和 Chromium 浏览器缓存
+- `tsplay-flow-authoring` skill 压缩包
+- 面向 Codex / OpenClaw 命名的 skill 压缩包
+- `tsplay-skills_<version>.json` 发布 manifest
+- `SHA256SUMS.txt`
+
+手动运行 workflow 时，可以用 `playwright_offline` 开关决定是否生成这类大包；tag / GitHub Release 发布默认会生成，用户在 Release 页面自行选择轻量二进制还是 `playwright-offline` 包。
+
+典型发布入口：
+
+```bash
+git tag v1.0.2
+git push origin v1.0.2
+```
+
 ## 下一步
 
 继续看：
