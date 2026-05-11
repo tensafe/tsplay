@@ -80,6 +80,9 @@ curl -fsSL https://github.com/tensafe/tsplay/releases/latest/download/tsplay-qui
 | Linux x86_64 | [tsplay-linux-amd64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-amd64) |
 | Linux ARM64 | [tsplay-linux-arm64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-arm64) |
 | Windows x86_64 | [tsplay-windows-amd64.exe](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-amd64.exe) |
+| Windows ARM64 | [tsplay-windows-arm64.exe](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-arm64.exe) |
+
+如果机器不适合首次运行时再下载 Playwright，可以在 GitHub Release 资源里选择匹配平台的 `playwright-offline` 压缩包。这个包会同时包含 `tsplay`、`playwright/driver` 和 `playwright/browsers`；解压后保持 `playwright/` 目录和二进制在同一层即可。
 
 <p class="tsplay-section-kicker">Next Move</p>
 

@@ -41,7 +41,7 @@ Prepare:
 - Go `1.23.6+`
 - a machine that can launch Chromium
 
-On the first browser-related run, TSPlay calls `playwright.Install()` automatically to download the browser.
+On the first browser-related run, TSPlay uses a `playwright/` folder next to the binary when one is present; otherwise it calls `playwright.Install()` automatically to download Chromium.
 
 Then run these commands from the repository root:
 
@@ -181,7 +181,7 @@ This section keeps the full command map and detailed notes.
 
 - Go `1.23.6+`
 - an environment that can run Playwright Chromium
-- on the first browser-related run, TSPlay will call `playwright.Install()` automatically to download the browser
+- on the first browser-related run, TSPlay will use an adjacent `playwright/` folder when one is present, or call `playwright.Install()` automatically to download Chromium
 
 ### Install Dependencies
 

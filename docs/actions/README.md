@@ -31,6 +31,7 @@
 | `list-assets` | 列出二进制内置资源 | 想先确认 release 里带了什么 | [list-assets](list-assets.md) |
 | `extract-assets` | 释放内置 docs/script/demo | 单二进制交付、离线学习、培训包 | [extract-assets](extract-assets.md) |
 | `quickstart-demo` | 生成并执行最小 demo Flow | 想下载二进制后立刻体验一次，不先碰浏览器 | [quickstart-demo](quickstart-demo.md) |
+| `install-playwright` | 安装 TSPlay 使用的 Playwright Chromium 运行时 | 构建 `playwright-offline` 包，或提前把浏览器缓存准备好 | [install-playwright](install-playwright.md) |
 | `list-record-devices` | 列出 macOS 录屏设备 | 录屏前先查设备和权限 | [list-record-devices](list-record-devices.md) |
 | `record-screen` | 录制整个 macOS 桌面 | 录教程、录桌面演示、录窗口切换 | [record-screen](record-screen.md) |
 | `save-session` | 保存可复用会话 | 把登录态或 profile 注册下来 | [save-session](save-session.md) |
@@ -57,6 +58,7 @@
 
 - 先看 [list-assets](list-assets.md)
 - 再看 [extract-assets](extract-assets.md)
+- 如果要离线浏览器运行时，再看 [install-playwright](install-playwright.md)
 - 本地直接服务 demo 时看 [file-srv](file-srv.md)
 
 ### 我要复用登录态

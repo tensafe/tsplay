@@ -2310,43 +2310,48 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	var page playwright.Page
 	var browserVideo *BrowserVideoRecording
 	var browserVideoPath string
-	closePlaywright := sync.OnceValue(func() error {
-		var closeErr error
-		if page != nil {
-			if browserVideo != nil {
-				if options.BrowserVideoCooldownMS > 0 {
-					time.Sleep(time.Duration(options.BrowserVideoCooldownMS) * time.Millisecond)
-				}
-				if savedPath, err := SaveBrowserVideo(page, browserVideo.OutputPath); err != nil {
+	var closePlaywrightOnce sync.Once
+	var closePlaywrightErr error
+	closePlaywright := func() error {
+		closePlaywrightOnce.Do(func() {
+			var closeErr error
+			if page != nil {
+				if browserVideo != nil {
+					if options.BrowserVideoCooldownMS > 0 {
+						time.Sleep(time.Duration(options.BrowserVideoCooldownMS) * time.Millisecond)
+					}
+					if savedPath, err := SaveBrowserVideo(page, browserVideo.OutputPath); err != nil {
+						closeErr = err
+					} else {
+						browserVideoPath = savedPath
+					}
+				} else if err := page.Close(); err != nil && closeErr == nil {
 					closeErr = err
-				} else {
-					browserVideoPath = savedPath
 				}
-			} else if err := page.Close(); err != nil && closeErr == nil {
-				closeErr = err
+				page = nil
 			}
-			page = nil
-		}
-		if context != nil {
-			if err := context.Close(); err != nil && closeErr == nil {
-				closeErr = err
+			if context != nil {
+				if err := context.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
+				context = nil
 			}
-			context = nil
-		}
-		if browser != nil {
-			if err := browser.Close(); err != nil && closeErr == nil {
-				closeErr = err
+			if browser != nil {
+				if err := browser.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
+				browser = nil
 			}
-			browser = nil
-		}
-		if pw != nil {
-			if err := pw.Stop(); err != nil && closeErr == nil {
-				closeErr = err
+			if pw != nil {
+				if err := pw.Stop(); err != nil && closeErr == nil {
+					closeErr = err
+				}
+				pw = nil
 			}
-			pw = nil
-		}
-		return closeErr
-	})
+			closePlaywrightErr = closeErr
+		})
+		return closePlaywrightErr
+	}
 	stopWatcher := func() {}
 	if needsPlaywright {
 		browserVideo, err = PrepareBrowserVideoRecording(options.BrowserVideoOutputPath, options.BrowserVideoWidth, options.BrowserVideoHeight)
@@ -2492,13 +2497,16 @@ func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserCo
 		contextOptions.UserAgent = playwright.String(config.UserAgent)
 	}
 	if config.Viewport != nil {
-		contextOptions.Viewport = &playwright.Size{Width: config.Viewport.Width, Height: config.Viewport.Height}
+		contextOptions.Viewport = &playwright.BrowserTypeLaunchPersistentContextOptionsViewport{
+			Width:  playwright.Int(config.Viewport.Width),
+			Height: playwright.Int(config.Viewport.Height),
+		}
 	}
 	if config.Timeout > 0 {
 		contextOptions.Timeout = playwright.Float(float64(config.Timeout))
 	}
 	if browserVideo != nil {
-		contextOptions.RecordVideo = browserVideo.RecordVideo
+		contextOptions.RecordVideo = browserVideo.PersistentContextRecordVideo()
 	}
 	context, err := pw.Chromium.LaunchPersistentContext(userDataDir, contextOptions)
 	if err != nil {
@@ -2527,7 +2535,10 @@ func applyFlowBrowserContextOptions(options *playwright.BrowserNewContextOptions
 		options.UserAgent = playwright.String(config.UserAgent)
 	}
 	if config.Viewport != nil {
-		options.Viewport = &playwright.Size{Width: config.Viewport.Width, Height: config.Viewport.Height}
+		options.Viewport = &playwright.BrowserNewContextOptionsViewport{
+			Width:  playwright.Int(config.Viewport.Width),
+			Height: playwright.Int(config.Viewport.Height),
+		}
 	}
 	loadPath, err := config.runtimeLoadStorageStatePath(security)
 	if err != nil {
@@ -2537,7 +2548,7 @@ func applyFlowBrowserContextOptions(options *playwright.BrowserNewContextOptions
 		options.StorageStatePath = playwright.String(loadPath)
 	}
 	if browserVideo != nil {
-		options.RecordVideo = browserVideo.RecordVideo
+		options.RecordVideo = browserVideo.NewContextRecordVideo()
 	}
 	return nil
 }

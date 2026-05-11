@@ -94,6 +94,13 @@ $CODEX_HOME/skills/tsplay-flow-authoring
   references/
 ```
 
+GitHub Release 会同时生成面向 Codex / OpenClaw 的命名包：
+
+- `tsplay-flow-authoring-codex_<version>.zip`
+- `tsplay-flow-authoring-openclaw_<version>.zip`
+
+这两个包内容相同，都是标准 `SKILL.md` skill 目录；区别只是方便不同 Agent 分发渠道识别。
+
 ## 运行前假设
 
 - 优先使用当前 PATH 里的 `tsplay`

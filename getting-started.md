@@ -35,6 +35,9 @@ If you prefer the manual per-platform downloads instead:
 | Linux x86_64 | [tsplay-linux-amd64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-amd64) |
 | Linux ARM64 | [tsplay-linux-arm64](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-linux-arm64) |
 | Windows x86_64 | [tsplay-windows-amd64.exe](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-amd64.exe) |
+| Windows ARM64 | [tsplay-windows-arm64.exe](https://github.com/tensafe/tsplay/releases/latest/download/tsplay-windows-arm64.exe) |
+
+For machines that should not download Playwright on first browser use, choose the matching `playwright-offline` archive from the GitHub Release assets instead. Those archives include `tsplay` plus `playwright/driver` and `playwright/browsers`; keep the `playwright/` directory next to the binary after extracting.
 
 If you prefer the source-first path instead:
 

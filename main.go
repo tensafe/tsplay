@@ -62,7 +62,7 @@ var g_browserVideoHeight = 0
 var g_browserVideoCooldownMS = 1200
 
 func main() {
-	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server | Workbench API")
+	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server | Workbench API | Install Playwright")
 	tsfile := flag.String("script", "", "tsplay script file")
 	flowfile := flag.String("flow", "", "tsplay flow file")
 	addr := flag.String("addr", ":8082", "server listen address")
@@ -169,6 +169,12 @@ func main() {
 			if result != nil {
 				printJSON(result)
 			}
+			if err != nil {
+				log.Fatal(err)
+			}
+		case "install-playwright":
+			result, err := tsplay_core.InstallPlaywrightRuntime()
+			printJSON(result)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -581,8 +587,8 @@ func run_script(script string) {
 			log.Fatalf("could not prepare browser video: %v", err)
 		}
 		if browserVideo != nil {
-			page, err = browser.NewPage(playwright.BrowserNewPageOptions{
-				RecordVideo: browserVideo.RecordVideo,
+			page, err = browser.NewPage(playwright.BrowserNewContextOptions{
+				RecordVideo: browserVideo.NewContextRecordVideo(),
 			})
 		} else {
 			page, err = browser.NewPage()
