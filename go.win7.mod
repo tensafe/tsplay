@@ -18,7 +18,7 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
-	github.com/golang-sql/civil v0.0.0-20190719163853-6d8d2d259aee // indirect
+	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/mattn/go-colorable v0.1.7 // indirect
