@@ -754,13 +754,7 @@ func wait_for_network_idle(L *lua.LState) int {
 	}
 
 	// 等待页面达到网络空闲状态
-	err := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateNetworkidle,
-	})
-	if err != nil {
-		L.RaiseError("Failed to wait for network idle: %v", err)
-		return 0
-	}
+	page.WaitForLoadState("networkidle")
 
 	// 返回成功状态
 	L.Push(lua.LBool(true))
@@ -986,7 +980,7 @@ func accept_alert(L *lua.LState) int {
 	}
 
 	// 监听弹窗事件并接受弹窗
-	page.OnDialog(func(dialog playwright.Dialog) {
+	page.On("dialog", func(dialog playwright.Dialog) {
 		fmt.Printf("Alert detected: %s\n", dialog.Message())
 		dialog.Accept()
 	})
@@ -1002,7 +996,7 @@ func dismiss_alert(L *lua.LState) int {
 	}
 
 	// 监听弹窗事件并关闭弹窗
-	page.OnDialog(func(dialog playwright.Dialog) {
+	page.On("dialog", func(dialog playwright.Dialog) {
 		fmt.Printf("Alert detected: %s\n", dialog.Message())
 		dialog.Dismiss()
 	})
@@ -1021,7 +1015,7 @@ func set_alert_text(L *lua.LState) int {
 	text := L.CheckString(1)
 
 	// 监听弹窗事件并设置文本
-	page.OnDialog(func(dialog playwright.Dialog) {
+	page.On("dialog", func(dialog playwright.Dialog) {
 		fmt.Printf("Prompt detected: %s\n", dialog.Message())
 		dialog.Accept(text) // 使用 Accept(text) 方法设置文本
 	})
@@ -1833,9 +1827,7 @@ func intercept_request(L *lua.LState) int {
 
 	route_url_match := L.OptString(2, "**/*") // 若未传递参数，默认为空字符串
 	// 设置请求拦截器
-	err := page.Route(route_url_match, func(route playwright.Route) {
-		// 获取请求对象
-		request := route.Request()
+	err := page.Route(route_url_match, func(route playwright.Route, request playwright.Request) {
 		fmt.Println(request.URL(), request.Method(), request.ResourceType(), callback)
 		// 将请求信息传递给 Lua 回调
 		//_callback := L.GetGlobal("__intercept_request_callback") // 已经将 callback 压入栈中
@@ -1883,8 +1875,8 @@ func block_request(L *lua.LState) int {
 	}
 
 	// 设置请求拦截器
-	err := page.Route(pattern, func(route playwright.Route) {
-		fmt.Printf("Blocked request: %s\n", route.Request().URL())
+	err := page.Route(pattern, func(route playwright.Route, request playwright.Request) {
+		fmt.Printf("Blocked request: %s\n", request.URL())
 		route.Abort("blockedbyclient")
 	})
 	if err != nil {

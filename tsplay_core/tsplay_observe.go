@@ -124,15 +124,18 @@ func ObservePage(options PageObservationOptions) (*PageObservation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not create page: %w", err)
 	}
-	closePlaywright := sync.OnceFunc(func() {
-		if page != nil {
-			_ = page.Close()
-		}
-		if browser != nil {
-			_ = browser.Close()
-		}
-		_ = pw.Stop()
-	})
+	var closePlaywrightOnce sync.Once
+	closePlaywright := func() {
+		closePlaywrightOnce.Do(func() {
+			if page != nil {
+				_ = page.Close()
+			}
+			if browser != nil {
+				_ = browser.Close()
+			}
+			_ = pw.Stop()
+		})
+	}
 	defer closePlaywright()
 	stopWatcher := watchContextCancel(options.Context, closePlaywright)
 	defer stopWatcher()

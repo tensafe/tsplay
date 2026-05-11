@@ -1,3 +1,5 @@
+//go:build !win7
+
 package tsplay_core
 
 import (
