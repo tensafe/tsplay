@@ -81,9 +81,11 @@ jobs:
 
           package="tsplay_${VERSION}_${GOOS}_${GOARCH}"
           stage_dir="dist/${package}"
+          binary_name="tsplay-${GOOS}-${GOARCH}${ext}"
 
           mkdir -p "$stage_dir"
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "${stage_dir}/tsplay${ext}" .
+          cp "${stage_dir}/tsplay${ext}" "dist/${binary_name}"
           cp LICENSE "$stage_dir/"
           cp ReadMe.md "${stage_dir}/README.md"
           cp README.zh-CN.md "${stage_dir}/README.zh-CN.md"
@@ -106,9 +108,62 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  build-skill:
+    name: build-skill
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version label
+        id: vars
+        shell: bash
+        run: |
+          version="${{ github.event.release.tag_name }}"
+          if [ -z "$version" ]; then
+            version="${{ inputs.version }}"
+          fi
+          if [ -z "$version" ]; then
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build release skill archive
+        shell: bash
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          package="tsplay-flow-authoring_${VERSION}.zip"
+          mkdir -p dist
+          (
+            cd skills
+            zip -rq "../dist/${package}" "tsplay-flow-authoring"
+          )
+
+      - name: Copy quickstart installers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+          cp installers/quickstart-install.sh dist/tsplay-quickstart.sh
+          cp installers/quickstart-install.ps1 dist/tsplay-quickstart.ps1
+          chmod +x dist/tsplay-quickstart.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-skill
+          path: dist/*
+          if-no-files-found: error
+
   publish:
     if: github.event_name == 'release'
-    needs: build
+    needs:
+      - build
+      - build-skill
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -132,6 +187,11 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
+            dist/tsplay-quickstart.sh
+            dist/tsplay-quickstart.ps1
+            dist/tsplay-darwin-*
+            dist/tsplay-linux-*
+            dist/tsplay-windows-*
             dist/*.tar.gz
             dist/*.zip
             dist/SHA256SUMS.txt

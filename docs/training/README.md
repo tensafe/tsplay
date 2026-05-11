@@ -21,7 +21,7 @@
 | 模块 | 用途 | 入口 |
 | --- | --- | --- |
 | 学习路径 | 定义等级、能力边界、出入门标准 | [learning-path.md](learning-path.md) |
-| AI 无感入门 | 面向 Codex、OpenClaw 等 Agent，把“用户意图 -> MCP -> Flow -> 执行修复”串成新手入口 | [ai-intent-to-flow.md](ai-intent-to-flow.md) |
+| AI 协作入门 | 面向 Codex、OpenClaw 等 Agent，把“用户意图 -> MCP -> Flow -> 执行修复”串成可执行入口 | [ai-intent-to-flow.md](ai-intent-to-flow.md) |
 | Bootcamp 课程表 | 帮你把培训排成可执行课程 | [bootcamp-plan.md](bootcamp-plan.md) |
 | Labs | 提供基于仓库现有素材的实验任务 | [labs.md](labs.md) |
 | Capstone | 提供结业项目场景和交付要求 | [capstone-briefs.md](capstone-briefs.md) |
@@ -32,9 +32,9 @@
 
 ## 建议的交付模式
 
-### 模式 0：AI 无感入门
+### 模式 0：AI 协作入门
 
-适合希望“先做成，再理解底层细节”的业务用户、测试同学或产品同学。
+适合希望先完成任务、再理解底层细节的业务用户、测试同学或产品同学。
 
 - 目标：让用户只描述意图，由 Codex 等 Agent 帮他草拟、校验、执行和修复 Flow
 - 时间：1-2 小时

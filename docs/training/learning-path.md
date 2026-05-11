@@ -2,6 +2,17 @@
 
 这份学习路径把学员从“能跑例子”一路带到“能带别人”。每一级都要求有可检查的交付物，而不只是听课。
 
+如果教程页解决的是“先学哪一层”，这份学习路径解决的是“学到这一层以后，能力算不算过关”。
+
+## 和教程金字塔的对应关系
+
+| 教程层级 | 对应等级 | 说明 | 入口 |
+| --- | --- | --- | --- |
+| 第 1 层：先跑通基本动作 | `L0-L1` | 建立最小成功体验，理解 `Lua / Flow / artifacts` | [../tutorials/track-newbie.zh-CN.md](../tutorials/track-newbie.zh-CN.md) |
+| 第 2 层：会组织小流程 | `L2-L3` | 学会文件、控制流、会话和小业务流程 | [../tutorials/track-junior.zh-CN.md](../tutorials/track-junior.zh-CN.md) |
+| 第 3 层：能做真实交付 | `L3-L4` | 学会外部系统、对账、交接和模板化 | [../tutorials/track-intermediate.zh-CN.md](../tutorials/track-intermediate.zh-CN.md) |
+| 第 4 层：进入 Agent 与标准化 | `L4-L5` | 学会 MCP、边界、review、发布和培训演进 | [../tutorials/track-advanced.zh-CN.md](../tutorials/track-advanced.zh-CN.md) |
+
 ## 等级定义
 
 | 等级 | 名称 | 目标时间 | 学完后应该能做什么 |

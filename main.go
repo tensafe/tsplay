@@ -164,6 +164,14 @@ func main() {
 				log.Fatal(err)
 			}
 			fmt.Printf("Extracted %d bundled assets to %s\n", count, *extractRoot)
+		case "quickstart-demo":
+			result, err := runQuickstartDemoAction(*artifactRoot, *isheadless)
+			if result != nil {
+				printJSON(result)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
 		case "list-record-devices":
 			probe, err := listScreenRecordDevices()
 			if probe != nil {

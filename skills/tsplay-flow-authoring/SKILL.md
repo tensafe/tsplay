@@ -44,7 +44,7 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 - Start from the user goal, page URL, required inputs, desired output file or variables, and the minimum security boundary.
 - Prefer stable and readable Flow structure over clever Lua detours.
 - Use clear `name`, optional `description`, and meaningful `save_as` names so the Flow is reviewable.
-- Reach for common Flow-native actions first: `navigate`, `wait_for_selector`, `type_text`, `click`, `assert_visible`, `assert_text`, `extract_text`, `set_var`, `foreach`, `on_error`, `read_json`, `write_json`, `write_csv`, and `send_email`.
+- Reach for common Flow-native actions first: `navigate`, `wait_for_selector`, `type_text`, `click`, `assert_visible`, `assert_text`, `extract_text`, `set_var`, `foreach`, `on_error`, `read_json`, `write_json`, `write_csv`, `zip_compress`, `zip_extract`, and `send_email`.
 - For Chinese requests, normalize the task into five fields first: 页面, 目标, 输入, 输出, 授权.
 - Keep artifact paths stable and task-scoped, especially for tutorial or handoff work.
 - Reuse existing tutorial patterns before inventing a brand-new structure from scratch.

@@ -1,135 +1,205 @@
 ---
 hide:
   - toc
+  - title
 search:
   boost: 2
 ---
 
-<div class="tsplay-hero">
-  <div class="tsplay-hero__eyebrow">TSPlay Docs</div>
-  <h1>面向交付与 AI 协作的<br>浏览器自动化文档站</h1>
-  <p>
-    用一套资料收住 <code>Flow DSL</code>、<code>MCP</code>、会话复用、失败修复与教程交付，
-    适合研发、实施、测试、培训和 Agent 集成共同使用。
-  </p>
-  <div class="tsplay-hero__actions">
-    <a class="md-button md-button--primary" href="getting-started/">快速开始</a>
-    <a class="md-button" href="docs/tutorials/README.zh-CN/">教程总览</a>
-  </div>
-  <div class="tsplay-hero__minor">
-    想直接走智能体路线：<a href="docs/training/ai-intent-to-flow/">查看 AI 无感入门</a>
-  </div>
-  <div class="tsplay-hero__facts">
-    <span>Flow-first</span>
-    <span>MCP-ready</span>
-    <span>160 节教程</span>
-    <span>单二进制交付</span>
-  </div>
+<div class="tsplay-landing" markdown="1">
+
+<section class="tsplay-cosmos tsplay-cosmos--hero" markdown="1">
+<div class="tsplay-hero-grid" markdown="1">
+<div markdown="1">
+
+<p class="tsplay-cosmos__kicker">TSPlay Docs</p>
+
+# 给人和 AI 的浏览器自动化平台
+
+<p class="tsplay-cosmos__lede">用一套运行时把 <code>Flow DSL</code>、<code>MCP</code>、<code>Skills</code>、会话复用、失败修复与交付证据收成同一条主线。你可以先一键跑起来，也可以直接让 Codex 生成或修改 Flow，再继续扩展到培训、交付和 Agent 集成。</p>
+
+<div class="tsplay-pill-row">
+<span class="tsplay-pill tsplay-pill--accent">Flow DSL</span>
+<span class="tsplay-pill">MCP</span>
+<span class="tsplay-pill">Skills</span>
+<span class="tsplay-pill tsplay-pill--mint">single binary</span>
 </div>
 
-## 小白先看这里
+<div class="tsplay-cta-row">
+<a class="md-button md-button--primary" href="getting-started/">快速开始</a>
+<a class="md-button" href="docs/skills/">在 Codex 中使用 Skills</a>
+</div>
 
-第一次接触 TSPlay，先不要纠结 `Lua / Flow / MCP`。
-先照抄下面三步，跑通一次再继续学：
+<p class="tsplay-terminal__note">更偏教程学习，从 <a href="docs/tutorials/README.zh-CN/">教程总览</a> 进入；更偏 Agent 路线，从 <a href="docs/training/ai-intent-to-flow/">AI 协作入门</a> 进入。</p>
+
+</div>
+<div class="tsplay-install-card" markdown="1">
+
+<p class="tsplay-install-card__eyebrow">One-line Quickstart</p>
 
 ```bash
-go mod download
-go run . -flow script/tutorials/01_hello_world.flow.yaml
-# 只有要练本地 demo 页面时再执行这条
-go run . -action file-srv -addr :8000
+curl -fsSL https://github.com/tensafe/tsplay/releases/latest/download/tsplay-quickstart.sh | sh
 ```
 
-前两条用来确认运行时，第三条只在你要练本地 demo 页面时再开。
-[看完整开箱步骤](getting-started.md)
+<div class="tsplay-metric-row">
+  <div class="tsplay-metric">
+    <strong>自动识别系统</strong>
+    <span>macOS / Linux 用同一条命令进入</span>
+  </div>
+  <div class="tsplay-metric">
+    <strong>不先等 Playwright</strong>
+    <span>先生成 demo Flow 并拿到结构化结果</span>
+  </div>
+  <div class="tsplay-metric">
+    <strong>直接写 artifacts</strong>
+    <span>结果输出到 <code>artifacts/quickstart/</code></span>
+  </div>
+  <div class="tsplay-metric">
+    <strong>适合团队分发</strong>
+    <span>继续扩展到培训包和单二进制交付</span>
+  </div>
+</div>
 
-## 按目标进入
+<p class="tsplay-terminal__note">Windows 可在 <a href="getting-started/">快速开始</a> 页直接切到 PowerShell 命令。</p>
 
-<div class="grid cards" markdown>
+</div>
+</div>
+</section>
 
--   :material-file-code-outline:{ .lg .middle } __我要写 Flow__
+<section class="tsplay-landing-section" markdown="1">
 
-    ---
+<p class="tsplay-section-kicker">What It Does</p>
 
-    想把页面动作整理成可评审、可复用的 `.flow.yaml`。
+## 你可以直接用它做什么
 
-    [进入 Flow 学习路径](docs/tutorials/track-newbie.zh-CN.md)
+<div class="grid cards" markdown="1">
 
--   :material-robot-outline:{ .lg .middle } __我要接 Codex / Agent__
+-   __在 Codex 中生成或修改 Flow__
 
-    ---
+    仓库附带 `tsplay-flow-authoring`，可以直接把页面目标、输入输出和权限边界整理成 TSPlay Flow。
 
-    想把 `observe -> draft -> validate -> run -> repair` 接到 MCP 或智能体产品。
+    [查看 Skills 介绍与 Codex 用法](docs/skills/README.md)
 
-    [进入 AI 无感入门](docs/training/ai-intent-to-flow.md)
+-   __跑浏览器动作并留下可复盘证据__
 
--   :material-school-outline:{ .lg .middle } __我要做培训和推广__
+    同时处理页面动作、断言、提取、下载、截图、HTML、trace 和输出产物，不必拆成多段脚本。
 
-    ---
+    [查看支持行为清单](docs/capability-actions/README.md)
 
-    想把 TSPlay 讲给团队，做 onboarding、Bootcamp 或交付 enablement。
+-   __接到外部系统和批处理流程__
 
-    [进入培训体系](docs/training/README.md)
+    在同一条 Flow 里处理 HTTP、CSV、Excel、Redis、数据库、邮件通知和 artifact 汇总。
 
--   :material-book-open-page-variant-outline:{ .lg .middle } __我要先看全貌__
+    [查看能力动作参考](docs/capability-actions/README.md)
 
-    ---
+-   __进入 MCP / Agent 主链__
 
-    想先理解定位、三层能力、安全边界和项目结构。
+    把 `observe -> draft -> validate -> run -> repair` 接进 Agent 产品，而不是只停留在本地脚本。
 
-    [看中文总览](README.zh-CN.md)
+    [进入 AI 协作入门](docs/training/ai-intent-to-flow.md)
 
 </div>
 
-## TSPlay 擅长什么
+</section>
 
-<div class="grid cards" markdown>
+<section class="tsplay-landing-section" markdown="1">
 
--   :material-layers-triple-outline:{ .lg .middle } __三层入口统一__
+<p class="tsplay-section-kicker">How To Start</p>
 
-    `Lua CLI / Script`、`Flow DSL`、`MCP Server` 同仓库同运行时，适合探索、固化和集成三条路径并行。
+## 三条最常用的进入方式
 
--   :material-shield-check-outline:{ .lg .middle } __安全边界明确__
+<div class="grid cards" markdown="1">
 
-    用 `security_preset` 和 `allow_*` 授权高风险能力，适合把浏览器能力暴露给 Agent。
+-   __先跑通一次__
 
--   :material-image-filter-hdr-outline:{ .lg .middle } __失败现场可复盘__
+    第一次接触 TSPlay，先不要纠结 `Lua / Flow / MCP` 的差别，先完成一次运行，再决定下一条线。
 
-    失败时自动留下截图、HTML、DOM snapshot 和 trace，让 repair 与 review 有抓手。
+    [进入快速开始](getting-started.md)
 
--   :material-database-sync-outline:{ .lg .middle } __浏览器和外部系统一体化__
+-   __先走 Codex + Skills__
 
-    同一条 Flow 里处理 HTTP、CSV、Excel、Redis、数据库、邮件通知，不必拆成多段脚本。
+    如果你的目标是“让 AI 帮你产出 Flow”，先把 `tsplay-flow-authoring` 的使用方式吃透。
+
+    [进入 Skills 介绍](docs/skills/README.md)
+
+-   __先走教程金字塔__
+
+    如果你想系统学，教程不会先把 `160` 节课摊给你自己筛，而是先按“跑通动作 -> 组织成 Flow -> 接进真实交付 -> 进入 Agent / MCP / 标准化”四层往上走。
+
+    [进入教程总览](docs/tutorials/README.zh-CN.md)
+
+-   __先走 Agent / MCP__
+
+    如果你更关心能力暴露和主链工具，把服务起起来，再看 `finalize_flow`、repair 和 session。
+
+    [进入 AI 协作入门](docs/training/ai-intent-to-flow.md)
 
 </div>
 
-## 推荐起手路径
+</section>
 
-| 目标 | 第一步 | 第二步 | 第三步 |
-| --- | --- | --- | --- |
-| 今天先跑通一条自动化 | [5 分钟跑起来](getting-started.md) | [Lesson 01](docs/tutorials/01-hello-world.md) | [新手学习路线](docs/tutorials/track-newbie.zh-CN.md) |
-| 让 Codex 帮我出 Flow | [AI 无感入门](docs/training/ai-intent-to-flow.md) | `go run . -action srv` | [MCP 教程入口](docs/tutorials/119-mcp-chain-overview.md) |
-| 给团队做培训 | [培训体系总览](docs/training/README.md) | [训练营课程表](docs/training/bootcamp-plan.md) | [讲师手册](docs/training/trainer-playbook.md) |
+<section class="tsplay-landing-section" markdown="1">
+
+<p class="tsplay-section-kicker">Core Surface</p>
+
+## 核心能力面
+
+<div class="grid cards" markdown="1">
+
+-   __页面动作、提取与断言__
+
+    `navigate`、`click`、`type_text`、`extract_text`、`assert_visible`、`assert_text` 等动作可直接组成 Flow。
+
+-   __Flow 控制流与批处理__
+
+    `retry`、`if`、`foreach`、`on_error`、`wait_until` 等能力适合把一次成功变成稳定重复运行。
+
+-   __浏览器状态与会话复用__
+
+    支持 `get_storage_state`、cookie、保存命名 session、导入导出登录态，适合进入真实系统。
+
+-   __外部系统和交付物整合__
+
+    支持文件、表格、HTTP、Redis、数据库、邮件，以及面向 handoff 的 artifacts 输出。
+
+</div>
+
+</section>
+
+<section class="tsplay-landing-section" markdown="1">
+
+<p class="tsplay-section-kicker">Key Entry</p>
 
 ## 站内重点入口
 
-<div class="grid cards" markdown>
+<div class="grid cards" markdown="1">
 
 -   __快速开始__
-    [getting-started.md](getting-started.md)
 
--   __中文项目总览__
-    [README.zh-CN.md](README.zh-CN.md)
+    一条命令下载对应平台二进制，自动生成 demo Flow 并立刻执行。
 
--   __教程总站__
-    [docs/tutorials/README.zh-CN.md](docs/tutorials/README.zh-CN.md)
+    [打开快速开始](getting-started.md)
 
--   __英文课程地图__
-    [docs/tutorials/README.md](docs/tutorials/README.md)
+-   __Skills 介绍__
 
--   __文档总地图__
-    [docs/README.md](docs/README.md)
+    重点看 “在 Codex 中如何提要求、如何让 skill 生成或修改 Flow”。
 
--   __GitHub Pages 发布说明__
-    [docs/github-pages.md](docs/github-pages.md)
+    [打开 Skills 介绍](docs/skills/README.md)
+
+-   __支持行为清单__
+
+    按能力面查询支持的 action、约束边界和 Flow / Lua / MCP 的对应关系。
+
+    [打开支持行为清单](docs/capability-actions/README.md)
+
+-   __教程总览__
+
+    先用四层金字塔确定“今天该走哪一层”，再决定是否展开逐课 lesson 地图，而不是先面对一整张 160 节课的大表。
+
+    [打开教程总览](docs/tutorials/README.zh-CN.md)
+
+</div>
+
+</section>
 
 </div>

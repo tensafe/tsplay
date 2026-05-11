@@ -7,6 +7,9 @@
 - [README 开头可用版本](README-snippet.md)
 - [PRD 摘要版](PRD-summary.md)
 - [V1 落地任务清单](V1-task-list.md)
+- [Top 10 核心功能路线图](core-feature-roadmap.md)
+- [核心功能执行面板](core-feature-execution-board.md)
+- [30 轮持续进化计划](30-iteration-evolution-plan.md)
 
 ## 一、产品定位一页纸
 

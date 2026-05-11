@@ -153,7 +153,7 @@ The goal of this matrix is not to force every capability into mechanical 1:1 par
 | Capability Area | Typical Actions | Flow | Lua | MCP | Recommendation |
 | --- | --- | --- | --- | --- | --- |
 | page primitives | `navigate`, `click`, `type_text`, `select_option` | Yes | Yes | Yes | Keep aligned |
-| file and spreadsheet I/O | `screenshot`, `save_html`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
+| file and spreadsheet I/O | `screenshot`, `save_html`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
 | HTTP requests | `http_request`, `json_extract` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_http`, `allow_file_access`, and file-root constraints |
 | email delivery | `send_email` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_email` |
 | Redis operations | `redis_get`, `redis_set`, `redis_del`, `redis_incr` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_redis` |
@@ -168,6 +168,9 @@ Recommended rule of thumb:
 - Atomic data actions such as `HTTP / Redis / database / file I/O` should ideally work in both `Flow` and `Lua`, so exploration, productionization, and integration do not drift apart.
 - Orchestration capabilities such as `retry / foreach / on_error / wait_until` belong more naturally in `Flow DSL` and do not need to be translated into Lua extension functions.
 - Semantic actions such as `extract_text / assert_text / assert_visible` can start as higher-level Flow actions; if Lua users keep rebuilding the same patterns, then a Lua sugar layer is worth adding.
+
+If you want the capability-action layer explained systematically, start with [docs/capability-actions/README.md](docs/capability-actions/README.md).  
+If you want the command-line `-action` entry points instead, see [docs/actions/README.md](docs/actions/README.md).
 
 ## Quick Start
 
@@ -201,6 +204,8 @@ go mod download
 | list bundled assets inside the binary | `go run . -action list-assets` |
 | extract bundled docs/script/demo assets | `go run . -action extract-assets -extract-root ./tsplay-assets` |
 | start the MCP server | `go run . -action srv` |
+
+If you want one place that explains every supported command-line `-action`, start with [docs/actions/README.md](docs/actions/README.md).
 
 Add `-headless` if you want to hide the browser window.
 
@@ -314,7 +319,7 @@ Common Flow capabilities include:
 - variables: `vars`, `save_as`, `set_var`, `append_var`
 - control flow: `retry`, `if`, `foreach`, `on_error`, `wait_until`
 - page actions: click, type, wait, assert, screenshot, upload, download
-- data actions: `http_request`, `json_extract`, `send_email`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`
+- data actions: `http_request`, `json_extract`, `send_email`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract`
 - browser state: `use_session`, `storage_state`, `save_storage_state`
 
 ## Core Capabilities
@@ -493,7 +498,7 @@ Explicit `allow_*` flags override the corresponding fields inside `security_pres
 | --- | --- |
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`, `evaluate` |
-| `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel` |
+| `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` |
 | `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile |
 | `allow_http=true` | `http_request` |
 | `allow_email=true` | `send_email` |
@@ -576,6 +581,35 @@ Useful for batch import, chunked execution, and writing results back into a ledg
 - `read_excel.range` supports rectangular ranges such as `A2:B20`
 - you can combine `with.start_row`, `with.limit`, and `with.row_number_field` for resumable processing
 
+### ZIP Archives
+
+Useful when a Flow needs to package generated reports, unpack a downloaded handoff, or move a folder as one artifact.
+
+```yaml
+- action: zip_compress
+  file_path: artifacts/reports/run.zip
+  files:
+    - artifacts/reports/summary.json
+    - artifacts/reports/results.csv
+  folders:
+    - artifacts/reports/screenshots
+  password: "{{zip_password}}"
+  save_as: archive
+
+- action: zip_extract
+  file_path: "{{archive.file_path}}"
+  save_path: artifacts/unpacked
+  password: "{{zip_password}}"
+```
+
+Additional notes:
+
+- `zip_compress` accepts a single `source_path`, `file`, `folder`, `files`, `folders`, `paths`, or `sources`
+- `with.base_dir` controls the relative paths stored inside the archive
+- `zip_extract` rejects unsafe archive paths that would escape `save_path`
+- password support uses traditional ZipCrypto compatibility
+- restricted Flow / MCP contexts require `allow_file_access=true`
+
 ### Database
 
 Useful when you want to persist structured output directly into tables or query business data during a Flow.
@@ -607,6 +641,8 @@ This README covers project positioning and quick start. Training, enablement, an
 | Content | Description | Entry |
 | --- | --- | --- |
 | docs index | repository-wide documentation map and recommended reading order | [docs/README.md](docs/README.md) |
+| skills overview | explains what a Codex skill solves and what TSPlay currently provides | [docs/skills/README.md](docs/skills/README.md) |
+| tutorial pyramid overview | explains why the curriculum is organized as four layers instead of a flat lesson list | [docs/tutorials/curriculum-overview.zh-CN.md](docs/tutorials/curriculum-overview.zh-CN.md) |
 | training overview | a single entry for implementers, testers, developers, and trainers | [docs/training/README.md](docs/training/README.md) |
 | AI intent to Flow | hands-on guide for the agent path from user intent to MCP to Flow to execution and repair | [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md) |
 | learning path | roadmap from beginner to MCP integrator / trainer | [docs/training/learning-path.md](docs/training/learning-path.md) |
@@ -638,5 +674,6 @@ If this is your first time with TSPlay, this reading order works well:
 
 1. start with this page to understand the three layers and quick start
 2. continue with [docs/README.md](docs/README.md) to locate the rest of the materials
-3. if you want to learn Flow delivery, focus on [docs/training/learning-path.md](docs/training/learning-path.md)
-4. if you want to integrate agents or MCP, focus on [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md)
+3. if you want the system view first, read [docs/tutorials/curriculum-overview.zh-CN.md](docs/tutorials/curriculum-overview.zh-CN.md)
+4. if you want to learn Flow delivery, focus on [docs/training/learning-path.md](docs/training/learning-path.md)
+5. if you want to integrate agents or MCP, focus on [docs/training/ai-intent-to-flow.md](docs/training/ai-intent-to-flow.md)

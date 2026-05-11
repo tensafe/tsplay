@@ -22,6 +22,7 @@ Use this file when you know the business goal but need help choosing the right T
 - 重试易抖动步骤: `retry`
 - 读 JSON / CSV / Excel: `read_json`, `read_csv`, `read_excel`
 - 写 JSON 或 CSV: `write_json`, `write_csv`
+- 压缩或解压 ZIP: `zip_compress`, `zip_extract`
 - 发邮件通知: `send_email`
 
 ## Authoring Rules From TSPlay
@@ -461,6 +462,72 @@ Useful optional fields:
 
 - `with.headers`
 
+### `zip_compress`
+
+Use to package one file, a file list, or folders into a ZIP archive.
+
+```yaml
+- action: zip_compress
+  file_path: artifacts/reports/run.zip
+  files:
+    - artifacts/reports/summary.json
+    - artifacts/reports/results.csv
+  folders:
+    - artifacts/reports/screenshots
+  password: "{{zip_password}}"
+  save_as: archive
+```
+
+Required fields:
+
+- `file_path`
+- one of `source_path`, `file`, `folder`, `files`, `folders`, `with.paths`, or `with.sources`
+
+Useful optional fields:
+
+- `password`
+- `with.base_dir`
+- `save_as`
+
+Notes:
+
+- Folders are archived recursively.
+- `with.base_dir` controls the relative paths stored inside the archive.
+- Password support uses traditional ZipCrypto compatibility.
+- Restricted Flow or MCP contexts require `allow_file_access=true`.
+
+### `zip_extract`
+
+Use to unpack a ZIP archive into a local directory.
+
+```yaml
+- action: zip_extract
+  file_path: "{{archive.file_path}}"
+  save_path: artifacts/unpacked
+  password: "{{zip_password}}"
+  with:
+    overwrite: true
+  save_as: extracted
+```
+
+Required fields:
+
+- `file_path`
+- `save_path`
+
+Useful optional fields:
+
+- `password`
+- `with.overwrite`
+- `save_as`
+
+Notes:
+
+- `password` is only needed when encrypted entries are present.
+- `with.overwrite` defaults to `true`; set it to `false` to fail on existing files.
+- Extraction rejects unsafe archive paths that would escape `save_path`.
+- Restricted Flow or MCP contexts require `allow_file_access=true`.
+
 ## 6. Notification And Delivery / 通知与投递
 
 ### `send_email`
@@ -555,7 +622,7 @@ browser:
 - Table flow: `navigate` + `wait_for_selector` + `capture_table`
 - Batch import: `read_excel` or `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - Resilient import: `foreach` + `on_error` + `append_var`
-- Report notification: `set_var` or `write_excel` + `send_email`
+- Report notification: `set_var` or `write_excel` + `zip_compress` + `send_email`
 
 ## 中文起手组合
 
@@ -565,4 +632,4 @@ browser:
 - 抓取表格: `navigate` + `wait_for_selector` + `capture_table`
 - 批量导入: `read_excel` 或 `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - 带容错的导入: `foreach` + `on_error` + `append_var`
-- 结果邮件通知: `set_var` 或 `write_excel` + `send_email`
+- 结果邮件通知: `set_var` 或 `write_excel` + `zip_compress` + `send_email`

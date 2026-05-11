@@ -81,8 +81,14 @@ type FlowStep struct {
 	Sheet        string   `json:"sheet,omitempty" yaml:"sheet,omitempty"`
 	Key          string   `json:"key,omitempty" yaml:"key,omitempty"`
 	FilePath     string   `json:"file_path,omitempty" yaml:"file_path,omitempty"`
+	SourcePath   string   `json:"source_path,omitempty" yaml:"source_path,omitempty"`
+	Folder       string   `json:"folder,omitempty" yaml:"folder,omitempty"`
+	FolderPath   string   `json:"folder_path,omitempty" yaml:"folder_path,omitempty"`
 	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
+	Folders      []string `json:"folders,omitempty" yaml:"folders,omitempty"`
 	SavePath     string   `json:"save_path,omitempty" yaml:"save_path,omitempty"`
+	Password     string   `json:"password,omitempty" yaml:"password,omitempty"`
+	BaseDir      string   `json:"base_dir,omitempty" yaml:"base_dir,omitempty"`
 	Pattern      string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 	From         any      `json:"from,omitempty" yaml:"from,omitempty"`
 	Connection   string   `json:"connection,omitempty" yaml:"connection,omitempty"`
@@ -247,6 +253,8 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"write_json":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "value", Required: true}}},
 	"write_csv":             {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "value", Required: true}, {Name: "headers"}}},
 	"write_excel":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "value", Required: true}, {Name: "sheet"}, {Name: "headers"}}},
+	"zip_compress":          {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "source_path"}, {Name: "password"}}},
+	"zip_extract":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "save_path", Required: true}, {Name: "password"}}},
 	"accept_alert":          {},
 	"dismiss_alert":         {},
 	"set_alert_text":        {Args: []flowArgSpec{{Name: "text", Required: true}}},
@@ -447,6 +455,24 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 		}
 		if step.Action == "write_excel" {
 			if err := validateWriteExcelFlowStep(stepPath, step, spec, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
+			continue
+		}
+		if step.Action == "zip_compress" {
+			if err := validateZipCompressFlowStep(stepPath, step, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
+			continue
+		}
+		if step.Action == "zip_extract" {
+			if err := validateZipExtractFlowStep(stepPath, step, knownVars); err != nil {
 				return err
 			}
 			if step.SaveAs != "" {
@@ -1444,6 +1470,147 @@ func validateWriteValueFlowStep(stepPath string, step FlowStep, spec flowActionS
 	return nil
 }
 
+func validateZipCompressFlowStep(stepPath string, step FlowStep, knownVars map[string]any) error {
+	outputNames := map[string]bool{"file_path": true, "archive_path": true, "output_path": true, "save_path": true}
+	sourceNames := map[string]bool{
+		"source_path": true,
+		"source":      true,
+		"path":        true,
+		"file":        true,
+		"folder":      true,
+		"folder_path": true,
+		"files":       true,
+		"folders":     true,
+		"paths":       true,
+		"sources":     true,
+	}
+	if len(step.Args) > 0 {
+		if len(step.presentNamedParams()) > 0 {
+			return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepPath, step.Action)
+		}
+		if len(step.Args) < 2 || len(step.Args) > 3 {
+			return fmt.Errorf("step %s action %q expects between 2 and 3 args, got %d", stepPath, step.Action, len(step.Args))
+		}
+		if err := validateFlowParamValue(stepPath, step.Action, "file_path", step.Args[0], knownVars); err != nil {
+			return err
+		}
+		if err := validateZipPathListParam(stepPath, step.Action, "source_path", step.Args[1], knownVars); err != nil {
+			return err
+		}
+		if len(step.Args) == 3 {
+			if err := validateFlowParamValue(stepPath, step.Action, "password", step.Args[2], knownVars); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	present := step.presentNamedParams()
+	hasOutput := false
+	hasSource := false
+	for name, value := range present {
+		switch {
+		case outputNames[name]:
+			hasOutput = true
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		case sourceNames[name]:
+			hasSource = true
+			if err := validateZipPathListParam(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		case name == "password" || name == "base_dir":
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+	}
+	if !hasOutput {
+		return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, "file_path")
+	}
+	if !hasSource {
+		return fmt.Errorf("step %s action %q requires source_path, file, files, folder, or folders", stepPath, step.Action)
+	}
+	return nil
+}
+
+func validateZipExtractFlowStep(stepPath string, step FlowStep, knownVars map[string]any) error {
+	inputNames := map[string]bool{"file_path": true, "archive_path": true, "source_path": true}
+	outputNames := map[string]bool{"save_path": true, "output_dir": true, "dest_dir": true, "destination": true}
+	if len(step.Args) > 0 {
+		if len(step.presentNamedParams()) > 0 {
+			return fmt.Errorf("step %s action %q cannot mix args with named parameters", stepPath, step.Action)
+		}
+		if len(step.Args) < 2 || len(step.Args) > 3 {
+			return fmt.Errorf("step %s action %q expects between 2 and 3 args, got %d", stepPath, step.Action, len(step.Args))
+		}
+		if err := validateFlowParamValue(stepPath, step.Action, "file_path", step.Args[0], knownVars); err != nil {
+			return err
+		}
+		if err := validateFlowParamValue(stepPath, step.Action, "save_path", step.Args[1], knownVars); err != nil {
+			return err
+		}
+		if len(step.Args) == 3 {
+			if err := validateFlowParamValue(stepPath, step.Action, "password", step.Args[2], knownVars); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	present := step.presentNamedParams()
+	hasInput := false
+	hasOutput := false
+	for name, value := range present {
+		switch {
+		case inputNames[name]:
+			hasInput = true
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		case outputNames[name]:
+			hasOutput = true
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		case name == "password":
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		case name == "overwrite":
+			if err := validateFlowParamValue(stepPath, step.Action, name, value, knownVars); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+	}
+	if !hasInput {
+		return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, "file_path")
+	}
+	if !hasOutput {
+		return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, "save_path")
+	}
+	return nil
+}
+
+func validateZipPathListParam(stepPath string, action string, name string, value any, knownVars map[string]any) error {
+	if err := validateFlowReferences(stepPath, action, name, value, knownVars); err != nil {
+		return err
+	}
+	if _, ok := fullPlaceholderExpression(value); ok {
+		return nil
+	}
+	resolved := resolveStaticFlowValue(value, knownVars)
+	if _, err := zipPathListValue(resolved); err != nil {
+		return fmt.Errorf("step %s action %q parameter %q %w", stepPath, action, name, err)
+	}
+	return nil
+}
+
 func resolveStaticFlowValue(value any, knownVars map[string]any) any {
 	if known, ok := resolveKnownPlaceholderValue(value, knownVars); ok {
 		return known
@@ -1609,9 +1776,9 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "save_path", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite":
 		return "bool"
 	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
@@ -1619,7 +1786,7 @@ func flowParamType(name string) string {
 		return "number"
 	case "headers", "query", "form", "multipart_files", "multipart_fields", "row", "smtp":
 		return "object"
-	case "files", "columns", "returning", "key_columns", "update_columns":
+	case "files", "folders", "paths", "sources", "columns", "returning", "key_columns", "update_columns":
 		return "string_list"
 	case "to", "cc", "bcc":
 		return "email_recipients"
@@ -1692,7 +1859,7 @@ func flowActionSecurityGroup(action string) string {
 		return "redis"
 	case "db_insert", "db_insert_many", "db_upsert", "db_query", "db_query_one", "db_execute", "db_transaction":
 		return "database"
-	case "screenshot", "screenshot_element", "save_html", "read_json", "read_csv", "read_excel", "write_json", "write_csv", "write_excel", "upload_file", "upload_multiple_files", "download_file", "download_url":
+	case "screenshot", "screenshot_element", "save_html", "read_json", "read_csv", "read_excel", "write_json", "write_csv", "write_excel", "zip_compress", "zip_extract", "upload_file", "upload_multiple_files", "download_file", "download_url":
 		return "file_access"
 	case "get_storage_state", "get_cookies_string":
 		return "browser_state"
@@ -1995,6 +2162,34 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"file_path": flowFileInputPath}
 	case "write_json", "write_csv", "write_excel":
 		return map[string]flowFilePathRole{"file_path": flowFileOutputPath}
+	case "zip_compress":
+		return map[string]flowFilePathRole{
+			"file_path":    flowFileOutputPath,
+			"archive_path": flowFileOutputPath,
+			"output_path":  flowFileOutputPath,
+			"save_path":    flowFileOutputPath,
+			"source_path":  flowFileInputPath,
+			"source":       flowFileInputPath,
+			"path":         flowFileInputPath,
+			"file":         flowFileInputPath,
+			"folder":       flowFileInputPath,
+			"folder_path":  flowFileInputPath,
+			"files":        flowFileInputPath,
+			"folders":      flowFileInputPath,
+			"paths":        flowFileInputPath,
+			"sources":      flowFileInputPath,
+			"base_dir":     flowFileInputPath,
+		}
+	case "zip_extract":
+		return map[string]flowFilePathRole{
+			"file_path":    flowFileInputPath,
+			"archive_path": flowFileInputPath,
+			"source_path":  flowFileInputPath,
+			"save_path":    flowFileOutputPath,
+			"output_dir":   flowFileOutputPath,
+			"dest_dir":     flowFileOutputPath,
+			"destination":  flowFileOutputPath,
+		}
 	case "download_file", "download_url":
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "http_request":
@@ -3422,6 +3617,10 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowReadCSVStep(ctx, step)
 	case "read_excel":
 		return runFlowReadExcelStep(ctx, step)
+	case "zip_compress":
+		return runFlowZipCompressStep(ctx, step)
+	case "zip_extract":
+		return runFlowZipExtractStep(ctx, step)
 	case "assert_visible":
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
@@ -3644,6 +3843,100 @@ func runFlowReadExcelStep(ctx *FlowContext, step FlowStep) (any, error) {
 		Limit:          readOptions.Limit,
 		RowNumberField: readOptions.RowNumberField,
 	})
+}
+
+func runFlowZipCompressStep(ctx *FlowContext, step FlowStep) (any, error) {
+	values, err := resolvedZipStepValues(ctx, step)
+	if err != nil {
+		return nil, err
+	}
+	config, err := normalizeZipCompressConfig(values)
+	if err != nil {
+		return nil, err
+	}
+	if ctx != nil && ctx.Security != nil {
+		config.FilePath, err = resolveRuntimeFilePath(config.FilePath, flowFileOutputPath, *ctx.Security)
+		if err != nil {
+			return nil, fmt.Errorf("action %q parameter %q %w", step.Action, "file_path", err)
+		}
+		config.Sources, err = resolveRuntimeFilePaths(config.Sources, flowFileInputPath, *ctx.Security)
+		if err != nil {
+			return nil, fmt.Errorf("action %q parameter %q %w", step.Action, "source_path", err)
+		}
+		if config.BaseDir != "" {
+			config.BaseDir, err = resolveRuntimeFilePath(config.BaseDir, flowFileInputPath, *ctx.Security)
+			if err != nil {
+				return nil, fmt.Errorf("action %q parameter %q %w", step.Action, "base_dir", err)
+			}
+		}
+	}
+	return executeZipCompress(config)
+}
+
+func runFlowZipExtractStep(ctx *FlowContext, step FlowStep) (any, error) {
+	values, err := resolvedZipStepValues(ctx, step)
+	if err != nil {
+		return nil, err
+	}
+	config, err := normalizeZipExtractConfig(values)
+	if err != nil {
+		return nil, err
+	}
+	if ctx != nil && ctx.Security != nil {
+		config.FilePath, err = resolveRuntimeFilePath(config.FilePath, flowFileInputPath, *ctx.Security)
+		if err != nil {
+			return nil, fmt.Errorf("action %q parameter %q %w", step.Action, "file_path", err)
+		}
+		config.SavePath, err = resolveRuntimeFilePath(config.SavePath, flowFileOutputPath, *ctx.Security)
+		if err != nil {
+			return nil, fmt.Errorf("action %q parameter %q %w", step.Action, "save_path", err)
+		}
+	}
+	return executeZipExtract(config)
+}
+
+func resolvedZipStepValues(ctx *FlowContext, step FlowStep) (map[string]any, error) {
+	values := map[string]any{}
+	if len(step.Args) > 0 {
+		if len(step.Args) >= 1 {
+			values["file_path"] = step.Args[0]
+		}
+		if len(step.Args) >= 2 {
+			if step.Action == "zip_extract" {
+				values["save_path"] = step.Args[1]
+			} else {
+				values["source_path"] = step.Args[1]
+			}
+		}
+		if len(step.Args) >= 3 {
+			values["password"] = step.Args[2]
+		}
+	} else {
+		for name, value := range step.presentNamedParams() {
+			values[name] = value
+		}
+	}
+	resolved := map[string]any{}
+	for name, value := range values {
+		item, err := resolveValue(value, ctx)
+		if err != nil {
+			return nil, err
+		}
+		resolved[name] = item
+	}
+	return resolved, nil
+}
+
+func resolveRuntimeFilePaths(paths []string, role flowFilePathRole, policy FlowSecurityPolicy) ([]string, error) {
+	resolved := make([]string, 0, len(paths))
+	for _, item := range paths {
+		path, err := resolveRuntimeFilePath(item, role, policy)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, path)
+	}
+	return resolved, nil
 }
 
 func flowStepTableReadOptions(ctx *FlowContext, step FlowStep) (tableReadOptions, error) {
@@ -4017,10 +4310,18 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	addString("sheet", step.Sheet)
 	addString("key", step.Key)
 	addString("file_path", step.FilePath)
+	addString("source_path", step.SourcePath)
+	addString("folder", step.Folder)
+	addString("folder_path", step.FolderPath)
 	if len(step.Files) > 0 {
 		params["files"] = step.Files
 	}
+	if len(step.Folders) > 0 {
+		params["folders"] = step.Folders
+	}
 	addString("save_path", step.SavePath)
+	addString("password", step.Password)
+	addString("base_dir", step.BaseDir)
 	addString("pattern", step.Pattern)
 	if step.From != nil {
 		params["from"] = step.From
@@ -4144,13 +4445,28 @@ func (step FlowStep) param(name string) (any, bool) {
 		return stringParam(step.Key)
 	case "file_path":
 		return stringParam(step.FilePath)
+	case "source_path":
+		return stringParam(step.SourcePath)
+	case "folder":
+		return stringParam(step.Folder)
+	case "folder_path":
+		return stringParam(step.FolderPath)
 	case "files":
 		if len(step.Files) == 0 {
 			return nil, false
 		}
 		return step.Files, true
+	case "folders":
+		if len(step.Folders) == 0 {
+			return nil, false
+		}
+		return step.Folders, true
 	case "save_path":
 		return stringParam(step.SavePath)
+	case "password":
+		return stringParam(step.Password)
+	case "base_dir":
+		return stringParam(step.BaseDir)
 	case "pattern":
 		return stringParam(step.Pattern)
 	case "from":

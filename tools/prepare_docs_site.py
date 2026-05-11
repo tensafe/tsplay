@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 from pathlib import Path
 
 
@@ -14,12 +15,26 @@ def copy_path(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def reset_site_root(site_root: Path) -> None:
+    if not site_root.exists():
+        return
+    last_error: OSError | None = None
+    for _ in range(3):
+        try:
+            shutil.rmtree(site_root)
+            return
+        except OSError as err:
+            last_error = err
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+
+
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     site_root = repo_root / "site-docs"
 
-    if site_root.exists():
-        shutil.rmtree(site_root)
+    reset_site_root(site_root)
     site_root.mkdir(parents=True)
 
     # Keep the rendered site source close to the repository layout so the
