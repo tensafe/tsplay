@@ -179,7 +179,6 @@ jobs:
           cp LICENSE "$stage_dir/"
           cp ReadMe.md "${stage_dir}/README.md"
           cp README.zh-CN.md "${stage_dir}/README.zh-CN.md"
-          cp go.win7.mod "$stage_dir/"
           cat > "$stage_dir/WIN7.md" <<EOF
           # TSPlay Win7 Package
 
@@ -213,7 +212,6 @@ jobs:
           cp LICENSE "$stage_dir/"
           cp ReadMe.md "${stage_dir}/README.md"
           cp README.zh-CN.md "${stage_dir}/README.zh-CN.md"
-          cp go.win7.mod "$stage_dir/"
           cat > "$stage_dir/PLAYWRIGHT-OFFLINE-WIN7.md" <<EOF
           # TSPlay Win7 Playwright Offline Package
 
