@@ -891,6 +891,10 @@ func screenshot(L *lua.LState) int {
 		L.RaiseError("Path cannot be empty")
 		return 0
 	}
+	if err := ensureOutputFileParent(path); err != nil {
+		L.RaiseError("Failed to create screenshot directory for '%s': %v", path, err)
+		return 0
+	}
 
 	// 截取页面截图
 	_, err := page.Screenshot(playwright.PageScreenshotOptions{
@@ -920,6 +924,10 @@ func screenshot_element(L *lua.LState) int {
 	}
 	if path == "" {
 		L.RaiseError("Path cannot be empty")
+		return 0
+	}
+	if err := ensureOutputFileParent(path); err != nil {
+		L.RaiseError("Failed to create screenshot directory for '%s': %v", path, err)
 		return 0
 	}
 
@@ -964,8 +972,7 @@ func save_html(L *lua.LState) int {
 	}
 
 	// 将 HTML 写入文件
-	err = os.WriteFile(path, []byte(content), 0644)
-	if err != nil {
+	if err := writeOutputFile(path, []byte(content)); err != nil {
 		L.RaiseError("Failed to save HTML to '%s': %v", path, err)
 		return 0
 	}
@@ -1218,6 +1225,10 @@ func download_url(L *lua.LState) int {
 		L.RaiseError("Save path cannot be empty")
 		return 0
 	}
+	if err := ensureOutputFileParent(savePath); err != nil {
+		L.RaiseError("Failed to create download directory for '%s': %v", savePath, err)
+		return 0
+	}
 
 	// Get cookies from the Playwright page
 	cookies, err := page.Context().Cookies(url)
@@ -1302,6 +1313,10 @@ func download_file(L *lua.LState) int {
 	}
 	if savePath == "" {
 		L.RaiseError("Save path cannot be empty")
+		return 0
+	}
+	if err := ensureOutputFileParent(savePath); err != nil {
+		L.RaiseError("Failed to create download directory for '%s': %v", savePath, err)
 		return 0
 	}
 
@@ -1983,6 +1998,10 @@ func save_storage_state(L *lua.LState) int {
 	path := L.CheckString(1)
 	if strings.TrimSpace(path) == "" {
 		L.RaiseError("Path cannot be empty")
+		return 0
+	}
+	if err := ensureOutputFileParent(path); err != nil {
+		L.RaiseError("Failed to create storage state directory for '%s': %v", path, err)
 		return 0
 	}
 

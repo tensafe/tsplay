@@ -3352,6 +3352,9 @@ func saveFlowBrowserStateFromConfig(L *lua.LState, flow *Flow, options FlowRunOp
 	if !ok || context == nil {
 		return fmt.Errorf("browser.save_storage_state requires an active browser context")
 	}
+	if err := ensureOutputFileParent(path); err != nil {
+		return fmt.Errorf("create browser storage state directory for %q: %w", path, err)
+	}
 	if _, err := context.StorageState(path); err != nil {
 		return fmt.Errorf("save browser storage state to %q: %w", path, err)
 	}

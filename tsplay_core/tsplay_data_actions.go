@@ -163,16 +163,23 @@ func writeCSVValue(filePath string, value any, headers []string) (map[string]any
 }
 
 func writeOutputFile(filePath string, content []byte) error {
+	if err := ensureOutputFileParent(filePath); err != nil {
+		return err
+	}
+	if content == nil {
+		return nil
+	}
+	return os.WriteFile(filePath, content, 0644)
+}
+
+func ensureOutputFileParent(filePath string) error {
 	parent := filepath.Dir(filePath)
 	if parent != "." && parent != "" {
 		if err := os.MkdirAll(parent, 0755); err != nil {
 			return err
 		}
 	}
-	if content == nil {
-		return nil
-	}
-	return os.WriteFile(filePath, content, 0644)
+	return nil
 }
 
 func csvRowsFromValue(value any, headers []string) ([][]string, []string, error) {

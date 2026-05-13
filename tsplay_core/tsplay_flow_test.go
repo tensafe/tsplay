@@ -1901,6 +1901,52 @@ func TestRunFlowBrowserStorageStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRunFlowLuaSaveStorageStateCreatesParentDirectory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/seed":
+			fmt.Fprint(w, `<html><body><script>localStorage.setItem("token","lua-parent-dir"); window.location.href="/check";</script></body></html>`)
+		case "/check":
+			fmt.Fprint(w, `<html><body><div id="ready"></div><script>document.getElementById("ready").textContent = localStorage.getItem("token") || "missing";</script></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	statePath := filepath.Join(root, "artifacts", "states", "admin.json")
+	if _, err := os.Stat(filepath.Dir(statePath)); !os.IsNotExist(err) {
+		t.Fatalf("expected storage state directory to start missing, stat err=%v", err)
+	}
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "lua_save_storage_state_creates_parent",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL + "/seed"},
+			{Action: "assert_text", Selector: "#ready", Text: "lua-parent-dir", Timeout: 3000},
+			{
+				Action: "lua",
+				Code:   fmt.Sprintf("return save_storage_state(%q)", filepath.ToSlash(statePath)),
+				SaveAs: "saved_state_path",
+			},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{Headless: true})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["saved_state_path"]; got != filepath.ToSlash(statePath) {
+		t.Fatalf("saved_state_path = %#v", got)
+	}
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("expected storage state file: %v", err)
+	}
+}
+
 func TestRunFlowBrowserUseSessionRoundTrip(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
