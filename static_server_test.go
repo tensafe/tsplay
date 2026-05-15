@@ -75,6 +75,33 @@ func TestNewStaticFileServerServesBundledAssets(t *testing.T) {
 	}
 }
 
+func TestNewStaticFileServerServesBundledGoddddocrDemo(t *testing.T) {
+	handler, _, err := newStaticFileServer("")
+	if err != nil {
+		t.Fatalf("newStaticFileServer: %v", err)
+	}
+
+	pageReq := httptest.NewRequest("GET", "/demo/captcha_login.html", nil)
+	pageRec := httptest.NewRecorder()
+	handler.ServeHTTP(pageRec, pageReq)
+	if pageRec.Code != 200 {
+		t.Fatalf("page status = %d, want 200", pageRec.Code)
+	}
+	if body := pageRec.Body.String(); !strings.Contains(body, "data/captcha_3n3d.png") {
+		t.Fatalf("unexpected captcha demo page: %q", body)
+	}
+
+	imageReq := httptest.NewRequest("GET", "/demo/data/captcha_3n3d.png", nil)
+	imageRec := httptest.NewRecorder()
+	handler.ServeHTTP(imageRec, imageReq)
+	if imageRec.Code != 200 {
+		t.Fatalf("image status = %d, want 200", imageRec.Code)
+	}
+	if body := imageRec.Body.Bytes(); len(body) < 8 || string(body[:8]) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("captcha image response is not a PNG")
+	}
+}
+
 func TestStaticServerBaseURL(t *testing.T) {
 	cases := []struct {
 		addr string

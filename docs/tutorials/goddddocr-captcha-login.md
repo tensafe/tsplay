@@ -18,6 +18,8 @@ cd ../tsplay
 go run . -action file-srv -addr :8000 -serve-root .
 ```
 
+使用发布版 `./tsplay` 时，demo、图片和 Flow 已经内置进二进制，可以直接运行 `./tsplay -action file-srv -addr :8000`。
+
 运行 Flow：
 
 ```bash
