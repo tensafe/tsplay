@@ -101,6 +101,15 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 		}
 		multipartFields["confidence"] = confidence
 	}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "probability"); err != nil {
+		return nil, err
+	} else if ok {
+		probability, err := ocrBoolParam(value)
+		if err != nil {
+			return nil, fmt.Errorf("ocr_request probability %w", err)
+		}
+		multipartFields["probability"] = probability
+	}
 
 	with := map[string]any{
 		"multipart_files":  map[string]any{fieldName: filePath},
@@ -248,7 +257,7 @@ func buildOCRRequestResult(response map[string]any) (map[string]any, error) {
 		"status":   response["status"],
 		"response": response,
 	}
-	for _, name := range []string{"confidence", "request_id", "processing_time_ms"} {
+	for _, name := range []string{"confidence", "probability", "request_id", "processing_time_ms"} {
 		if value, ok := body[name]; ok {
 			result[name] = value
 		}

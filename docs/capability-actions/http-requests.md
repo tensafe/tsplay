@@ -33,6 +33,7 @@ steps:
 ### goddddocr OCR
 
 `ocr_request` 是给 tsplay 调验证码识别服务的轻量封装。它默认读取 `GODDDDOCR_URL`，没有配置时使用 `http://127.0.0.1:8088/ocr/file`；如果传入的是服务根地址，例如 `http://127.0.0.1:8088`，会自动补成 `/ocr/file`。
+默认只返回识别文本和置信度；调试识别差异时可以加 `probability: true`，结果会放到 `ocr_result.probability`。
 
 ```yaml
 schema_version: "1"
@@ -51,6 +52,7 @@ steps:
     with:
       charset_range: 0123456789abcdefghijklmnopqrstuvwxyz
       confidence: true
+      probability: false
 
   - action: set_var
     save_as: captcha_text
@@ -73,7 +75,7 @@ print(open_count)
 
 - 页面能直接抓 API 时，`http_request` 往往比“继续点页面”更稳定
 - goddddocr 这类本地服务建议先跑 `ocr_ready`，失败时更容易定位是服务问题还是图片识别问题
-- 验证码识别优先用 `ocr_request`，业务 Flow 只处理 `ocr_result.text` 和必要的置信度判断
+- 验证码识别优先用 `ocr_request`，业务 Flow 只处理 `ocr_result.text` 和必要的置信度判断；完整概率矩阵只在排查准确率时打开
 - `json_extract` 很适合和 `save_as`、`set_var` 串起来，把响应拆成后续步骤要用的字段
 - `use_browser_cookies=true` 时，意味着这条请求会依赖浏览器上下文
 

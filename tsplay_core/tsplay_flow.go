@@ -281,7 +281,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
 	"ocr_ready":             {Args: []flowArgSpec{{Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "strict"}}},
-	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "confidence"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
+	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "confidence"}, {Name: "probability"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
 	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
@@ -1832,7 +1832,7 @@ func flowParamType(name string) string {
 	switch name {
 	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "strict":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict":
 		return "bool"
 	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"

@@ -3165,6 +3165,9 @@ func TestRunFlowOCRRequest(t *testing.T) {
 		if got := r.FormValue("confidence"); got != "true" {
 			t.Fatalf("unexpected confidence: %q", got)
 		}
+		if got := r.FormValue("probability"); got != "true" {
+			t.Fatalf("unexpected probability: %q", got)
+		}
 		file, _, err := r.FormFile("file")
 		if err != nil {
 			t.Fatalf("read multipart file: %v", err)
@@ -3178,7 +3181,7 @@ func TestRunFlowOCRRequest(t *testing.T) {
 			t.Fatalf("unexpected multipart content: %q", string(content))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"result":"3n3d","confidence":0.99,"request_id":"req-1","processing_time_ms":12.5}`)
+		fmt.Fprint(w, `{"result":"3n3d","confidence":0.99,"probability":{"text":"3n3d","charsets":["","3","n","d"],"probability":[[0.01,0.97,0.01,0.01]],"confidence":0.97},"request_id":"req-1","processing_time_ms":12.5}`)
 	}))
 	defer server.Close()
 
@@ -3197,6 +3200,7 @@ func TestRunFlowOCRRequest(t *testing.T) {
 				SavePath: "responses/ocr.json",
 				With: map[string]any{
 					"charset_range": "0123456789abcdef",
+					"probability":   true,
 				},
 			},
 			{
@@ -3228,6 +3232,13 @@ func TestRunFlowOCRRequest(t *testing.T) {
 	}
 	if got := ocrResult["confidence"]; got != 0.99 {
 		t.Fatalf("confidence = %#v", got)
+	}
+	probability, ok := ocrResult["probability"].(map[string]any)
+	if !ok {
+		t.Fatalf("probability = %#v", ocrResult["probability"])
+	}
+	if got := probability["text"]; got != "3n3d" {
+		t.Fatalf("probability.text = %#v", got)
 	}
 	if got := ocrResult["request_id"]; got != "req-1" {
 		t.Fatalf("request_id = %#v", got)
