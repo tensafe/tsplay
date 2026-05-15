@@ -158,7 +158,7 @@ The goal of this matrix is not to force every capability into mechanical 1:1 par
 | email delivery | `send_email` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_email` |
 | Redis operations | `redis_get`, `redis_set`, `redis_del`, `redis_incr` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_redis` |
 | database operations | `db_insert`, `db_insert_many`, `db_upsert`, `db_query`, `db_query_one`, `db_execute`, `db_transaction` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_database`, and `db_transaction` auto-commits or rolls back |
-| browser state | `get_storage_state`, `get_cookies_string`, `browser.use_session` | Yes | Yes | Yes | Keep aligned; constrained by `allow_browser_state` in MCP |
+| browser state | `get_storage_state`, `get_cookies_string`, `browser.use_session`, `browser.cdp_*` | Yes | Yes | Yes | Keep aligned; constrained by `allow_browser_state` in MCP |
 | Flow convenience actions | `extract_text`, `assert_visible`, `assert_text`, `set_var`, `append_var` | Yes | Yes | Yes | Already aligned; better treated as orchestration sugar than low-level primitives |
 | Flow control flow | `retry`, `if`, `foreach`, `on_error`, `wait_until` | Yes | No | Yes | No need to force parity into Lua |
 | Lua callback-style capability | `intercept_request` | No | Yes | No | Best kept Lua-only |
@@ -209,8 +209,53 @@ If you want one place that explains every supported command-line `-action`, star
 
 Add `-headless` if you want to hide the browser window.
 To attach to Chrome/Chromium that was already started with `--remote-debugging-port=9222`, add `-browser-cdp-port 9222` to `-flow`, `-script`, or `-action cli`; use `-browser-cdp-endpoint` when you already have the full CDP endpoint.
-`-browser-cdp-endpoint` accepts `ws://127.0.0.1:9222/devtools/browser/...`, `http://127.0.0.1:9222`, and pasted local forms like `127.0.0.1:9222/json/version`.
+`-browser-cdp-endpoint` accepts `ws://127.0.0.1:9222/devtools/browser/...`, `http://127.0.0.1:9222`, and pasted local forms like `127.0.0.1:9222/json/version`, `127.0.0.1:9222/json/list`, `127.0.0.1:9222/json/new`, `127.0.0.1:9222/json/protocol`, or `127.0.0.1:9222/devtools/browser/...`.
 If you want TSPlay to make this easy, use `-browser-cdp-launch`: TSPlay will search common Chrome/Chromium/Edge locations on macOS, Windows, and Linux, launch a separate profile with remote debugging enabled, then attach over CDP. Use `-browser-cdp-executable` or `-browser-cdp-user-data-dir` only when you need to override the detected browser or profile directory.
+
+### Use A Real Chrome Through CDP
+
+CDP mode is for trusted local automation where you need a real browser environment: a profile that is already logged in, installed extensions, cached site state, or a page that needs manual intervention during a run.
+
+If your current daily Chrome was not started with a remote debugging port, TSPlay cannot safely attach to that exact process. Start a separate Chrome profile instead:
+
+```bash
+# macOS
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$PWD/artifacts/chrome-cdp-profile"
+
+# Linux
+google-chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$PWD/artifacts/chrome-cdp-profile"
+```
+
+```powershell
+# Windows PowerShell
+& "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir="$pwd\artifacts\chrome-cdp-profile"
+```
+
+Then attach TSPlay:
+
+```bash
+go run . -flow script/demo_baidu.flow.yaml -browser-cdp-port 9222
+```
+
+For the easiest first run, let TSPlay find Chrome and launch an isolated profile for you:
+
+```bash
+go run . -flow script/demo_baidu.flow.yaml -browser-cdp-launch
+```
+
+Important behavior:
+
+- external CDP attach disconnects Playwright at the end and leaves the real browser running
+- `cdp_launch` starts a browser owned by TSPlay and cleans it up when the run finishes
+- `cdp_user_data_dir` is only for `cdp_launch`; it defaults under the artifact root
+- MCP requests that use `browser_cdp_*` or Flow `browser.cdp_*` require `allow_browser_state=true`
+- CDP mode cannot be combined with `use_session`, `storage_state/load_storage_state`, persistent `profile/session`, `user_agent`, or `-browser-video-output`
 
 `record-screen` captures the entire macOS desktop, which is useful for desktop demos.  
 `-browser-video-output` records the Playwright page itself, which is better for browser tutorials.  
@@ -323,7 +368,7 @@ Common Flow capabilities include:
 - control flow: `retry`, `if`, `foreach`, `on_error`, `wait_until`
 - page actions: click, type, wait, assert, screenshot, upload, download
 - data actions: `http_request`, `json_extract`, `send_email`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract`
-- browser state: `use_session`, `storage_state`, `save_storage_state`
+- browser state: `use_session`, `storage_state`, `save_storage_state`, `cdp_launch`, `cdp_endpoint`, `cdp_port`
 
 ## Core Capabilities
 
@@ -471,11 +516,13 @@ Notes:
 - `save_storage_state` saves the current login state after the Flow finishes
 - `cdp_launch: true` starts a local Chrome/Chromium/Edge with remote debugging enabled and then attaches over CDP; when `cdp_executable` is omitted, TSPlay searches common browser locations on macOS, Windows, and Linux
 - `cdp_endpoint` / `cdp_port` attaches to an existing Chromium/Chrome process started with `--remote-debugging-port`; for example `cdp_port: 9222` or `cdp_endpoint: "127.0.0.1:9222/json/version"`
+- `cdp_endpoint` may be an HTTP base URL, a WebSocket browser endpoint, or a pasted DevTools helper URL such as `/json/version`, `/json/list`, `/json/new`, `/json/protocol`, or `/devtools/browser/...`
 - `cdp_user_data_dir` selects the independent profile directory for `cdp_launch`; when omitted, TSPlay creates one under the artifact root
 - `profile` / `session` enables a persistent browser context
 - `persistent profile/session` cannot be combined with `storage_state` or `use_session`
 - CDP attach reuses the external browser's default context and first page; TSPlay disconnects Playwright when done and does not close the real browser
 - CDP launch is cleaned up by TSPlay when it started the browser process
+- `cdp_launch` is the beginner-friendly path: it avoids interrupting the user's daily Chrome window while still using the locally installed Chrome/Chromium/Edge binary
 - `cdp_launch` / `cdp_endpoint` / `cdp_port` cannot be combined with `use_session`, `storage_state/load_storage_state`, `persistent/profile/session`, `user_agent`, or `-browser-video-output`
 
 If you want business users to remember only a single session name, save one first:
@@ -513,7 +560,7 @@ Explicit `allow_*` flags override the corresponding fields inside `security_pres
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`, `evaluate` |
 | `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` |
-| `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile |
+| `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile / `browser.cdp_*` and MCP `browser_cdp_*` |
 | `allow_http=true` | `http_request` |
 | `allow_email=true` | `send_email` |
 | `allow_redis=true` | `redis_get`, `redis_set`, `redis_del`, `redis_incr`, `foreach.with.progress_key` |
@@ -523,6 +570,7 @@ Additional notes:
 
 - even when file actions are allowed, reads and writes still stay within the artifact root
 - relative paths inside top-level `browser` config are also resolved under the artifact root
+- CDP attach and launch are treated as browser-state capabilities because they can expose real cookies, extensions, profile data, and logged-in sessions
 - `http_request`, `redis_*`, and `db_*` inside Lua inherit the corresponding `allow_*` constraints when running inside Flow / MCP security contexts
 - local CLI runs such as `go run . -flow ...` remain a more flexible local workflow
 

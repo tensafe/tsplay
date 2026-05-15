@@ -142,8 +142,12 @@ Use `on_error` inside `foreach` when one failing row should not kill the whole b
 
 - Put reusable browser configuration in the top-level `browser` block.
 - Use `browser.use_session` for saved login state.
+- Use `browser.cdp_launch: true` when a trusted local run should use the real installed Chrome/Chromium/Edge with an isolated profile.
+- Use `browser.cdp_port` or `browser.cdp_endpoint` only when the external browser was already started with `--remote-debugging-port`.
 - Use `browser.timeout` for page-level timeout defaults.
 - Prefer explicit waits or assertions before extracting or clicking unstable elements.
+- CDP mode requires `allow_browser_state=true` in MCP. File outputs still require `allow_file_access=true`; page scripts still require `allow_javascript=true`.
+- Do not combine CDP mode with `browser.use_session`, `storage_state/load_storage_state`, persistent `profile/session`, `user_agent`, or browser video recording.
 
 ## Repair Rules
 

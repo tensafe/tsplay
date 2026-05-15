@@ -1,13 +1,13 @@
 ---
 name: tsplay-flow-authoring
-description: Shareable TSPlay Flow authoring skill for coders. Use when Codex needs to write, modify, fix, review, or explain TSPlay `.flow.yaml` files, choose between Flow DSL, Lua script mode, and MCP workflows, draft or review tutorial flows, send email notifications with `send_email`, or debug artifacts and saved sessions. Typical English triggers include write flow, fix flow, review flow, generate flow, repair selector, send email flow, email notification flow, and convert a requirement into Flow. Typical Chinese triggers include 编写 Flow, 写 Flow, 改 Flow, 修 Flow, 生成 flow, 补一条 flow, 调试 flow, 排查 flow, 设计教程 flow, 发邮件 flow, 邮件通知 flow, and 把需求转成 TSPlay Flow.
+description: Shareable TSPlay Flow authoring skill for coders. Use when Codex needs to write, modify, fix, review, or explain TSPlay `.flow.yaml` files, choose between Flow DSL, Lua script mode, and MCP workflows, draft or review tutorial flows, send email notifications with `send_email`, attach to real Chrome/Chromium over CDP, use `browser.cdp_launch`, or debug artifacts and saved sessions. Typical English triggers include write flow, fix flow, review flow, generate flow, repair selector, attach Chrome over CDP, use cdp_launch, send email flow, email notification flow, and convert a requirement into Flow. Typical Chinese triggers include 编写 Flow, 写 Flow, 改 Flow, 修 Flow, 生成 flow, 补一条 flow, 调试 flow, 排查 flow, 设计教程 flow, 接管 Chrome, cdp_launch, 发邮件 flow, 邮件通知 flow, and 把需求转成 TSPlay Flow.
 ---
 
 # TSPlay
 
 ## Overview
 
-Use this skill when the task is about the TSPlay codebase or, most importantly, when a coder needs help producing a solid TSPlay Flow. Prefer Flow as the default delivery asset, use Lua for quick local exploration, and use MCP when the task is agent-facing or needs observation, drafting, validation, execution, or repair loops.
+Use this skill when the task is about the TSPlay codebase or, most importantly, when a coder needs help producing a solid TSPlay Flow. Prefer Flow as the default delivery asset, use Lua for quick local exploration, and use MCP when the task is agent-facing or needs observation, drafting, validation, execution, browser-state/CDP control, or repair loops.
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 - 如果用户主要卡在 selector，继续读 [references/zh-cn-selectors.md](references/zh-cn-selectors.md)。
 - 如果用户是在做中文 review，继续读 [references/zh-cn-review-checklist.md](references/zh-cn-review-checklist.md)。
 - Read [references/flow-authoring.md](references/flow-authoring.md) first for the self-contained Flow writing and repair guide.
-- Read [references/actions.md](references/actions.md) when you need to choose the right TSPlay action or remember the exact YAML shape.
+- Read [references/actions.md](references/actions.md) when you need to choose the right TSPlay action, remember YAML shape, or write flows that use `browser.cdp_launch`, `browser.cdp_endpoint`, `browser.cdp_port`, `execute_script`, file output, or MCP security flags.
 - Read [references/examples.md](references/examples.md) when the user request is still vague and you need a strong prompt shape for authoring or repairing a Flow.
 - Read [references/example-index.md](references/example-index.md) when you want the fastest repo-backed starting point by category such as form, table, import, session, recovery, or MCP.
 - Read [references/repo-map.md](references/repo-map.md) when you are inside the TSPlay repository and need exact paths or commands.
@@ -30,6 +30,7 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 - Default to Flow when the result should be reviewed, versioned, reused, or repaired later.
 - Use Lua CLI or standalone Lua scripts only for one-off debugging, quick page exploration, or primitive-level experiments.
 - Use MCP when another agent or product needs tool calling, page observation, security boundaries, or a `finalize -> run -> repair` loop.
+- Use CDP mode only for trusted local browser sessions: `browser.cdp_launch` when TSPlay should find and start Chrome/Chromium/Edge with an isolated profile, or `browser.cdp_port` / `browser.cdp_endpoint` when an external browser was already started with `--remote-debugging-port`.
 - Prefer `tsplay.finalize_flow` as the default agent path. Split the workflow into `observe_page`, `draft_flow`, `validate_flow`, `run_flow`, `repair_flow_context`, and `repair_flow` only when the status, warnings, or unresolved items require tighter control.
 
 ## Runtime Assumptions
@@ -48,6 +49,9 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 - For Chinese requests, normalize the task into five fields first: 页面, 目标, 输入, 输出, 授权.
 - Keep artifact paths stable and task-scoped, especially for tutorial or handoff work.
 - Reuse existing tutorial patterns before inventing a brand-new structure from scratch.
+- For real-browser or anti-bot-sensitive work, prefer `browser.cdp_launch: true` as the beginner path. It avoids interrupting the user's daily Chrome window while still using the local browser binary.
+- For MCP CDP work, always include `allow_browser_state=true`; add `allow_file_access=true` for screenshots/JSON/CSV/Excel outputs and `allow_javascript=true` for `execute_script` or `evaluate`.
+- Do not combine CDP mode with `browser.use_session`, `storage_state/load_storage_state`, persistent `profile/session`, `user_agent`, or browser video recording.
 
 ## Operating Workflow
 
@@ -56,3 +60,4 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 3. Check validation results, warnings, unresolved selectors, and repair hints before treating a draft as complete.
 4. If execution fails, inspect artifacts under `artifacts/` and prefer validation or repair tools over blindly rewriting selectors.
 5. If login state matters, prefer saved sessions and put `browser.use_session` in top-level browser config instead of scattering login steps.
+6. If the user asks to attach to a real browser, first check whether they already have a remote debugging port. If not, use `browser.cdp_launch` or show a separate-profile Chrome launch command for macOS, Windows, or Linux.

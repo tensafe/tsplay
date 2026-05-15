@@ -14,6 +14,8 @@ Use this file when you know the business goal but need help choosing the right T
 - 断言页面文本: `assert_text`
 - 提取文本或数字: `extract_text`
 - 抓表格结构化数据: `capture_table`
+- 读取浏览器 cookie / storage: `get_cookies_string`, `get_storage_state`
+- 使用真实 Chrome/Chromium/Edge: 顶层 `browser.cdp_launch`, `browser.cdp_port`, `browser.cdp_endpoint`
 - 保存一个变量: `set_var`
 - 追加结果列表: `append_var`
 - 遍历多行数据: `foreach`
@@ -21,7 +23,7 @@ Use this file when you know the business goal but need help choosing the right T
 - 轮询直到满足条件: `wait_until`
 - 重试易抖动步骤: `retry`
 - 读 JSON / CSV / Excel: `read_json`, `read_csv`, `read_excel`
-- 写 JSON 或 CSV: `write_json`, `write_csv`
+- 写 JSON / CSV / Excel: `write_json`, `write_csv`, `write_excel`
 - 压缩或解压 ZIP: `zip_compress`, `zip_extract`
 - 发邮件通知: `send_email`
 
@@ -34,6 +36,7 @@ Use this file when you know the business goal but need help choosing the right T
 - Keep recovery local with `on_error` instead of rewriting the whole Flow.
 - Use `type_text`, not `fill`.
 - Do not put `timeout` on `navigate`; use `browser.timeout` or downstream waits and assertions.
+- For real-browser/CDP automation, keep CDP configuration in the top-level `browser` block and document the required MCP grants.
 
 ## 1. Navigation And Readiness / 导航与就绪
 
@@ -180,7 +183,76 @@ Recommended fields:
 
 - `save_as`
 
-## 3. Variables And Output Shaping / 变量与输出组织
+## 3. Browser State And CDP / 浏览器状态与真实浏览器
+
+### `browser.use_session`
+
+Use when TSPlay should load a named saved session.
+
+```yaml
+browser:
+  use_session: admin
+```
+
+Notes:
+
+- Keep this in the top-level `browser` block.
+- In MCP, this requires `allow_browser_state=true`.
+
+### `browser.cdp_launch`
+
+Use when TSPlay should find Chrome/Chromium/Edge, launch an isolated profile, enable a remote debugging port, and attach over CDP.
+
+```yaml
+browser:
+  cdp_launch: true
+  cdp_user_data_dir: profiles/cdp-demo
+steps:
+  - action: navigate
+    url: https://example.com
+```
+
+Optional fields:
+
+- `cdp_port`: fixed local debugging port; omit it to let TSPlay pick one
+- `cdp_executable`: explicit Chrome/Chromium/Edge executable path
+- `cdp_user_data_dir`: independent profile directory; omit it to use the artifact root
+
+Notes:
+
+- This is the beginner-friendly path for real-browser runs because it does not interrupt the user's daily Chrome window.
+- TSPlay cleans up the browser it launches.
+- In MCP, pass `allow_browser_state=true`.
+
+### `browser.cdp_port` / `browser.cdp_endpoint`
+
+Use when an external browser is already running with `--remote-debugging-port`.
+
+```yaml
+browser:
+  cdp_port: 9222
+steps:
+  - action: navigate
+    url: https://example.com
+```
+
+Accepted endpoint forms include:
+
+- `ws://127.0.0.1:9222/devtools/browser/...`
+- `http://127.0.0.1:9222`
+- `127.0.0.1:9222/json/version`
+- `127.0.0.1:9222/json/list`
+- `127.0.0.1:9222/json/new`
+- `127.0.0.1:9222/json/protocol`
+- `127.0.0.1:9222/devtools/browser/...`
+
+Notes:
+
+- TSPlay disconnects at the end and does not close the external browser.
+- Do not combine CDP mode with `browser.use_session`, `storage_state/load_storage_state`, persistent `profile/session`, `user_agent`, or browser video recording.
+- In MCP, pass `allow_browser_state=true`; add `allow_file_access=true` for file outputs and `allow_javascript=true` for `execute_script` / `evaluate`.
+
+## 4. Variables And Output Shaping / 变量与输出组织
 
 ### `set_var`
 
@@ -227,7 +299,7 @@ Notes:
 
 - The target list is created automatically if it does not exist yet.
 
-## 4. Control Flow / 控制流
+## 5. Control Flow / 控制流
 
 ### `foreach`
 
@@ -332,7 +404,7 @@ Useful optional fields:
 
 - `interval_ms`
 
-## 5. File Input And Output / 文件输入输出
+## 6. File Input And Output / 文件输入输出
 
 ### `read_json`
 
@@ -528,7 +600,7 @@ Notes:
 - Extraction rejects unsafe archive paths that would escape `save_path`.
 - Restricted Flow or MCP contexts require `allow_file_access=true`.
 
-## 6. Notification And Delivery / 通知与投递
+## 7. Notification And Delivery / 通知与投递
 
 ### `send_email`
 
@@ -594,7 +666,7 @@ Attachment example:
       tls_mode: tls
 ```
 
-## 7. Top-Level Browser Config / 顶层浏览器配置
+## 8. Top-Level Browser Config / 顶层浏览器配置
 
 ### `browser.use_session`
 
@@ -604,6 +676,11 @@ Use at the top of the Flow when login state should be reused instead of replayed
 browser:
   use_session: admin
 ```
+
+For real-browser CDP usage, prefer the dedicated section above:
+
+- `browser.cdp_launch`: TSPlay starts an isolated local Chrome/Chromium/Edge and cleans it up
+- `browser.cdp_port` / `browser.cdp_endpoint`: attach to an already running `--remote-debugging-port` browser without closing it at the end
 
 ### `browser.timeout`
 
@@ -623,6 +700,7 @@ browser:
 - Batch import: `read_excel` or `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - Resilient import: `foreach` + `on_error` + `append_var`
 - Report notification: `set_var` or `write_excel` + `zip_compress` + `send_email`
+- Real-browser smoke: top-level `browser.cdp_launch` + `navigate` + `assert_text`
 
 ## 中文起手组合
 
@@ -633,3 +711,4 @@ browser:
 - 批量导入: `read_excel` 或 `read_csv` + `foreach` + `append_var` + `write_json` + `write_csv`
 - 带容错的导入: `foreach` + `on_error` + `append_var`
 - 结果邮件通知: `set_var` 或 `write_excel` + `zip_compress` + `send_email`
+- 真实浏览器冒烟: 顶层 `browser.cdp_launch` + `navigate` + `assert_text`

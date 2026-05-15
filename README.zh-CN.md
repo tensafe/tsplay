@@ -158,7 +158,7 @@ CLI 适合探索页面，MCP 适合接入 AI 产品或 Agent 工作流。
 | 邮件通知 | `send_email` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_email` |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_redis` |
 | 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 应保持同步；Lua 在 Flow / MCP 安全上下文中也遵守 `allow_database`，`db_transaction` 会自动提交或回滚 |
-| 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_browser_state` 约束 |
+| 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session`、`browser.cdp_*` | 是 | 是 | 是 | 应保持同步，MCP 下受 `allow_browser_state` 约束 |
 | Flow 便捷动作 | `extract_text`、`assert_visible`、`assert_text`、`set_var`、`append_var` | 是 | 是 | 是 | 已对齐；更适合作为编排语义糖而不是底层原语 |
 | Flow 控制流 | `retry`、`if`、`foreach`、`on_error`、`wait_until` | 是 | 否 | 是 | 不要求同步到 Lua |
 | Lua 回调型能力 | `intercept_request` | 否 | 是 | 否 | 保持 Lua 专属更自然 |
@@ -209,8 +209,53 @@ go mod download
 
 如果想隐藏浏览器窗口，可以追加 `-headless`。
 如果要接管已经用 `--remote-debugging-port=9222` 启动的 Chrome/Chromium，可以给 `-flow`、`-script` 或 `-action cli` 追加 `-browser-cdp-port 9222`，也可以用 `-browser-cdp-endpoint` 传完整 CDP endpoint。
-`-browser-cdp-endpoint` 支持 `ws://127.0.0.1:9222/devtools/browser/...`、`http://127.0.0.1:9222`，也支持直接粘贴 `127.0.0.1:9222/json/version` 这类本机调试地址。
+`-browser-cdp-endpoint` 支持 `ws://127.0.0.1:9222/devtools/browser/...`、`http://127.0.0.1:9222`，也支持直接粘贴 `127.0.0.1:9222/json/version`、`127.0.0.1:9222/json/list`、`127.0.0.1:9222/json/new`、`127.0.0.1:9222/json/protocol` 或 `127.0.0.1:9222/devtools/browser/...` 这类本机调试地址。
 如果希望 TSPlay 帮你把这一步也做掉，直接加 `-browser-cdp-launch`：TSPlay 会主动搜索 macOS / Windows / Linux 常见的 Chrome、Chromium、Edge 位置，启动一个带远程调试端口的独立 profile，然后再通过 CDP 接管。只有需要手动指定浏览器或 profile 目录时，才需要再传 `-browser-cdp-executable` 或 `-browser-cdp-user-data-dir`。
+
+### 通过 CDP 使用真实 Chrome
+
+CDP 模式适合可信的本机自动化：复用已经登录的 profile、扩展插件、缓存、真实浏览器状态，或者脚本跑到一半需要人工介入页面再继续执行的场景。
+
+如果当前日常 Chrome 不是用远程调试端口启动的，TSPlay 不能安全地直接接管那个进程。建议启动一个独立 profile：
+
+```bash
+# macOS
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$PWD/artifacts/chrome-cdp-profile"
+
+# Linux
+google-chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$PWD/artifacts/chrome-cdp-profile"
+```
+
+```powershell
+# Windows PowerShell
+& "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir="$pwd\artifacts\chrome-cdp-profile"
+```
+
+然后让 TSPlay 接管：
+
+```bash
+go run . -flow script/demo_baidu.flow.yaml -browser-cdp-port 9222
+```
+
+小白最省心的方式是让 TSPlay 自动找 Chrome，并启动一个隔离 profile：
+
+```bash
+go run . -flow script/demo_baidu.flow.yaml -browser-cdp-launch
+```
+
+关键行为：
+
+- 外部 CDP 接管结束后只断开 Playwright，不会关闭真实浏览器
+- `cdp_launch` 启动的是 TSPlay 自己管理的浏览器，运行结束会回收
+- `cdp_user_data_dir` 只用于 `cdp_launch`；不写时默认放在 artifact root 下
+- MCP 请求里使用 `browser_cdp_*`，或 Flow 里使用 `browser.cdp_*`，都需要 `allow_browser_state=true`
+- CDP 模式不能和 `use_session`、`storage_state/load_storage_state`、persistent `profile/session`、`user_agent` 或 `-browser-video-output` 混用
 
 `record-screen` 录的是整个 macOS 屏幕，适合录桌面演示。  
 `-browser-video-output` 录的是 Playwright 页面内容，更适合浏览器教程。  
@@ -323,7 +368,7 @@ go run . -action mcp-tool -tool tsplay.observe_page -args-file script/tutorials/
 - 控制流：`retry`、`if`、`foreach`、`on_error`、`wait_until`
 - 页面动作：点击、输入、等待、断言、截图、上传、下载
 - 数据动作：`http_request`、`json_extract`、`send_email`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`、`zip_compress`、`zip_extract`
-- 浏览器状态：`use_session`、`storage_state`、`save_storage_state`
+- 浏览器状态：`use_session`、`storage_state`、`save_storage_state`、`cdp_launch`、`cdp_endpoint`、`cdp_port`
 
 ## 核心能力
 
@@ -469,11 +514,13 @@ steps:
 - `save_storage_state` 会在 Flow 结束后保存当前登录态
 - `cdp_launch: true` 会启动本机 Chrome/Chromium/Edge 并打开远程调试端口，然后通过 CDP 接管；不写 `cdp_executable` 时，TSPlay 会自动搜索 macOS、Windows、Linux 的常见浏览器位置
 - `cdp_endpoint` / `cdp_port` 会通过 Chrome DevTools Protocol 接管已经用 `--remote-debugging-port` 启动的 Chromium/Chrome；例如 `cdp_port: 9222` 或 `cdp_endpoint: "127.0.0.1:9222/json/version"`
+- `cdp_endpoint` 可以是 HTTP 基础地址、WebSocket browser endpoint，也可以是从 DevTools 直接复制出来的 `/json/version`、`/json/list`、`/json/new`、`/json/protocol` 或 `/devtools/browser/...`
 - `cdp_user_data_dir` 用来指定 `cdp_launch` 的独立 profile 目录；不写时会默认放在 artifact root 下
 - `profile` / `session` 会启用 persistent browser context
 - `persistent profile/session` 不能和 `storage_state` 或 `use_session` 同时使用
 - CDP 接管会复用外部浏览器的默认 context 和第一个页面；TSPlay 结束时只断开 Playwright 连接，不会关闭真实浏览器
 - 如果浏览器是 TSPlay 通过 `cdp_launch` 启动的，TSPlay 退出时会回收这个独立浏览器进程
+- `cdp_launch` 是更适合新手的路径：它不会打断用户日常 Chrome 窗口，但仍会使用本机已安装的 Chrome/Chromium/Edge
 - `cdp_launch` / `cdp_endpoint` / `cdp_port` 不能和 `use_session`、`storage_state/load_storage_state`、`persistent/profile/session`、`user_agent` 或 `-browser-video-output` 同时使用
 
 如果希望业务方只记一个会话名，可以先保存：
@@ -511,7 +558,7 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 | `allow_lua=true` | `lua` |
 | `allow_javascript=true` | `execute_script`、`evaluate` |
 | `allow_file_access=true` | `screenshot`、`save_html`、`read_csv`、`read_excel`、上传下载、`write_json`、`write_csv`、`write_excel`、`zip_compress`、`zip_extract` |
-| `allow_browser_state=true` | Cookie / Storage State / `browser.use_session` / persistent profile |
+| `allow_browser_state=true` | Cookie / Storage State / `browser.use_session` / persistent profile / `browser.cdp_*` 和 MCP `browser_cdp_*` |
 | `allow_http=true` | `http_request` |
 | `allow_email=true` | `send_email` |
 | `allow_redis=true` | `redis_get`、`redis_set`、`redis_del`、`redis_incr`、`foreach.with.progress_key` |
@@ -520,6 +567,7 @@ MCP 模式默认不是全放开。高风险能力需要按请求显式授权。
 补充说明：
 
 - 文件类动作即使被授权，也只能在 artifact root 范围内读写
+- CDP 接管和启动都按浏览器状态能力处理，因为它们可能暴露真实 Cookie、扩展、profile 数据和已登录会话
 - Flow 顶层 `browser` 里的相对路径也会解析到 artifact root 下
 - Lua 里的 `http_request`、`redis_*`、`db_*` 在 Flow / MCP 安全上下文里也会继承对应的 `allow_*` 约束
 - 本地命令行运行 `go run . -flow ...` 仍保持更灵活的本地使用方式

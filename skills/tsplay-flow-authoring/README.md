@@ -7,6 +7,7 @@
 - 用自然语言把需求收敛成 TSPlay `.flow.yaml`
 - 修已有 Flow 的 selector、等待、断言、变量链路、会话复用
 - 读取本地 JSON 配置或前一步 artifact，并继续驱动后续 Flow
+- 接管真实 Chrome/Chromium/Edge，或用 `cdp_launch` 自动启动独立 profile
 - 编写邮件通知、失败告警、附件邮件等 `send_email` Flow
 - 用中文或英文提问
 - 按场景快速找到起手示例
@@ -20,6 +21,7 @@
 - 给团队做教程风格 Flow
 - review Flow 的可维护性
 - 把中文业务需求整理成稳定的 Flow
+- 把“复用真实浏览器 / 免登录 / 反机器人检测较强页面”的需求整理成 CDP Flow 或 MCP 调用
 
 ## 安装方式
 
@@ -116,6 +118,8 @@ GitHub Release 会同时生成面向 Codex / OpenClaw 的命名包：
 - 把这个需求转成 Flow
 - 帮我排查这条 Flow 为什么跑不通
 - 帮我按 MCP 思路收敛成 Flow
+- 帮我接管本机 Chrome
+- 帮我用 cdp_launch 跑真实浏览器
 - 帮我写一条发邮件的 Flow
 - 帮我做一个邮件通知 Flow
 
@@ -126,6 +130,8 @@ GitHub Release 会同时生成面向 Codex / OpenClaw 的命名包：
 - review flow
 - generate flow
 - repair selector
+- attach Chrome over CDP
+- use cdp_launch
 - convert a requirement into Flow
 - send email flow
 - email notification flow
@@ -172,6 +178,17 @@ GitHub Release 会同时生成面向 Codex / OpenClaw 的命名包：
 - 需要发邮件时，受限上下文下要考虑 `allow_email`
 - 如果邮件带附件，还要同时考虑文件访问权限
 - SMTP 配置既可以走 `connection` 对应的环境变量，也可以直接写 `with.smtp`
+
+## CDP / 真实浏览器说明
+
+- `browser.cdp_launch: true`：让 TSPlay 自动查找 macOS / Windows / Linux 常见 Chrome、Chromium、Edge，启动独立 profile，再通过 CDP 接管
+- `browser.cdp_port: 9222`：接管已经用 `--remote-debugging-port=9222` 启动的外部浏览器
+- `browser.cdp_endpoint`：可传 `ws://127.0.0.1:9222/devtools/browser/...`、`http://127.0.0.1:9222`，也可直接粘贴 `127.0.0.1:9222/json/version`、`127.0.0.1:9222/json/list`、`127.0.0.1:9222/json/new`、`127.0.0.1:9222/json/protocol` 或 `/devtools/browser/...`
+- 外部 CDP 接管结束时，TSPlay 只断开连接，不关闭真实浏览器
+- `cdp_launch` 启动的浏览器由 TSPlay 管理，运行结束会回收
+- MCP 下使用 Flow `browser.cdp_*` 或工具参数 `browser_cdp_*` 时，必须传 `allow_browser_state=true`
+- 如果还要写 JSON / CSV / 截图，需要 `allow_file_access=true`；如果用 `execute_script` / `evaluate`，需要 `allow_javascript=true`
+- CDP 模式不能和 `browser.use_session`、`storage_state/load_storage_state`、persistent `profile/session`、`user_agent` 或浏览器页面录制混用
 
 ## 最小使用模板
 

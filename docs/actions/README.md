@@ -67,6 +67,12 @@
 - 再查： [list-sessions](list-sessions.md)、[get-session](get-session.md)
 - 要接回 Flow： [export-session](export-session.md)
 
+### 我要接管真实 Chrome
+
+- 已经用 `--remote-debugging-port` 启动浏览器：看 [cli](cli.md) 里的 `-browser-cdp-port` / `-browser-cdp-endpoint`
+- 想让 TSPlay 自动找本机 Chrome/Chromium/Edge 并启动独立 profile：看 [cli](cli.md) 里的 `-browser-cdp-launch`
+- 想在 Flow / MCP 里配置：看 [浏览器状态能力](../capability-actions/browser-state.md)
+
 ## 相关教程
 
 - MCP 主线从 [Lesson 111](../tutorials/111-mcp-list-actions.md) 开始

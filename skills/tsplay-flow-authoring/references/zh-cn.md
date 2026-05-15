@@ -55,6 +55,7 @@
 - 判断页面是不是成功了: `assert_visible`, `assert_text`
 - 提取标题、计数、状态文本: `extract_text`
 - 抓表格: `capture_table`
+- 接管真实 Chrome/Chromium/Edge: 顶层 `browser.cdp_launch`, `browser.cdp_port`, `browser.cdp_endpoint`
 - 保存一个对象变量: `set_var`
 - 累积结果列表: `append_var`
 - 遍历 CSV 或 Excel 多行: `foreach`
@@ -73,9 +74,10 @@
 2. 再明确输入和输出。
 3. 选最小可行 action 组合，不要一开始就写太复杂。
 4. 如果页面有登录态，优先考虑顶层 `browser.use_session`。
-5. 如果是批量处理，优先考虑 `read_csv` 或 `read_excel` 加 `foreach`。
-6. 如果某个步骤容易失败但不该拖垮整条 Flow，优先考虑 `on_error`。
-7. 如果用户不知道 selector，优先考虑 MCP 的 `observe_page` 路线。
+5. 如果用户要复用真实 Chrome、扩展、缓存或人工登录状态，优先考虑 `browser.cdp_launch: true`；已经有远程调试端口时再用 `browser.cdp_port` / `browser.cdp_endpoint`。
+6. 如果是批量处理，优先考虑 `read_csv` 或 `read_excel` 加 `foreach`。
+7. 如果某个步骤容易失败但不该拖垮整条 Flow，优先考虑 `on_error`。
+8. 如果用户不知道 selector，优先考虑 MCP 的 `observe_page` 路线。
 
 ## 中文场景起手建议
 
@@ -114,6 +116,16 @@
 
 - `example-index.md` 里的 Session Flows
 - `actions.md` 里的顶层 `browser.use_session`
+
+### 真实浏览器 / CDP 接管
+
+先看：
+
+- `actions.md` 里的 `browser.cdp_launch`, `browser.cdp_port`, `browser.cdp_endpoint`
+- 如果当前 Chrome 没有监听 `9222`，不要强行重启用户日常窗口；用 `browser.cdp_launch: true` 启动独立 profile
+- MCP 下记得 `allow_browser_state=true`
+- 如果要写 JSON / CSV / 截图，再加 `allow_file_access=true`
+- 如果要用 `execute_script` 或 `evaluate`，再加 `allow_javascript=true`
 
 ### 邮件通知
 
