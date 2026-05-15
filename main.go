@@ -60,6 +60,11 @@ var g_browserVideoOutput = ""
 var g_browserVideoWidth = 0
 var g_browserVideoHeight = 0
 var g_browserVideoCooldownMS = 1200
+var g_browserCDPLaunch = false
+var g_browserCDPEndpoint = ""
+var g_browserCDPPort = 0
+var g_browserCDPExecutable = ""
+var g_browserCDPUserDataDir = ""
 
 func main() {
 	action := flag.String("action", "cli", "Start Cli Mod | Web Mod | GPT Mod | MCP Stdio | MCP Tool | File Server | Workbench API | Install Playwright")
@@ -89,6 +94,11 @@ func main() {
 	browserVideoWidth := flag.Int("browser-video-width", 0, "optional browser video width in pixels when using -browser-video-output")
 	browserVideoHeight := flag.Int("browser-video-height", 0, "optional browser video height in pixels when using -browser-video-output")
 	browserVideoCooldownMS := flag.Int("browser-video-cooldown-ms", 1200, "keep the page open for this many milliseconds before saving -browser-video-output")
+	browserCDPLaunch := flag.Bool("browser-cdp-launch", false, "launch a local Chrome/Chromium/Edge with remote debugging enabled, then attach over CDP")
+	browserCDPEndpoint := flag.String("browser-cdp-endpoint", "", "attach to an existing Chromium browser over CDP using this endpoint, for example ws://127.0.0.1:9222/devtools/browser/... or http://127.0.0.1:9222")
+	browserCDPPort := flag.Int("browser-cdp-port", 0, "attach to an existing Chromium browser over CDP using this local debugging port, for example 9222")
+	browserCDPExecutable := flag.String("browser-cdp-executable", "", "optional Chrome/Chromium/Edge executable path for -browser-cdp-launch; auto-detected when omitted")
+	browserCDPUserDataDir := flag.String("browser-cdp-user-data-dir", "", "optional user data directory for -browser-cdp-launch; defaults under the artifact root")
 	sessionName := flag.String("session-name", "", "saved session name for session management actions")
 	storageStatePath := flag.String("storage-state-path", "", "storage state path for save-session actions")
 	storageStateJSON := flag.String("storage-state-json", "", "inline storage state JSON for save-session actions")
@@ -100,12 +110,40 @@ func main() {
 	// 解析命令行参数
 	flag.Parse()
 
+	browserCDPEndpointSet := false
+	browserCDPPortSet := false
+	browserCDPExecutableSet := false
+	browserCDPUserDataDirSet := false
+	flag.Visit(func(parsedFlag *flag.Flag) {
+		switch parsedFlag.Name {
+		case "browser-cdp-endpoint":
+			browserCDPEndpointSet = true
+		case "browser-cdp-port":
+			browserCDPPortSet = true
+		case "browser-cdp-executable":
+			browserCDPExecutableSet = true
+		case "browser-cdp-user-data-dir":
+			browserCDPUserDataDirSet = true
+		}
+	})
+
 	g_headless = *isheadless
 	g_artifactRoot = *artifactRoot
 	g_browserVideoOutput = strings.TrimSpace(*browserVideoOutput)
 	g_browserVideoWidth = *browserVideoWidth
 	g_browserVideoHeight = *browserVideoHeight
 	g_browserVideoCooldownMS = *browserVideoCooldownMS
+	g_browserCDPLaunch = *browserCDPLaunch
+	g_browserCDPEndpoint = strings.TrimSpace(*browserCDPEndpoint)
+	g_browserCDPPort = *browserCDPPort
+	g_browserCDPExecutable = strings.TrimSpace(*browserCDPExecutable)
+	g_browserCDPUserDataDir = strings.TrimSpace(*browserCDPUserDataDir)
+	if g_browserCDPExecutable != "" || g_browserCDPUserDataDir != "" {
+		g_browserCDPLaunch = true
+	}
+	if err := validateBrowserCDPFlagOptions(g_browserCDPEndpoint, browserCDPEndpointSet, g_browserCDPPort, browserCDPPortSet, g_browserCDPLaunch, g_browserCDPExecutable, browserCDPExecutableSet, g_browserCDPUserDataDir, browserCDPUserDataDirSet, g_browserVideoOutput); err != nil {
+		log.Fatal(err)
+	}
 
 	if len(*flowfile) != 0 {
 		flow, err := loadFlowDefinition(*flowfile)
@@ -279,6 +317,49 @@ func printJSON(value any) {
 	fmt.Println(string(encoded))
 }
 
+func validateBrowserCDPFlagOptions(endpoint string, endpointSet bool, port int, portSet bool, launch bool, executable string, executableSet bool, userDataDir string, userDataDirSet bool, browserVideoOutput string) error {
+	if endpointSet && strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("-browser-cdp-endpoint cannot be blank")
+	}
+	if executableSet && strings.TrimSpace(executable) == "" {
+		return fmt.Errorf("-browser-cdp-executable cannot be blank")
+	}
+	if userDataDirSet && strings.TrimSpace(userDataDir) == "" {
+		return fmt.Errorf("-browser-cdp-user-data-dir cannot be blank")
+	}
+	if portSet && (port < 1 || port > 65535) {
+		return fmt.Errorf("-browser-cdp-port must be between 1 and 65535")
+	}
+	if strings.TrimSpace(endpoint) != "" && port != 0 {
+		return fmt.Errorf("-browser-cdp-endpoint and -browser-cdp-port cannot be used together")
+	}
+	usesCDP := strings.TrimSpace(endpoint) != "" || port != 0 || launch || strings.TrimSpace(executable) != "" || strings.TrimSpace(userDataDir) != ""
+	if strings.TrimSpace(browserVideoOutput) != "" && usesCDP {
+		return fmt.Errorf("-browser-video-output is not supported when attaching to a browser with -browser-cdp-launch/-browser-cdp-endpoint/-browser-cdp-port")
+	}
+	if !usesCDP {
+		return nil
+	}
+	flow := &tsplay_core.Flow{
+		SchemaVersion: "1",
+		Name:          "browser_cdp_flags",
+		Browser: &tsplay_core.FlowBrowserConfig{
+			CDPLaunch:      launch,
+			CDPEndpoint:    endpoint,
+			CDPPort:        port,
+			CDPExecutable:  executable,
+			CDPUserDataDir: userDataDir,
+		},
+		Steps: []tsplay_core.FlowStep{
+			{Action: "navigate", URL: "about:blank"},
+		},
+	}
+	if err := tsplay_core.ValidateFlowStrict(flow); err != nil {
+		return err
+	}
+	return nil
+}
+
 func run_flow(flow *tsplay_core.Flow) {
 	result, err := tsplay_core.RunFlow(flow, tsplay_core.FlowRunOptions{
 		Headless:               g_headless,
@@ -287,6 +368,11 @@ func run_flow(flow *tsplay_core.Flow) {
 		BrowserVideoWidth:      g_browserVideoWidth,
 		BrowserVideoHeight:     g_browserVideoHeight,
 		BrowserVideoCooldownMS: g_browserVideoCooldownMS,
+		BrowserCDPLaunch:       g_browserCDPLaunch,
+		BrowserCDPEndpoint:     g_browserCDPEndpoint,
+		BrowserCDPPort:         g_browserCDPPort,
+		BrowserCDPExecutable:   g_browserCDPExecutable,
+		BrowserCDPUserDataDir:  g_browserCDPUserDataDir,
 	})
 	if result != nil {
 		encoded, marshalErr := json.MarshalIndent(result, "", "  ")
@@ -326,6 +412,8 @@ func cli_mode() {
 	var pw *playwright.Playwright
 	var browser playwright.Browser
 	var page playwright.Page
+	var connectedOverCDP bool
+	var closeBrowserRuntime func() error
 
 	clearPlaywrightGlobals := func() {
 		L.SetGlobal("browser", lua.LNil)
@@ -350,14 +438,18 @@ func cli_mode() {
 	stopPlaywright := func() {
 		clearPlaywrightGlobals()
 		if page != nil {
-			if err := page.Close(); err != nil {
-				log.Printf("failed to close page: %v", err)
+			if !connectedOverCDP {
+				if err := page.Close(); err != nil {
+					log.Printf("failed to close page: %v", err)
+				}
 			}
 			page = nil
 		}
 		if browser != nil {
-			if err := browser.Close(); err != nil {
-				log.Printf("failed to close browser: %v", err)
+			if !connectedOverCDP {
+				if err := browser.Close(); err != nil {
+					log.Printf("failed to close browser: %v", err)
+				}
 			}
 			browser = nil
 		}
@@ -367,6 +459,13 @@ func cli_mode() {
 			}
 			pw = nil
 		}
+		if closeBrowserRuntime != nil {
+			if err := closeBrowserRuntime(); err != nil {
+				log.Printf("failed to close browser runtime: %v", err)
+			}
+			closeBrowserRuntime = nil
+		}
+		connectedOverCDP = false
 	}
 	defer stopPlaywright()
 
@@ -400,19 +499,22 @@ func cli_mode() {
 		} else {
 			fmt.Printf("Launching Playwright browser and page because %s...\n", reason)
 		}
-		launchedBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			Headless: playwright.Bool(g_headless),
-		})
-		if err != nil {
-			return fmt.Errorf("could not launch browser: %v", err)
+		browserConfig := tsplay_core.FlowBrowserConfig{
+			Headless:       playwright.Bool(g_headless),
+			CDPLaunch:      g_browserCDPLaunch,
+			CDPEndpoint:    g_browserCDPEndpoint,
+			CDPPort:        g_browserCDPPort,
+			CDPExecutable:  g_browserCDPExecutable,
+			CDPUserDataDir: g_browserCDPUserDataDir,
 		}
-		launchedPage, err := launchedBrowser.NewPage()
+		browserRuntime, err := tsplay_core.OpenFlowBrowser(pw, browserConfig, tsplay_core.FlowRunOptions{ArtifactRoot: g_artifactRoot}, nil)
 		if err != nil {
-			_ = launchedBrowser.Close()
-			return fmt.Errorf("could not create page: %v", err)
+			return err
 		}
-		browser = launchedBrowser
-		page = launchedPage
+		browser = browserRuntime.Browser
+		page = browserRuntime.Page
+		connectedOverCDP = browserRuntime.ConnectedOverCDP
+		closeBrowserRuntime = browserRuntime.Close
 		setPlaywrightGlobals()
 		fmt.Println("Playwright initialized. Browser, context, and page are ready.")
 		return nil
@@ -528,6 +630,9 @@ func run_script(script string) {
 	var browser playwright.Browser
 	var page playwright.Page
 	var browserVideo *tsplay_core.BrowserVideoRecording
+	var connectedOverCDP bool
+	var closeBrowserRuntime func() error
+	stoppedPlaywright := false
 	setPlaywrightGlobals := func() {
 		ud_b := L.NewUserData()
 		ud_b.Value = browser
@@ -542,29 +647,46 @@ func run_script(script string) {
 		L.SetGlobal("page", ud_p)
 	}
 	stopPlaywright := func() {
+		if stoppedPlaywright {
+			return
+		}
+		stoppedPlaywright = true
 		L.SetGlobal("browser", lua.LNil)
 		L.SetGlobal("context", lua.LNil)
 		L.SetGlobal("page", lua.LNil)
 		if page != nil {
-			_ = page.Close()
+			if !connectedOverCDP {
+				_ = page.Close()
+			}
 			page = nil
 		}
 		if browser != nil {
-			_ = browser.Close()
+			if !connectedOverCDP {
+				_ = browser.Close()
+			}
 			browser = nil
 		}
 		if pw != nil {
 			_ = pw.Stop()
 			pw = nil
 		}
+		if closeBrowserRuntime != nil {
+			_ = closeBrowserRuntime()
+			closeBrowserRuntime = nil
+		}
+		connectedOverCDP = false
 	}
 	defer stopPlaywright()
+	fatalWithCleanup := func(format string, args ...any) {
+		stopPlaywright()
+		log.Fatalf(format, args...)
+	}
 
 	if usage.NeedsRuntime {
 		var err error
 		pw, err = tsplay_core.StartPlaywright()
 		if err != nil {
-			log.Fatalf("%v", err)
+			fatalWithCleanup("%v", err)
 		}
 	}
 	if usage.NeedsBrowser() {
@@ -572,35 +694,35 @@ func run_script(script string) {
 			var err error
 			pw, err = tsplay_core.StartPlaywright()
 			if err != nil {
-				log.Fatalf("%v", err)
+				fatalWithCleanup("%v", err)
 			}
 		}
 		var err error
-		browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			Headless: playwright.Bool(g_headless),
-		})
-		if err != nil {
-			log.Fatalf("could not launch browser: %v", err)
-		}
 		browserVideo, err = tsplay_core.PrepareBrowserVideoRecording(g_browserVideoOutput, g_browserVideoWidth, g_browserVideoHeight)
 		if err != nil {
-			log.Fatalf("could not prepare browser video: %v", err)
+			fatalWithCleanup("could not prepare browser video: %v", err)
 		}
-		if browserVideo != nil {
-			page, err = browser.NewPage(playwright.BrowserNewPageOptions{
-				RecordVideo: browserVideo.RecordVideo,
-			})
-		} else {
-			page, err = browser.NewPage()
+		browserConfig := tsplay_core.FlowBrowserConfig{
+			Headless:       playwright.Bool(g_headless),
+			CDPLaunch:      g_browserCDPLaunch,
+			CDPEndpoint:    g_browserCDPEndpoint,
+			CDPPort:        g_browserCDPPort,
+			CDPExecutable:  g_browserCDPExecutable,
+			CDPUserDataDir: g_browserCDPUserDataDir,
 		}
+		browserRuntime, err := tsplay_core.OpenFlowBrowser(pw, browserConfig, tsplay_core.FlowRunOptions{ArtifactRoot: g_artifactRoot}, browserVideo)
 		if err != nil {
-			log.Fatalf("could not create page: %v", err)
+			fatalWithCleanup("could not initialize browser: %v", err)
 		}
+		browser = browserRuntime.Browser
+		page = browserRuntime.Page
+		connectedOverCDP = browserRuntime.ConnectedOverCDP
+		closeBrowserRuntime = browserRuntime.Close
 		setPlaywrightGlobals()
 	}
 
 	if err := L.DoString(script); err != nil {
-		log.Fatalf("error running Lua script: %v", err)
+		fatalWithCleanup("error running Lua script: %v", err)
 	}
 
 	if !usage.NeedsBrowser() {
@@ -613,7 +735,7 @@ func run_script(script string) {
 		}
 		savedPath, err := tsplay_core.SaveBrowserVideo(page, browserVideo.OutputPath)
 		if err != nil {
-			log.Fatalf("could not save browser video: %v", err)
+			fatalWithCleanup("could not save browser video: %v", err)
 		}
 		fmt.Printf("saved browser video: %s\n", savedPath)
 		page = nil

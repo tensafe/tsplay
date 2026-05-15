@@ -61,6 +61,50 @@ func TestWithDraftFlowObservationInputAcceptsStringOrObject(t *testing.T) {
 	}
 }
 
+func TestWithBrowserCDPPortInputDeclaresRange(t *testing.T) {
+	tool := mcp.NewTool("test.tool", withBrowserCDPPortInput("desc"))
+	portSchema, ok := tool.InputSchema.Properties["browser_cdp_port"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected browser_cdp_port schema, got %#v", tool.InputSchema.Properties["browser_cdp_port"])
+	}
+	if portSchema["type"] != "number" {
+		t.Fatalf("expected number schema, got %#v", portSchema)
+	}
+	if portSchema["minimum"] != float64(1) || portSchema["maximum"] != float64(65535) {
+		t.Fatalf("expected port range 1..65535, got %#v", portSchema)
+	}
+}
+
+func TestBrowserCDPPortFromToolRequestValidatesIntegerRange(t *testing.T) {
+	valid := []any{9222, int64(9222), float64(9222), json.Number("9222"), "9222"}
+	for _, value := range valid {
+		request := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Arguments: map[string]any{"browser_cdp_port": value},
+			},
+		}
+		port, present, err := browserCDPPortFromToolRequest(request)
+		if err != nil {
+			t.Fatalf("expected valid port for %#v, got %v", value, err)
+		}
+		if !present || port != 9222 {
+			t.Fatalf("expected port 9222 for %#v, got present=%v port=%d", value, present, port)
+		}
+	}
+
+	invalid := []any{0, -1, 65536, 9222.5, json.Number("9222.5"), "abc", true}
+	for _, value := range invalid {
+		request := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Arguments: map[string]any{"browser_cdp_port": value},
+			},
+		}
+		if _, _, err := browserCDPPortFromToolRequest(request); err == nil {
+			t.Fatalf("expected invalid port error for %#v", value)
+		}
+	}
+}
+
 func TestHandleFlowListActionsTool(t *testing.T) {
 	result, err := handleFlowListActionsTool(context.Background(), mcp.CallToolRequest{})
 	if err != nil {
@@ -775,6 +819,10 @@ func TestHandleDraftFlowToolWithObservation(t *testing.T) {
 	if !ok || run["status"] != "not_started" {
 		t.Fatalf("expected synthetic run metadata for observation-only draft, got %#v", payload["run"])
 	}
+	runDetails, ok := run["details"].(map[string]any)
+	if !ok || runDetails["source"] != "provided_observation" {
+		t.Fatalf("expected provided_observation synthetic run source, got %#v", run["details"])
+	}
 	security, ok := payload["security"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected security metadata, got %#v", payload["security"])
@@ -1122,6 +1170,46 @@ func TestHandleFinalizeFlowToolWithObservationReady(t *testing.T) {
 	content, ok := payload["content_elements"].([]any)
 	if !ok || len(content) != 1 {
 		t.Fatalf("expected content_elements passthrough, got %#v", payload["content_elements"])
+	}
+}
+
+func TestHandleDraftFlowToolPreflightCDPErrorUsesPreflightRunSource(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"intent":               "读取页面标题",
+				"url":                  "https://example.com",
+				"browser_cdp_launch":   true,
+				"browser_cdp_endpoint": "http://192.0.2.1:9222",
+				"allow_browser_state":  true,
+			},
+		},
+	}
+
+	result, err := handleDraftFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("draft flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "only start or reuse a local browser") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	run, ok := payload["run"].(map[string]any)
+	if !ok || run["status"] != "not_started" {
+		t.Fatalf("expected synthetic run metadata, got %#v", payload["run"])
+	}
+	details, ok := run["details"].(map[string]any)
+	if !ok || details["source"] != "preflight" {
+		t.Fatalf("expected preflight synthetic run source, got %#v", run["details"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
 	}
 }
 
@@ -1942,6 +2030,174 @@ func TestHandleObservePageToolIncludesObservationSummaryFields(t *testing.T) {
 	}
 }
 
+func TestHandleObservePageToolRestrictsCDPUserDataDirRoot(t *testing.T) {
+	installCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, nil)
+	defer restore()
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"url":                       "https://example.com",
+				"browser_cdp_launch":        true,
+				"browser_cdp_user_data_dir": "../escape-profile",
+				"allow_browser_state":       true,
+			},
+		},
+	}
+
+	result, err := handleObservePageToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: t.TempDir()})
+	if err != nil {
+		t.Fatalf("observe page: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "file output root") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if installCalled {
+		t.Fatalf("invalid CDP user data dir should be rejected before starting Playwright")
+	}
+}
+
+func TestHandleObservePageToolRejectsInvalidCDPPortBeforeRun(t *testing.T) {
+	installCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, nil)
+	defer restore()
+
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"url":                 "https://example.com",
+				"browser_cdp_port":    0,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleObservePageToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("observe page: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "between 1 and 65535") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before CDP port validation: %#v", payload["run"])
+	}
+	if installCalled {
+		t.Fatalf("invalid CDP port should be rejected before starting Playwright")
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleObservePageToolRejectsRemoteCDPLaunchBeforeRun(t *testing.T) {
+	installCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, nil)
+	defer restore()
+
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"url":                  "https://example.com",
+				"browser_cdp_launch":   true,
+				"browser_cdp_endpoint": "http://192.0.2.1:9222",
+				"allow_browser_state":  true,
+			},
+		},
+	}
+
+	result, err := handleObservePageToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("observe page: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "only start or reuse a local browser") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before CDP launch endpoint validation: %#v", payload["run"])
+	}
+	if installCalled {
+		t.Fatalf("invalid CDP launch endpoint should be rejected before starting Playwright")
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleObservePageToolRejectsLocalCDPLaunchEndpointWithoutPortBeforeRun(t *testing.T) {
+	installCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, nil)
+	defer restore()
+
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"url":                  "https://example.com",
+				"browser_cdp_launch":   true,
+				"browser_cdp_endpoint": "http://127.0.0.1",
+				"allow_browser_state":  true,
+			},
+		},
+	}
+
+	result, err := handleObservePageToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("observe page: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "explicit port") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before CDP launch endpoint validation: %#v", payload["run"])
+	}
+	if installCalled {
+		t.Fatalf("invalid CDP launch endpoint should be rejected before starting Playwright")
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
 func TestHandleValidateFlowTool(t *testing.T) {
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
@@ -2274,6 +2530,39 @@ steps:
 	}
 }
 
+func TestHandleValidateFlowToolRejectsInvalidCDPEndpoint(t *testing.T) {
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: invalid_cdp_endpoint_from_mcp
+browser:
+  cdp_endpoint: "127.0.0.1:70000/json/version"
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleValidateFlowTool(context.Background(), request)
+	if err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["valid"] != false {
+		t.Fatalf("expected invalid flow, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "invalid port") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+}
+
 func TestHandleValidateFlowToolRejectsRedisWithoutAllow(t *testing.T) {
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
@@ -2447,6 +2736,507 @@ func TestHandleRunFlowToolMissingFlow(t *testing.T) {
 	nextAction, ok := payload["next_action"].(map[string]any)
 	if !ok || nextAction["tool"] != "tsplay.repair_flow_context" {
 		t.Fatalf("expected repair_flow_context next_action, got %#v", payload["next_action"])
+	}
+}
+
+func TestHandleRunFlowToolRejectsCDPWithoutBrowserStateBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: cdp_override_without_grant
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"browser_cdp_port": 9222,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "allow_browser_state") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before CDP grant check: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsCDPPathOverridesWithoutBrowserStateBeforeRun(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		wantArg string
+	}{
+		{
+			name:    "executable",
+			args:    map[string]any{"browser_cdp_executable": "/definitely/missing/chrome"},
+			wantArg: "browser_cdp_executable",
+		},
+		{
+			name:    "user_data_dir",
+			args:    map[string]any{"browser_cdp_user_data_dir": "profiles/cdp"},
+			wantArg: "browser_cdp_user_data_dir",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			artifactRoot := t.TempDir()
+			args := map[string]any{
+				"flow": `
+schema_version: "1"
+name: cdp_path_override_without_grant
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+			}
+			for key, value := range tt.args {
+				args[key] = value
+			}
+			request := mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Arguments: args,
+				},
+			}
+
+			result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+			if err != nil {
+				t.Fatalf("run flow: %v", err)
+			}
+
+			var payload map[string]any
+			decodeToolText(t, result, &payload)
+			if payload["ok"] != false {
+				t.Fatalf("expected ok=false, got %#v", payload)
+			}
+			errorText, _ := payload["error"].(string)
+			if !strings.Contains(errorText, "allow_browser_state") || !strings.Contains(errorText, tt.wantArg) {
+				t.Fatalf("expected browser state grant error mentioning %q, got %#v", tt.wantArg, payload["error"])
+			}
+			if _, ok := payload["run"]; ok {
+				t.Fatalf("run metadata should not be created before CDP grant check: %#v", payload["run"])
+			}
+			if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+				t.Fatalf("expected no browser run directory, got %#v", entries)
+			}
+		})
+	}
+}
+
+func TestHandleRunFlowToolRejectsCDPOverrideWithUseSessionBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: cdp_override_use_session_conflict
+browser:
+  use_session: missing-admin
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"browser_cdp_port":    9222,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	errorText, _ := payload["error"].(string)
+	if !strings.Contains(errorText, "use_session") || !strings.Contains(errorText, "cannot be combined") {
+		t.Fatalf("expected use_session conflict, got %#v", payload["error"])
+	}
+	if strings.Contains(errorText, "missing-admin") {
+		t.Fatalf("should reject CDP/use_session conflict before resolving missing session, got %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before CDP use_session conflict validation: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsFlowCDPWithoutBrowserStateBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: flow_cdp_without_grant
+browser:
+  cdp_port: 9222
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "allow_browser_state") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before flow CDP grant check: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsFlowCDPPortZeroBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: flow_cdp_port_zero
+browser:
+  cdp_port: 0
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	errorText, _ := payload["error"].(string)
+	if !strings.Contains(errorText, "cdp_port") || !strings.Contains(errorText, "between 1 and 65535") {
+		t.Fatalf("expected cdp_port range error, got %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before flow cdp_port validation: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsBlankFlowCDPEndpointBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: blank_flow_cdp_endpoint
+browser:
+  cdp_endpoint: ""
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	errorText, _ := payload["error"].(string)
+	if !strings.Contains(errorText, "cdp_endpoint") || !strings.Contains(errorText, "cannot be blank") {
+		t.Fatalf("expected cdp_endpoint blank error, got %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before flow cdp_endpoint validation: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsBlankFlowCDPPathFieldBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: blank_flow_cdp_executable
+browser:
+  cdp_executable: ""
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	errorText, _ := payload["error"].(string)
+	if !strings.Contains(errorText, "cdp_executable") || !strings.Contains(errorText, "cannot be blank") {
+		t.Fatalf("expected cdp_executable blank error, got %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before flow cdp_executable validation: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsRemoteFlowCDPLaunchBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: remote_flow_cdp_launch
+browser:
+  cdp_launch: true
+  cdp_endpoint: "http://192.0.2.1:9222"
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "only start or reuse a local browser") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before flow CDP launch validation: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsInvalidCDPPortBeforeRun(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: invalid_cdp_port
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"browser_cdp_port":    0,
+				"allow_browser_state": true,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != false {
+		t.Fatalf("expected ok=false, got %#v", payload)
+	}
+	if !strings.Contains(payload["error"].(string), "between 1 and 65535") {
+		t.Fatalf("unexpected error: %#v", payload["error"])
+	}
+	if _, ok := payload["run"]; ok {
+		t.Fatalf("run metadata should not be created before CDP port validation: %#v", payload["run"])
+	}
+	if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+		t.Fatalf("expected no browser run directory, got %#v", entries)
+	}
+}
+
+func TestHandleRunFlowToolRejectsInvalidCDPToolArgsBeforeRun(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		wantErr string
+	}{
+		{
+			name:    "blank_endpoint",
+			args:    map[string]any{"browser_cdp_endpoint": ""},
+			wantErr: "browser_cdp_endpoint cannot be blank",
+		},
+		{
+			name:    "whitespace_endpoint",
+			args:    map[string]any{"browser_cdp_endpoint": " \t "},
+			wantErr: "browser_cdp_endpoint cannot be blank",
+		},
+		{
+			name:    "non_string_endpoint",
+			args:    map[string]any{"browser_cdp_endpoint": 9222},
+			wantErr: "browser_cdp_endpoint must be a string",
+		},
+		{
+			name:    "blank_executable",
+			args:    map[string]any{"browser_cdp_executable": ""},
+			wantErr: "browser_cdp_executable cannot be blank",
+		},
+		{
+			name:    "whitespace_executable",
+			args:    map[string]any{"browser_cdp_executable": "\n\t"},
+			wantErr: "browser_cdp_executable cannot be blank",
+		},
+		{
+			name:    "non_string_executable",
+			args:    map[string]any{"browser_cdp_executable": false},
+			wantErr: "browser_cdp_executable must be a string",
+		},
+		{
+			name:    "blank_user_data_dir",
+			args:    map[string]any{"browser_cdp_user_data_dir": ""},
+			wantErr: "browser_cdp_user_data_dir cannot be blank",
+		},
+		{
+			name:    "whitespace_user_data_dir",
+			args:    map[string]any{"browser_cdp_user_data_dir": " \r\n "},
+			wantErr: "browser_cdp_user_data_dir cannot be blank",
+		},
+		{
+			name:    "non_string_user_data_dir",
+			args:    map[string]any{"browser_cdp_user_data_dir": 1},
+			wantErr: "browser_cdp_user_data_dir must be a string",
+		},
+		{
+			name:    "blank_launch",
+			args:    map[string]any{"browser_cdp_launch": ""},
+			wantErr: "browser_cdp_launch must be a boolean",
+		},
+		{
+			name:    "invalid_launch",
+			args:    map[string]any{"browser_cdp_launch": "yes"},
+			wantErr: "browser_cdp_launch must be a boolean",
+		},
+		{
+			name:    "non_boolean_launch",
+			args:    map[string]any{"browser_cdp_launch": 1},
+			wantErr: "browser_cdp_launch must be a boolean",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			artifactRoot := t.TempDir()
+			args := map[string]any{
+				"flow": `
+schema_version: "1"
+name: invalid_cdp_tool_arg
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+				"allow_browser_state": true,
+			}
+			for key, value := range tt.args {
+				args[key] = value
+			}
+			request := mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Arguments: args,
+				},
+			}
+
+			result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+			if err != nil {
+				t.Fatalf("run flow: %v", err)
+			}
+
+			var payload map[string]any
+			decodeToolText(t, result, &payload)
+			if payload["ok"] != false {
+				t.Fatalf("expected ok=false, got %#v", payload)
+			}
+			if !strings.Contains(payload["error"].(string), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %#v", tt.wantErr, payload["error"])
+			}
+			if _, ok := payload["run"]; ok {
+				t.Fatalf("run metadata should not be created before CDP tool arg validation: %#v", payload["run"])
+			}
+			if entries, err := os.ReadDir(filepath.Join(artifactRoot, defaultTSPlayBrowserRunFolderName)); err == nil && len(entries) > 0 {
+				t.Fatalf("expected no browser run directory, got %#v", entries)
+			}
+		})
 	}
 }
 

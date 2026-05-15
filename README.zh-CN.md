@@ -208,6 +208,9 @@ go mod download
 如果你想先把命令行 `-action` 的入口全部看清楚，再决定该用哪条路径，直接看 [docs/actions/README.md](docs/actions/README.md)。
 
 如果想隐藏浏览器窗口，可以追加 `-headless`。
+如果要接管已经用 `--remote-debugging-port=9222` 启动的 Chrome/Chromium，可以给 `-flow`、`-script` 或 `-action cli` 追加 `-browser-cdp-port 9222`，也可以用 `-browser-cdp-endpoint` 传完整 CDP endpoint。
+`-browser-cdp-endpoint` 支持 `ws://127.0.0.1:9222/devtools/browser/...`、`http://127.0.0.1:9222`，也支持直接粘贴 `127.0.0.1:9222/json/version` 这类本机调试地址。
+如果希望 TSPlay 帮你把这一步也做掉，直接加 `-browser-cdp-launch`：TSPlay 会主动搜索 macOS / Windows / Linux 常见的 Chrome、Chromium、Edge 位置，启动一个带远程调试端口的独立 profile，然后再通过 CDP 接管。只有需要手动指定浏览器或 profile 目录时，才需要再传 `-browser-cdp-executable` 或 `-browser-cdp-user-data-dir`。
 
 `record-screen` 录的是整个 macOS 屏幕，适合录桌面演示。  
 `-browser-video-output` 录的是 Playwright 页面内容，更适合浏览器教程。  
@@ -448,6 +451,11 @@ steps:
 - `use_session`
 - `storage_state` / `storage_state_path` / `load_storage_state`
 - `save_storage_state`
+- `cdp_launch`
+- `cdp_endpoint`
+- `cdp_port`
+- `cdp_executable`
+- `cdp_user_data_dir`
 - `persistent`
 - `profile`
 - `session`
@@ -459,8 +467,14 @@ steps:
 
 - `use_session` 会从 `tsplay.save_session` 保存的命名会话里自动展开
 - `save_storage_state` 会在 Flow 结束后保存当前登录态
+- `cdp_launch: true` 会启动本机 Chrome/Chromium/Edge 并打开远程调试端口，然后通过 CDP 接管；不写 `cdp_executable` 时，TSPlay 会自动搜索 macOS、Windows、Linux 的常见浏览器位置
+- `cdp_endpoint` / `cdp_port` 会通过 Chrome DevTools Protocol 接管已经用 `--remote-debugging-port` 启动的 Chromium/Chrome；例如 `cdp_port: 9222` 或 `cdp_endpoint: "127.0.0.1:9222/json/version"`
+- `cdp_user_data_dir` 用来指定 `cdp_launch` 的独立 profile 目录；不写时会默认放在 artifact root 下
 - `profile` / `session` 会启用 persistent browser context
 - `persistent profile/session` 不能和 `storage_state` 或 `use_session` 同时使用
+- CDP 接管会复用外部浏览器的默认 context 和第一个页面；TSPlay 结束时只断开 Playwright 连接，不会关闭真实浏览器
+- 如果浏览器是 TSPlay 通过 `cdp_launch` 启动的，TSPlay 退出时会回收这个独立浏览器进程
+- `cdp_launch` / `cdp_endpoint` / `cdp_port` 不能和 `use_session`、`storage_state/load_storage_state`、`persistent/profile/session`、`user_agent` 或 `-browser-video-output` 同时使用
 
 如果希望业务方只记一个会话名，可以先保存：
 

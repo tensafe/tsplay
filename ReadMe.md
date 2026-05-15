@@ -208,6 +208,9 @@ go mod download
 If you want one place that explains every supported command-line `-action`, start with [docs/actions/README.md](docs/actions/README.md).
 
 Add `-headless` if you want to hide the browser window.
+To attach to Chrome/Chromium that was already started with `--remote-debugging-port=9222`, add `-browser-cdp-port 9222` to `-flow`, `-script`, or `-action cli`; use `-browser-cdp-endpoint` when you already have the full CDP endpoint.
+`-browser-cdp-endpoint` accepts `ws://127.0.0.1:9222/devtools/browser/...`, `http://127.0.0.1:9222`, and pasted local forms like `127.0.0.1:9222/json/version`.
+If you want TSPlay to make this easy, use `-browser-cdp-launch`: TSPlay will search common Chrome/Chromium/Edge locations on macOS, Windows, and Linux, launch a separate profile with remote debugging enabled, then attach over CDP. Use `-browser-cdp-executable` or `-browser-cdp-user-data-dir` only when you need to override the detected browser or profile directory.
 
 `record-screen` captures the entire macOS desktop, which is useful for desktop demos.  
 `-browser-video-output` records the Playwright page itself, which is better for browser tutorials.  
@@ -450,6 +453,11 @@ Common `browser` fields:
 - `use_session`
 - `storage_state` / `storage_state_path` / `load_storage_state`
 - `save_storage_state`
+- `cdp_launch`
+- `cdp_endpoint`
+- `cdp_port`
+- `cdp_executable`
+- `cdp_user_data_dir`
 - `persistent`
 - `profile`
 - `session`
@@ -461,8 +469,14 @@ Notes:
 
 - `use_session` expands automatically from a named session saved with `tsplay.save_session`
 - `save_storage_state` saves the current login state after the Flow finishes
+- `cdp_launch: true` starts a local Chrome/Chromium/Edge with remote debugging enabled and then attaches over CDP; when `cdp_executable` is omitted, TSPlay searches common browser locations on macOS, Windows, and Linux
+- `cdp_endpoint` / `cdp_port` attaches to an existing Chromium/Chrome process started with `--remote-debugging-port`; for example `cdp_port: 9222` or `cdp_endpoint: "127.0.0.1:9222/json/version"`
+- `cdp_user_data_dir` selects the independent profile directory for `cdp_launch`; when omitted, TSPlay creates one under the artifact root
 - `profile` / `session` enables a persistent browser context
 - `persistent profile/session` cannot be combined with `storage_state` or `use_session`
+- CDP attach reuses the external browser's default context and first page; TSPlay disconnects Playwright when done and does not close the real browser
+- CDP launch is cleaned up by TSPlay when it started the browser process
+- `cdp_launch` / `cdp_endpoint` / `cdp_port` cannot be combined with `use_session`, `storage_state/load_storage_state`, `persistent/profile/session`, `user_agent`, or `-browser-video-output`
 
 If you want business users to remember only a single session name, save one first:
 

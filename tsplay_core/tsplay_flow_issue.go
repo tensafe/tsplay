@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -474,6 +475,34 @@ func validateGenericFieldType(context flowDocumentContext, field string, value a
 			return buildFieldTypeMismatchIssue(context, field, "string", describeGenericFieldType(value), path, stepPath, action, 0, 0)
 		}
 	}
+	if context == flowContextBrowser && field == "cdp_endpoint" {
+		endpoint, ok := value.(string)
+		if !ok {
+			return buildFieldTypeMismatchIssue(context, field, "string", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+		if strings.TrimSpace(endpoint) == "" {
+			return buildBrowserCDPEndpointBlankIssue(path, stepPath, action, 0, 0)
+		}
+	}
+	if context == flowContextBrowser && field == "cdp_launch" {
+		if _, ok := value.(bool); !ok {
+			return buildFieldTypeMismatchIssue(context, field, "boolean", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+	}
+	if context == flowContextBrowser && (field == "cdp_executable" || field == "cdp_user_data_dir") {
+		pathValue, ok := value.(string)
+		if !ok {
+			return buildFieldTypeMismatchIssue(context, field, "string", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+		if strings.TrimSpace(pathValue) == "" {
+			return buildBrowserCDPPathFieldBlankIssue(field, path, stepPath, action, 0, 0)
+		}
+	}
+	if context == flowContextBrowser && field == "cdp_port" {
+		if issue := validateGenericBrowserCDPPort(value, path, stepPath, action); issue != nil {
+			return issue
+		}
+	}
 	return nil
 }
 
@@ -488,7 +517,168 @@ func validateYAMLFieldType(context flowDocumentContext, field string, node *yaml
 			return buildFieldTypeMismatchIssue(context, field, "string", describeYAMLFieldType(node), path, stepPath, action, line, column)
 		}
 	}
+	if context == flowContextBrowser && field == "cdp_endpoint" {
+		line, column := 0, 0
+		if node != nil {
+			line = node.Line
+			column = node.Column
+		}
+		if !yamlNodeIsString(node) {
+			return buildFieldTypeMismatchIssue(context, field, "string", describeYAMLFieldType(node), path, stepPath, action, line, column)
+		}
+		if strings.TrimSpace(yamlScalarStringValue(node)) == "" {
+			return buildBrowserCDPEndpointBlankIssue(path, stepPath, action, line, column)
+		}
+	}
+	if context == flowContextBrowser && field == "cdp_launch" {
+		line, column := 0, 0
+		if node != nil {
+			line = node.Line
+			column = node.Column
+		}
+		if !yamlNodeDecodesBool(node) {
+			return buildFieldTypeMismatchIssue(context, field, "boolean", describeYAMLFieldType(node), path, stepPath, action, line, column)
+		}
+	}
+	if context == flowContextBrowser && (field == "cdp_executable" || field == "cdp_user_data_dir") {
+		line, column := 0, 0
+		if node != nil {
+			line = node.Line
+			column = node.Column
+		}
+		if !yamlNodeIsString(node) {
+			return buildFieldTypeMismatchIssue(context, field, "string", describeYAMLFieldType(node), path, stepPath, action, line, column)
+		}
+		if strings.TrimSpace(yamlScalarStringValue(node)) == "" {
+			return buildBrowserCDPPathFieldBlankIssue(field, path, stepPath, action, line, column)
+		}
+	}
+	if context == flowContextBrowser && field == "cdp_port" {
+		if issue := validateYAMLBrowserCDPPort(node, path, stepPath, action); issue != nil {
+			return issue
+		}
+	}
 	return nil
+}
+
+func validateGenericBrowserCDPPort(value any, path string, stepPath string, action string) *FlowIssue {
+	var port int64
+	switch typed := value.(type) {
+	case json.Number:
+		parsed, err := strconv.ParseInt(typed.String(), 10, 64)
+		if err != nil {
+			return buildFieldTypeMismatchIssue(flowContextBrowser, "cdp_port", "integer", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+		port = parsed
+	case int:
+		port = int64(typed)
+	case int8:
+		port = int64(typed)
+	case int16:
+		port = int64(typed)
+	case int32:
+		port = int64(typed)
+	case int64:
+		port = typed
+	case uint:
+		port = int64(typed)
+	case uint8:
+		port = int64(typed)
+	case uint16:
+		port = int64(typed)
+	case uint32:
+		port = int64(typed)
+	case uint64:
+		if typed > 65535 {
+			return buildBrowserCDPPortRangeIssue(path, stepPath, action, 0, 0)
+		}
+		port = int64(typed)
+	case float32:
+		floatValue := float64(typed)
+		if floatValue != float64(int64(floatValue)) {
+			return buildFieldTypeMismatchIssue(flowContextBrowser, "cdp_port", "integer", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+		port = int64(floatValue)
+	case float64:
+		if typed != float64(int64(typed)) {
+			return buildFieldTypeMismatchIssue(flowContextBrowser, "cdp_port", "integer", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+		}
+		port = int64(typed)
+	default:
+		return buildFieldTypeMismatchIssue(flowContextBrowser, "cdp_port", "integer", describeGenericFieldType(value), path, stepPath, action, 0, 0)
+	}
+	if port < 1 || port > 65535 {
+		return buildBrowserCDPPortRangeIssue(path, stepPath, action, 0, 0)
+	}
+	return nil
+}
+
+func validateYAMLBrowserCDPPort(node *yaml.Node, path string, stepPath string, action string) *FlowIssue {
+	line, column := 0, 0
+	if node != nil {
+		line = node.Line
+		column = node.Column
+	}
+	if node != nil && node.Kind == yaml.AliasNode {
+		return validateYAMLBrowserCDPPort(node.Alias, path, stepPath, action)
+	}
+	if node == nil || node.Kind != yaml.ScalarNode || node.Tag != "!!int" {
+		return buildFieldTypeMismatchIssue(flowContextBrowser, "cdp_port", "integer", describeYAMLFieldType(node), path, stepPath, action, line, column)
+	}
+	var port int64
+	if err := node.Decode(&port); err != nil {
+		return buildFieldTypeMismatchIssue(flowContextBrowser, "cdp_port", "integer", describeYAMLFieldType(node), path, stepPath, action, line, column)
+	}
+	if port < 1 || port > 65535 {
+		return buildBrowserCDPPortRangeIssue(path, stepPath, action, line, column)
+	}
+	return nil
+}
+
+func buildBrowserCDPPortRangeIssue(path string, stepPath string, action string, line int, column int) *FlowIssue {
+	return &FlowIssue{
+		Code:       "invalid_value",
+		Message:    `flow.browser field "cdp_port" must be an integer between 1 and 65535`,
+		Path:       path,
+		StepPath:   stepPath,
+		Action:     action,
+		Field:      "cdp_port",
+		Suggestion: `Use a valid local Chrome DevTools port such as cdp_port: 9222, or remove cdp_port when the flow should launch a fresh Playwright browser.`,
+		Line:       line,
+		Column:     column,
+	}
+}
+
+func buildBrowserCDPEndpointBlankIssue(path string, stepPath string, action string, line int, column int) *FlowIssue {
+	return &FlowIssue{
+		Code:       "invalid_value",
+		Message:    `flow.browser field "cdp_endpoint" cannot be blank`,
+		Path:       path,
+		StepPath:   stepPath,
+		Action:     action,
+		Field:      "cdp_endpoint",
+		Suggestion: `Provide a Chrome DevTools endpoint such as cdp_endpoint: "http://127.0.0.1:9222/json/version", or remove cdp_endpoint when the flow should launch a fresh Playwright browser.`,
+		Line:       line,
+		Column:     column,
+	}
+}
+
+func buildBrowserCDPPathFieldBlankIssue(field string, path string, stepPath string, action string, line int, column int) *FlowIssue {
+	suggestion := `Provide a Chrome executable path, or remove cdp_executable to let TSPlay auto-detect Chrome/Chromium/Edge.`
+	if field == "cdp_user_data_dir" {
+		suggestion = `Provide a profile directory, or remove cdp_user_data_dir to let TSPlay create an isolated per-run CDP profile.`
+	}
+	return &FlowIssue{
+		Code:       "invalid_value",
+		Message:    fmt.Sprintf("flow.browser field %q cannot be blank", field),
+		Path:       path,
+		StepPath:   stepPath,
+		Action:     action,
+		Field:      field,
+		Suggestion: suggestion,
+		Line:       line,
+		Column:     column,
+	}
 }
 
 func buildFieldTypeMismatchIssue(context flowDocumentContext, field string, expected string, actual string, path string, stepPath string, action string, line int, column int) *FlowIssue {
@@ -506,15 +696,28 @@ func buildFieldTypeMismatchIssue(context flowDocumentContext, field string, expe
 	}
 	switch context {
 	case flowContextBrowser:
-		issue.Message = fmt.Sprintf("flow.browser field %q must be a %s, got %s", field, expected, actual)
+		issue.Message = fmt.Sprintf("flow.browser field %q must be %s %s, got %s", field, indefiniteArticle(expected), expected, actual)
 	default:
-		issue.Message = fmt.Sprintf("flow field %q must be a %s, got %s", field, expected, actual)
+		issue.Message = fmt.Sprintf("flow field %q must be %s %s, got %s", field, indefiniteArticle(expected), expected, actual)
 	}
 	if context == flowContextBrowser && field == "use_session" {
 		issue.Suggestion = `Use a saved session name string, for example: use_session: "admin". Remove "use_session" when the flow should start without a saved session.`
 		issue.Message += ". " + issue.Suggestion
 	}
 	return issue
+}
+
+func indefiniteArticle(word string) string {
+	word = strings.TrimSpace(strings.ToLower(word))
+	if word == "" {
+		return "a"
+	}
+	switch word[0] {
+	case 'a', 'e', 'i', 'o', 'u':
+		return "an"
+	default:
+		return "a"
+	}
 }
 
 func buildUnknownFieldMessage(context flowDocumentContext, issue *FlowIssue) string {
@@ -784,6 +987,30 @@ func yamlNodeIsString(node *yaml.Node) bool {
 		return yamlNodeIsString(node.Alias)
 	}
 	return node.Kind == yaml.ScalarNode && (node.Tag == "" || node.Tag == "!!str")
+}
+
+func yamlNodeDecodesBool(node *yaml.Node) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind == yaml.AliasNode {
+		return yamlNodeDecodesBool(node.Alias)
+	}
+	var value bool
+	return node.Decode(&value) == nil
+}
+
+func yamlScalarStringValue(node *yaml.Node) string {
+	if node == nil {
+		return ""
+	}
+	if node.Kind == yaml.AliasNode {
+		return yamlScalarStringValue(node.Alias)
+	}
+	if node.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return node.Value
 }
 
 func describeYAMLFieldType(node *yaml.Node) string {

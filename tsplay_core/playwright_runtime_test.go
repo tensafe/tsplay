@@ -101,6 +101,16 @@ func TestFlowUsesPlaywright(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "browser_cdp_requires_runtime",
+			flow: &Flow{
+				Browser: &FlowBrowserConfig{CDPPort: 9222},
+				Steps: []FlowStep{
+					{Action: "set_var", SaveAs: "answer", Value: "ok"},
+				},
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -164,6 +174,28 @@ func TestAnalyzeFlowPlaywrightUsageReportsReasons(t *testing.T) {
 	}
 	summary := usage.Summary(10)
 	for _, want := range []string{"browser.save_storage_state", "steps[1].navigate", "steps[2].http_request.use_browser_cookies"} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary %q does not contain %q", summary, want)
+		}
+	}
+}
+
+func TestAnalyzeFlowPlaywrightUsageReportsCDPReason(t *testing.T) {
+	usage := AnalyzeFlowPlaywrightUsage(&Flow{
+		Browser: &FlowBrowserConfig{
+			CDPLaunch:   true,
+			CDPEndpoint: "http://127.0.0.1:9222",
+		},
+		Steps: []FlowStep{
+			{Action: "set_var", SaveAs: "answer", Value: "ok"},
+		},
+	})
+
+	if !usage.NeedsPlaywright || !usage.NeedsBrowserState {
+		t.Fatalf("expected CDP browser state requirement: %#v", usage)
+	}
+	summary := usage.Summary(10)
+	for _, want := range []string{"browser.cdp_launch", "browser.cdp_endpoint"} {
 		if !strings.Contains(summary, want) {
 			t.Fatalf("summary %q does not contain %q", summary, want)
 		}

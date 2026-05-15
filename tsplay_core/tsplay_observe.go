@@ -15,14 +15,20 @@ import (
 )
 
 type PageObservationOptions struct {
-	URL          string
-	Headless     bool
-	ArtifactRoot string
-	TimeoutMS    int
-	MaxElements  int
-	Context      context.Context
-	RunID        string
-	RunRoot      string
+	URL            string
+	Headless       bool
+	CDPLaunch      bool
+	CDPEndpoint    string
+	CDPPort        int
+	CDPExecutable  string
+	CDPUserDataDir string
+	ArtifactRoot   string
+	Security       *FlowSecurityPolicy
+	TimeoutMS      int
+	MaxElements    int
+	Context        context.Context
+	RunID          string
+	RunRoot        string
 }
 
 type PageObservation struct {
@@ -108,30 +114,54 @@ func ObservePage(options PageObservationOptions) (*PageObservation, error) {
 		}
 	}
 
+	browserConfig := FlowBrowserConfig{
+		Headless:       playwright.Bool(options.Headless),
+		CDPLaunch:      options.CDPLaunch,
+		CDPEndpoint:    strings.TrimSpace(options.CDPEndpoint),
+		CDPPort:        options.CDPPort,
+		CDPExecutable:  strings.TrimSpace(options.CDPExecutable),
+		CDPUserDataDir: strings.TrimSpace(options.CDPUserDataDir),
+		Timeout:        options.TimeoutMS,
+	}
+	if _, err := validateFlowBrowserCDPLaunchEndpoint(browserConfig); err != nil {
+		return nil, err
+	}
+	if options.Security != nil {
+		if err := validateFlowBrowserConfigSecurity(&browserConfig, *options.Security); err != nil {
+			return nil, err
+		}
+	}
+
 	pw, err := StartPlaywright()
 	if err != nil {
 		return nil, err
 	}
 
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(options.Headless),
-	})
+	browserRuntime, err := OpenFlowBrowser(pw, browserConfig, FlowRunOptions{ArtifactRoot: options.ArtifactRoot, RunID: options.RunID, RunRoot: options.RunRoot, Security: options.Security}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("could not launch browser: %w", err)
+		_ = pw.Stop()
+		return nil, err
 	}
-
-	page, err := browser.NewPage()
-	if err != nil {
-		return nil, fmt.Errorf("could not create page: %w", err)
-	}
+	browser := browserRuntime.Browser
+	context := browserRuntime.Context
+	page := browserRuntime.Page
+	connectedOverCDP := browserRuntime.ConnectedOverCDP
 	closePlaywright := sync.OnceFunc(func() {
 		if page != nil {
-			_ = page.Close()
+			if !connectedOverCDP {
+				_ = page.Close()
+			}
 		}
-		if browser != nil {
+		if context != nil && !connectedOverCDP {
+			_ = context.Close()
+		}
+		if browser != nil && !connectedOverCDP {
 			_ = browser.Close()
 		}
 		_ = pw.Stop()
+		if browserRuntime.Close != nil {
+			_ = browserRuntime.Close()
+		}
 	})
 	defer closePlaywright()
 	stopWatcher := watchContextCancel(options.Context, closePlaywright)

@@ -25,10 +25,17 @@ go run . -action cli
 
 - `-headless`：隐藏浏览器窗口
 - `-artifact-root`：把产物写到指定目录
+- `-browser-cdp-launch`：自动查找本机 Chrome/Chromium/Edge，启动一个带远程调试端口的独立浏览器，再通过 CDP 接管
+- `-browser-cdp-endpoint`：通过 CDP endpoint 接管已启动的 Chrome/Chromium，支持 `ws://127.0.0.1:9222/devtools/browser/...`、`http://127.0.0.1:9222` 或直接粘贴 `127.0.0.1:9222/json/version`
+- `-browser-cdp-port`：通过本地远程调试端口接管已启动的 Chrome/Chromium，例如 `9222`
+- `-browser-cdp-executable`：为 `-browser-cdp-launch` 指定浏览器可执行文件；不传时会自动搜索 macOS / Windows / Linux 常见位置
+- `-browser-cdp-user-data-dir`：为 `-browser-cdp-launch` 指定独立用户数据目录；不传时默认在 artifact root 下创建
 
 ## 注意事项
 
 - `cli` 更适合探索，不适合长期保存交付逻辑
+- 使用 `-browser-cdp-endpoint` / `-browser-cdp-port` 接管外部浏览器时，TSPlay 退出只会断开连接，不会关闭真实浏览器
+- 使用 `-browser-cdp-launch` 由 TSPlay 启动浏览器时，TSPlay 会在退出时回收这个独立浏览器进程
 - 如果已经跑通一段稳定操作，通常更适合收成 `-script` 或 `-flow`
 
 ## 相关文档

@@ -1,16 +1,24 @@
 package tsplay_core
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/playwright-community/playwright-go"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -159,6 +167,460 @@ func TestParseFlowRejectsBooleanBrowserUseSessionJSON(t *testing.T) {
 	}
 	if parseErr.Issue.Field != "use_session" {
 		t.Fatalf("unexpected field: %#v", parseErr.Issue)
+	}
+}
+
+func TestParseFlowRejectsInvalidBrowserCDPPortYAML(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{name: "zero", value: "0", wantErr: "between 1 and 65535"},
+		{name: "negative", value: "-1", wantErr: "between 1 and 65535"},
+		{name: "overflow", value: "65536", wantErr: "between 1 and 65535"},
+		{name: "float", value: "9222.5", wantErr: "must be an integer"},
+		{name: "string", value: `"9222"`, wantErr: "must be an integer"},
+		{name: "boolean", value: "true", wantErr: "must be an integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(fmt.Sprintf(`
+schema_version: "1"
+name: bad_browser_cdp_port
+browser:
+  cdp_port: %s
+steps:
+  - action: navigate
+    url: https://example.com
+`, tt.value)), "yaml")
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != "cdp_port" {
+				t.Fatalf("unexpected field: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tt.wantErr, parseErr.Issue.Message)
+			}
+		})
+	}
+}
+
+func TestParseFlowRejectsInvalidBrowserCDPPortJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{name: "zero", value: "0", wantErr: "between 1 and 65535"},
+		{name: "negative", value: "-1", wantErr: "between 1 and 65535"},
+		{name: "overflow", value: "65536", wantErr: "between 1 and 65535"},
+		{name: "float", value: "9222.5", wantErr: "must be an integer"},
+		{name: "string", value: `"9222"`, wantErr: "must be an integer"},
+		{name: "boolean", value: "true", wantErr: "must be an integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(fmt.Sprintf(`{
+  "schema_version": "1",
+  "name": "bad_browser_cdp_port_json",
+  "browser": {
+    "cdp_port": %s
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`, tt.value)), "json")
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != "cdp_port" {
+				t.Fatalf("unexpected field: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tt.wantErr, parseErr.Issue.Message)
+			}
+		})
+	}
+}
+
+func TestParseFlowRejectsBlankBrowserCDPEndpoint(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		body   string
+	}{
+		{
+			name:   "yaml_empty_string",
+			format: "yaml",
+			body: `
+schema_version: "1"
+name: blank_browser_cdp_endpoint
+browser:
+  cdp_endpoint: ""
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "yaml_whitespace_string",
+			format: "yaml",
+			body: `
+schema_version: "1"
+name: blank_browser_cdp_endpoint
+browser:
+  cdp_endpoint: "   "
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "json_empty_string",
+			format: "json",
+			body: `{
+  "schema_version": "1",
+  "name": "blank_browser_cdp_endpoint_json",
+  "browser": {
+    "cdp_endpoint": ""
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(tt.body), tt.format)
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != "cdp_endpoint" || parseErr.Issue.Code != "invalid_value" {
+				t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, "cannot be blank") {
+				t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+			}
+		})
+	}
+}
+
+func TestParseFlowRejectsNonStringBrowserCDPEndpoint(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		body   string
+	}{
+		{
+			name:   "yaml_number",
+			format: "yaml",
+			body: `
+schema_version: "1"
+name: bad_browser_cdp_endpoint
+browser:
+  cdp_endpoint: 9222
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "json_boolean",
+			format: "json",
+			body: `{
+  "schema_version": "1",
+  "name": "bad_browser_cdp_endpoint_json",
+  "browser": {
+    "cdp_endpoint": true
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(tt.body), tt.format)
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != "cdp_endpoint" || parseErr.Issue.Code != "invalid_type" {
+				t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, "must be a string") {
+				t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+			}
+		})
+	}
+}
+
+func TestParseFlowRejectsNonStringBrowserCDPPathFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		body   string
+		field  string
+	}{
+		{
+			name:   "yaml_cdp_executable_number",
+			format: "yaml",
+			field:  "cdp_executable",
+			body: `
+schema_version: "1"
+name: bad_browser_cdp_executable
+browser:
+  cdp_executable: 123
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "yaml_cdp_user_data_dir_boolean",
+			format: "yaml",
+			field:  "cdp_user_data_dir",
+			body: `
+schema_version: "1"
+name: bad_browser_cdp_user_data_dir
+browser:
+  cdp_user_data_dir: true
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "json_cdp_executable_number",
+			format: "json",
+			field:  "cdp_executable",
+			body: `{
+  "schema_version": "1",
+  "name": "bad_browser_cdp_executable_json",
+  "browser": {
+    "cdp_executable": 123
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+		{
+			name:   "json_cdp_user_data_dir_boolean",
+			format: "json",
+			field:  "cdp_user_data_dir",
+			body: `{
+  "schema_version": "1",
+  "name": "bad_browser_cdp_user_data_dir_json",
+  "browser": {
+    "cdp_user_data_dir": true
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(tt.body), tt.format)
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != tt.field || parseErr.Issue.Code != "invalid_type" {
+				t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, "must be a string") {
+				t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+			}
+		})
+	}
+}
+
+func TestParseFlowRejectsBlankBrowserCDPPathFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		body   string
+		field  string
+	}{
+		{
+			name:   "yaml_cdp_executable_empty",
+			format: "yaml",
+			field:  "cdp_executable",
+			body: `
+schema_version: "1"
+name: blank_browser_cdp_executable
+browser:
+  cdp_executable: ""
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "yaml_cdp_user_data_dir_whitespace",
+			format: "yaml",
+			field:  "cdp_user_data_dir",
+			body: `
+schema_version: "1"
+name: blank_browser_cdp_user_data_dir
+browser:
+  cdp_user_data_dir: "   "
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "json_cdp_executable_empty",
+			format: "json",
+			field:  "cdp_executable",
+			body: `{
+  "schema_version": "1",
+  "name": "blank_browser_cdp_executable_json",
+  "browser": {
+    "cdp_executable": ""
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+		{
+			name:   "json_cdp_user_data_dir_empty",
+			format: "json",
+			field:  "cdp_user_data_dir",
+			body: `{
+  "schema_version": "1",
+  "name": "blank_browser_cdp_user_data_dir_json",
+  "browser": {
+    "cdp_user_data_dir": ""
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(tt.body), tt.format)
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != tt.field || parseErr.Issue.Code != "invalid_value" {
+				t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, "cannot be blank") {
+				t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+			}
+		})
+	}
+}
+
+func TestParseFlowRejectsNonBooleanBrowserCDPLaunch(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		body   string
+	}{
+		{
+			name:   "yaml_quoted_true",
+			format: "yaml",
+			body: `
+schema_version: "1"
+name: bad_browser_cdp_launch
+browser:
+  cdp_launch: "true"
+steps:
+  - action: navigate
+    url: https://example.com
+`,
+		},
+		{
+			name:   "json_string_true",
+			format: "json",
+			body: `{
+  "schema_version": "1",
+  "name": "bad_browser_cdp_launch_json",
+  "browser": {
+    "cdp_launch": "true"
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://example.com"
+    }
+  ]
+}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseFlow([]byte(tt.body), tt.format)
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+			var parseErr *FlowParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("expected FlowParseError, got %T", err)
+			}
+			if parseErr.Issue.Field != "cdp_launch" || parseErr.Issue.Code != "invalid_type" {
+				t.Fatalf("unexpected issue: %#v", parseErr.Issue)
+			}
+			if !strings.Contains(parseErr.Issue.Message, "must be a boolean") {
+				t.Fatalf("unexpected message: %q", parseErr.Issue.Message)
+			}
+		})
 	}
 }
 
@@ -1220,6 +1682,65 @@ func TestValidateFlowStrictAcceptsUseSession(t *testing.T) {
 	}
 }
 
+func TestParseFlowAcceptsBrowserCDPConfig(t *testing.T) {
+	flow, err := ParseFlow([]byte(`
+schema_version: "1"
+name: browser_cdp
+browser:
+  cdp_launch: true
+  cdp_endpoint: "http://127.0.0.1:9222"
+  cdp_executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  cdp_user_data_dir: "profiles/cdp-smoke"
+  timeout: 30000
+  viewport:
+    width: 1280
+    height: 720
+steps:
+  - action: navigate
+    url: https://example.com
+`), "yaml")
+	if err != nil {
+		t.Fatalf("parse flow: %v", err)
+	}
+	if flow.Browser == nil || !flow.Browser.CDPLaunch || flow.Browser.CDPEndpoint != "http://127.0.0.1:9222" || flow.Browser.CDPExecutable == "" || flow.Browser.CDPUserDataDir != "profiles/cdp-smoke" {
+		t.Fatalf("unexpected browser CDP config: %#v", flow.Browser)
+	}
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+}
+
+func TestParseFlowAcceptsBrowserCDPPortIntegerVariantsYAML(t *testing.T) {
+	tests := map[string]int{
+		"9222":   9222,
+		"+9222":  9222,
+		"0x2406": 9222,
+		"9_222":  9222,
+	}
+	for value, want := range tests {
+		t.Run(value, func(t *testing.T) {
+			flow, err := ParseFlow([]byte(fmt.Sprintf(`
+schema_version: "1"
+name: browser_cdp_port_variant
+browser:
+  cdp_port: %s
+steps:
+  - action: navigate
+    url: https://example.com
+`, value)), "yaml")
+			if err != nil {
+				t.Fatalf("parse flow: %v", err)
+			}
+			if flow.Browser == nil || flow.Browser.CDPPort != want {
+				t.Fatalf("expected cdp_port %d, got %#v", want, flow.Browser)
+			}
+			if err := ValidateFlowStrict(flow); err != nil {
+				t.Fatalf("validate flow: %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateFlowStrictRejectsPersistentWithStorageState(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
@@ -1256,6 +1777,80 @@ func TestValidateFlowStrictRejectsUseSessionWithStorageState(t *testing.T) {
 	}
 }
 
+func TestValidateFlowStrictRejectsConflictingBrowserCDPConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		browser FlowBrowserConfig
+		want    string
+	}{
+		{
+			name:    "endpoint_and_port",
+			browser: FlowBrowserConfig{CDPEndpoint: "http://127.0.0.1:9222", CDPPort: 9222},
+			want:    "cannot be combined",
+		},
+		{
+			name:    "invalid_port",
+			browser: FlowBrowserConfig{CDPPort: 70000},
+			want:    "cdp_port",
+		},
+		{
+			name:    "remote_launch_endpoint",
+			browser: FlowBrowserConfig{CDPLaunch: true, CDPEndpoint: "http://192.0.2.1:9222"},
+			want:    "only start or reuse a local browser",
+		},
+		{
+			name:    "local_launch_endpoint_without_port",
+			browser: FlowBrowserConfig{CDPLaunch: true, CDPEndpoint: "http://127.0.0.1"},
+			want:    "explicit port",
+		},
+		{
+			name:    "storage_state",
+			browser: FlowBrowserConfig{CDPPort: 9222, StorageState: "states/admin.json"},
+			want:    "storage_state",
+		},
+		{
+			name:    "launch_storage_state",
+			browser: FlowBrowserConfig{CDPLaunch: true, StorageState: "states/admin.json"},
+			want:    "storage_state",
+		},
+		{
+			name:    "use_session",
+			browser: FlowBrowserConfig{CDPPort: 9222, UseSession: "admin"},
+			want:    "use_session",
+		},
+		{
+			name:    "user_agent",
+			browser: FlowBrowserConfig{CDPPort: 9222, UserAgent: "tsplay-test"},
+			want:    "user_agent",
+		},
+		{
+			name:    "executable_user_agent",
+			browser: FlowBrowserConfig{CDPExecutable: "/tmp/chrome", UserAgent: "tsplay-test"},
+			want:    "user_agent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flow := &Flow{
+				SchemaVersion: "1",
+				Name:          "browser_cdp_conflict",
+				Browser:       &tt.browser,
+				Steps: []FlowStep{
+					{Action: "navigate", URL: "https://example.com"},
+				},
+			}
+			err := ValidateFlowStrict(flow)
+			if err == nil {
+				t.Fatalf("expected browser CDP config error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateFlowSecurityRejectsFlowBrowserStateByDefault(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
@@ -1273,6 +1868,568 @@ func TestValidateFlowSecurityRejectsFlowBrowserStateByDefault(t *testing.T) {
 	}
 	if err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy()); err == nil {
 		t.Fatalf("expected browser config security policy error")
+	}
+}
+
+func TestValidateFlowSecurityRejectsBrowserCDPByDefault(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_cdp_policy",
+		Browser: &FlowBrowserConfig{
+			CDPPort: 9222,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	err := ValidateFlowSecurity(flow, DefaultFlowSecurityPolicy())
+	if err == nil {
+		t.Fatalf("expected browser CDP security policy error")
+	}
+	if !strings.Contains(err.Error(), "allow_browser_state") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateFlowSecurityRestrictsCDPUserDataDirRoot(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "browser_cdp_profile_policy",
+		Browser: &FlowBrowserConfig{
+			CDPLaunch:      true,
+			CDPUserDataDir: "../escape-profile",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+	policy := FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileInputRoot:     t.TempDir(),
+		FileOutputRoot:    t.TempDir(),
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, policy); err == nil {
+		t.Fatalf("expected CDP user data dir root policy error")
+	}
+}
+
+func TestRunFlowRejectsCDPOptionWithoutBrowserStateGrant(t *testing.T) {
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_option_policy",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}, FlowRunOptions{
+		BrowserCDPPort: 9222,
+		Security:       &FlowSecurityPolicy{},
+	})
+	if err == nil {
+		t.Fatalf("expected browser CDP option security policy error")
+	}
+	if !strings.Contains(err.Error(), "allow_browser_state") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunFlowRejectsInvalidCDPOptionsBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return fmt.Errorf("unexpected playwright install")
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("unexpected playwright startup")
+		},
+	)
+	defer restore()
+
+	tests := []struct {
+		name    string
+		options FlowRunOptions
+		want    string
+	}{
+		{
+			name: "negative_port",
+			options: FlowRunOptions{
+				BrowserCDPPort: -1,
+			},
+			want: "between 1 and 65535",
+		},
+		{
+			name: "overflow_port",
+			options: FlowRunOptions{
+				BrowserCDPPort: 65536,
+			},
+			want: "between 1 and 65535",
+		},
+		{
+			name: "endpoint_and_port",
+			options: FlowRunOptions{
+				BrowserCDPEndpoint: "http://127.0.0.1:9222",
+				BrowserCDPPort:     9222,
+			},
+			want: "cannot both be set",
+		},
+		{
+			name: "invalid_endpoint",
+			options: FlowRunOptions{
+				BrowserCDPEndpoint: "127.0.0.1:70000/json/version",
+			},
+			want: "invalid port",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := tt.options
+			options.Security = &FlowSecurityPolicy{AllowBrowserState: true}
+			_, err := RunFlow(&Flow{
+				SchemaVersion: "1",
+				Name:          "invalid_cdp_options",
+				Steps: []FlowStep{
+					{Action: "navigate", URL: "https://example.com"},
+				},
+			}, options)
+			if err == nil {
+				t.Fatalf("expected invalid CDP option error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.want)
+			}
+		})
+	}
+
+	if installCalled || runCalled {
+		t.Fatalf("invalid CDP options should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+}
+
+func TestRunFlowCDPOptionsTriggerPlaywrightForNonBrowserFlow(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return nil
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("expected playwright startup")
+		},
+	)
+	defer restore()
+
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_option_non_browser_flow",
+		Steps: []FlowStep{
+			{Action: "set_var", SaveAs: "answer", Value: "ok"},
+		},
+	}, FlowRunOptions{
+		BrowserCDPPort: 9222,
+		Security:       &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected Playwright startup error")
+	}
+	if !strings.Contains(err.Error(), "browser.cdp_port") {
+		t.Fatalf("expected CDP reason in error, got %v", err)
+	}
+	if !installCalled || !runCalled {
+		t.Fatalf("CDP options should force Playwright startup, install=%v run=%v", installCalled, runCalled)
+	}
+}
+
+func TestRunFlowRejectsCDPOverrideWithUseSessionBeforeMarkingSessionOrPlaywrightStart(t *testing.T) {
+	root := t.TempDir()
+	if _, err := SaveFlowSavedSession(FlowSavedSessionSaveOptions{
+		Name:             "admin",
+		ArtifactRoot:     root,
+		StorageStateJSON: `{"cookies":[],"origins":[]}`,
+	}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return fmt.Errorf("unexpected playwright install")
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("unexpected playwright startup")
+		},
+	)
+	defer restore()
+
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_override_use_session_conflict",
+		Browser: &FlowBrowserConfig{
+			UseSession: "admin",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}, FlowRunOptions{
+		ArtifactRoot:   root,
+		BrowserCDPPort: 9222,
+		RunID:          "run-should-not-mark-session",
+		Security:       &FlowSecurityPolicy{AllowBrowserState: true, FileInputRoot: root, FileOutputRoot: root},
+	})
+	if err == nil {
+		t.Fatalf("expected CDP override and use_session conflict")
+	}
+	if !strings.Contains(err.Error(), "use_session") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("CDP override use_session conflict should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+	session, loadErr := LoadFlowSavedSession("admin", root)
+	if loadErr != nil {
+		t.Fatalf("load session: %v", loadErr)
+	}
+	if session.LastUsedAt != "" || session.LastUsedByRunID != "" {
+		t.Fatalf("session should not be marked used on preflight conflict: %#v", session)
+	}
+}
+
+func TestRunFlowRejectsCDPOverrideWithMissingUseSessionBeforeSessionResolution(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return fmt.Errorf("unexpected playwright install")
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("unexpected playwright startup")
+		},
+	)
+	defer restore()
+
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_override_missing_use_session_conflict",
+		Browser: &FlowBrowserConfig{
+			UseSession: "missing-admin",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}, FlowRunOptions{
+		ArtifactRoot:   t.TempDir(),
+		BrowserCDPPort: 9222,
+		Security:       &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected CDP override and use_session conflict")
+	}
+	if !strings.Contains(err.Error(), "use_session") || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("expected use_session conflict before session resolution, got %v", err)
+	}
+	if strings.Contains(err.Error(), "missing-admin") {
+		t.Fatalf("should not try to resolve missing session before CDP conflict, got %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("CDP override missing use_session conflict should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+}
+
+func TestRunFlowRejectsRemoteCDPLaunchOptionBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return fmt.Errorf("unexpected playwright install")
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("unexpected playwright startup")
+		},
+	)
+	defer restore()
+
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "remote_cdp_launch_option",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}, FlowRunOptions{
+		BrowserCDPLaunch:   true,
+		BrowserCDPEndpoint: "http://192.0.2.1:9222",
+		Security:           &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected remote CDP launch option error")
+	}
+	if !strings.Contains(err.Error(), "only start or reuse a local browser") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("remote CDP launch option should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+}
+
+func TestRunFlowRejectsLocalCDPLaunchEndpointWithoutPortBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return fmt.Errorf("unexpected playwright install")
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("unexpected playwright startup")
+		},
+	)
+	defer restore()
+
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "local_cdp_launch_endpoint_without_port",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}, FlowRunOptions{
+		BrowserCDPLaunch:   true,
+		BrowserCDPEndpoint: "http://127.0.0.1",
+		Security:           &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected local CDP launch endpoint without port error")
+	}
+	if !strings.Contains(err.Error(), "explicit port") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("local CDP launch endpoint without port should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+}
+
+func TestRunFlowRejectsCDPWithBrowserVideoBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t,
+		func() error {
+			installCalled = true
+			return fmt.Errorf("unexpected playwright install")
+		},
+		func() (*playwright.Playwright, error) {
+			runCalled = true
+			return nil, fmt.Errorf("unexpected playwright startup")
+		},
+	)
+	defer restore()
+
+	videoPath := filepath.Join(t.TempDir(), "nested", "browser.webm")
+	_, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_with_browser_video",
+		Browser: &FlowBrowserConfig{
+			CDPPort: 9222,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}, FlowRunOptions{
+		BrowserVideoOutputPath: videoPath,
+		Security:               &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected CDP browser video conflict error")
+	}
+	if !strings.Contains(err.Error(), "browser video recording is not supported") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("CDP browser video conflict should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+	if _, statErr := os.Stat(filepath.Dir(videoPath)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("browser video directory should not be created before conflict validation, stat err=%v", statErr)
+	}
+}
+
+func TestNormalizeCDPEndpointAcceptsCommonForms(t *testing.T) {
+	tests := map[string]string{
+		"127.0.0.1:9222":                               "http://127.0.0.1:9222",
+		"127.0.0.1:9222/json/version":                  "http://127.0.0.1:9222",
+		"127.0.0.1:9222/json/list?x=1#frag":            "http://127.0.0.1:9222",
+		"localhost:9222":                               "http://localhost:9222",
+		"localhost:9222/devtools/browser/a":            "http://localhost:9222",
+		"[::1]:9222/json/version":                      "http://[::1]:9222",
+		"http://127.0.0.1:9222?x=1#frag":               "http://127.0.0.1:9222",
+		"http://127.0.0.1:9222/json/new":               "http://127.0.0.1:9222",
+		"http://127.0.0.1:9222/json/protocol":          "http://127.0.0.1:9222",
+		"http://127.0.0.1:9222/devtools/page/a":        "http://127.0.0.1:9222",
+		"http://127.0.0.1:9222/devtools/browser/a":     "http://127.0.0.1:9222",
+		"http://127.0.0.1:9222/json/version":           "http://127.0.0.1:9222",
+		"https://localhost:9222/json/version?x=1#frag": "https://localhost:9222",
+		"ws://127.0.0.1:9222/devtools/browser/a":       "ws://127.0.0.1:9222/devtools/browser/a",
+		"ws://[::1]:9222/devtools/browser/a":           "ws://[::1]:9222/devtools/browser/a",
+		" wss://localhost:9222/devtools/browser/a \t":  "wss://localhost:9222/devtools/browser/a",
+	}
+	for input, want := range tests {
+		got, err := normalizeCDPEndpoint(input)
+		if err != nil {
+			t.Fatalf("normalize %q: %v", input, err)
+		}
+		if got != want {
+			t.Fatalf("normalize %q = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestCDPHTTPBaseNormalizesWebSocketEndpoints(t *testing.T) {
+	tests := map[string]string{
+		"ws://127.0.0.1:9222/devtools/browser/a":  "http://127.0.0.1:9222",
+		"wss://localhost:9222/devtools/browser/a": "https://localhost:9222",
+		"ws://[::1]:9222/devtools/browser/a":      "http://[::1]:9222",
+	}
+	for input, want := range tests {
+		got, err := cdpHTTPBase(input)
+		if err != nil {
+			t.Fatalf("http base %q: %v", input, err)
+		}
+		if got != want {
+			t.Fatalf("http base %q = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestNormalizeCDPEndpointRejectsInvalidForms(t *testing.T) {
+	tests := []string{
+		"127.0.0.1:0",
+		"127.0.0.1:70000/json/version",
+		"http://[::1]:70000/json/version",
+		"localhost:notaport/json/version",
+		"not a url",
+		"ftp://127.0.0.1:9222",
+	}
+	for _, input := range tests {
+		if got, err := normalizeCDPEndpoint(input); err == nil {
+			t.Fatalf("normalize %q unexpectedly succeeded with %q", input, got)
+		}
+	}
+}
+
+func TestCDPEndpointIsLocalRecognizesLoopbackHosts(t *testing.T) {
+	localEndpoints := []string{
+		"http://localhost:9222",
+		"http://LOCALHOST:9222/json/version",
+		"http://127.0.0.1:9222",
+		"http://127.0.1.1:9222",
+		"http://[::1]:9222/json/version",
+		"ws://[::1]:9222/devtools/browser/a",
+	}
+	for _, endpoint := range localEndpoints {
+		if !cdpEndpointIsLocal(endpoint) {
+			t.Fatalf("expected local CDP endpoint: %s", endpoint)
+		}
+	}
+
+	remoteEndpoints := []string{
+		"http://192.0.2.1:9222",
+		"http://example.com:9222",
+		"ws://10.0.0.8:9222/devtools/browser/a",
+	}
+	for _, endpoint := range remoteEndpoints {
+		if cdpEndpointIsLocal(endpoint) {
+			t.Fatalf("expected remote CDP endpoint: %s", endpoint)
+		}
+	}
+}
+
+func TestEnsureLocalCDPBrowserRejectsNonLocalLaunchEndpointBeforeReachability(t *testing.T) {
+	_, _, err := ensureLocalCDPBrowser(FlowBrowserConfig{
+		CDPLaunch:   true,
+		CDPEndpoint: "http://192.0.2.1:9222",
+		Timeout:     1,
+	}, FlowRunOptions{})
+	if err == nil {
+		t.Fatalf("expected non-local CDP launch endpoint to be rejected")
+	}
+	if !strings.Contains(err.Error(), "local browser") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveLocalCDPBrowserExecutableAcceptsExplicitPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chrome-test")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatalf("write executable: %v", err)
+	}
+	resolved, err := resolveLocalCDPBrowserExecutable(path)
+	if err != nil {
+		t.Fatalf("resolve executable: %v", err)
+	}
+	if resolved != path {
+		t.Fatalf("resolved = %q, want %q", resolved, path)
+	}
+}
+
+func TestResolveLocalCDPBrowserExecutableUsesEnvironmentCandidate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chrome-env-test")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatalf("write executable: %v", err)
+	}
+	t.Setenv("TSPLAY_BROWSER_EXECUTABLE", path)
+	t.Setenv("CHROME_EXECUTABLE", "")
+	t.Setenv("CHROME_PATH", "")
+
+	resolved, err := resolveLocalCDPBrowserExecutable("")
+	if err != nil {
+		t.Fatalf("resolve executable from env: %v", err)
+	}
+	if resolved != path {
+		t.Fatalf("resolved = %q, want %q", resolved, path)
+	}
+}
+
+func TestCDPLaunchDefaultUserDataDirIsUnique(t *testing.T) {
+	root := t.TempDir()
+	rootReal, err := prepareRuntimeFileRoot(root)
+	if err != nil {
+		t.Fatalf("prepare root: %v", err)
+	}
+	config := FlowBrowserConfig{CDPLaunch: true}
+	first, err := config.cdpLaunchUserDataDir(FlowRunOptions{ArtifactRoot: root})
+	if err != nil {
+		t.Fatalf("first dir: %v", err)
+	}
+	second, err := config.cdpLaunchUserDataDir(FlowRunOptions{ArtifactRoot: root})
+	if err != nil {
+		t.Fatalf("second dir: %v", err)
+	}
+	if first == second {
+		t.Fatalf("default CDP launch profile dir should be unique, both were %q", first)
+	}
+	for _, dir := range []string{first, second} {
+		if err := ensurePathInsideRoot(dir, rootReal); err != nil {
+			t.Fatalf("dir %q outside root: %v", dir, err)
+		}
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("expected profile dir %q: %v", dir, err)
+		}
 	}
 }
 
@@ -1381,6 +2538,232 @@ func TestRewriteFlowFileAccessArgsUsesOutputRoot(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimeFilePathAllowsAliasInsideRoot(t *testing.T) {
+	realRoot := t.TempDir()
+	realRootCanonical, err := filepath.EvalSymlinks(realRoot)
+	if err != nil {
+		t.Fatalf("resolve real root: %v", err)
+	}
+	aliasParent := t.TempDir()
+	aliasRoot := filepath.Join(aliasParent, "alias-root")
+	if err := os.Symlink(realRoot, aliasRoot); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+
+	inputPath := filepath.Join(aliasRoot, "input.json")
+	if err := os.WriteFile(inputPath, []byte(`{"ok":true}`), 0600); err != nil {
+		t.Fatalf("write input via alias: %v", err)
+	}
+	input, err := resolveRuntimeFilePath(inputPath, flowFileInputPath, FlowSecurityPolicy{
+		FileInputRoot: aliasRoot,
+	})
+	if err != nil {
+		t.Fatalf("resolve input alias path: %v", err)
+	}
+	wantInput := filepath.Join(realRootCanonical, "input.json")
+	if input != wantInput {
+		t.Fatalf("input path = %q, want %q", input, wantInput)
+	}
+
+	outputPath := filepath.Join(aliasRoot, "profiles", "cdp")
+	output, err := resolveRuntimeFilePath(outputPath, flowFileOutputPath, FlowSecurityPolicy{
+		FileOutputRoot: aliasRoot,
+	})
+	if err != nil {
+		t.Fatalf("resolve output alias path: %v", err)
+	}
+	wantOutput := filepath.Join(realRootCanonical, "profiles", "cdp")
+	if output != wantOutput {
+		t.Fatalf("output path = %q, want %q", output, wantOutput)
+	}
+	if _, err := os.Stat(filepath.Join(realRootCanonical, "profiles")); err != nil {
+		t.Fatalf("expected output parent to be created under real root: %v", err)
+	}
+	if err := validatePathWithinRoot(wantOutput, aliasRoot); err != nil {
+		t.Fatalf("static validation should allow canonical path inside alias root: %v", err)
+	}
+	if err := validatePathWithinRoot(filepath.Join(aliasRoot, "profiles", "cdp"), realRootCanonical); err != nil {
+		t.Fatalf("static validation should allow alias path inside canonical root: %v", err)
+	}
+}
+
+func TestResolveRuntimeFilePathRejectsOutputTraversalBeforeCreatingParent(t *testing.T) {
+	root := t.TempDir()
+	outsideParent := filepath.Join(filepath.Dir(root), "tsplay-outside-parent")
+	_ = os.RemoveAll(outsideParent)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(outsideParent)
+	})
+
+	_, err := resolveRuntimeFilePath(filepath.Join("..", filepath.Base(outsideParent), "nested", "file.json"), flowFileOutputPath, FlowSecurityPolicy{
+		FileOutputRoot: root,
+	})
+	if err == nil {
+		t.Fatalf("expected traversal path to be rejected")
+	}
+	if _, statErr := os.Stat(outsideParent); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("outside parent should not be created, stat err=%v", statErr)
+	}
+}
+
+func TestResolveRuntimeFilePathRejectsOutputSymlinkAncestorBeforeCreatingParent(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+
+	_, err := resolveRuntimeFilePath(filepath.Join("link", "nested", "file.json"), flowFileOutputPath, FlowSecurityPolicy{
+		FileOutputRoot: root,
+	})
+	if err == nil {
+		t.Fatalf("expected symlink ancestor path to be rejected")
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "nested")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("outside symlink target should not receive created parent, stat err=%v", statErr)
+	}
+}
+
+func TestResolveRuntimeFilePathRejectsOutputSymlinkTargetOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	target := filepath.Join(root, "profile")
+	outsideTarget := filepath.Join(outside, "profile")
+	if err := os.Symlink(outsideTarget, target); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+
+	_, err := resolveRuntimeFilePath(target, flowFileOutputPath, FlowSecurityPolicy{
+		FileOutputRoot: root,
+	})
+	if err == nil {
+		t.Fatalf("expected output symlink target outside root to be rejected")
+	}
+	if _, statErr := os.Stat(outsideTarget); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("outside symlink target should not be created, stat err=%v", statErr)
+	}
+}
+
+func TestResolveRuntimeFilePathRejectsExistingOutputSymlinkTargetOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	outsideTarget := filepath.Join(outside, "profile")
+	if err := os.MkdirAll(outsideTarget, 0755); err != nil {
+		t.Fatalf("create outside target: %v", err)
+	}
+	target := filepath.Join(root, "profile")
+	if err := os.Symlink(outsideTarget, target); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+
+	_, err := resolveRuntimeFilePath(target, flowFileOutputPath, FlowSecurityPolicy{
+		FileOutputRoot: root,
+	})
+	if err == nil {
+		t.Fatalf("expected existing output symlink target outside root to be rejected")
+	}
+	if !strings.Contains(err.Error(), "outside allowed file output root") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateFlowSecurityRejectsOutputSymlinkTargetOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	outsideTarget := filepath.Join(outside, "profile")
+	if err := os.MkdirAll(outsideTarget, 0755); err != nil {
+		t.Fatalf("create outside target: %v", err)
+	}
+	target := filepath.Join(root, "profile")
+	if err := os.Symlink(outsideTarget, target); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_profile_symlink_static",
+		Browser: &FlowBrowserConfig{
+			CDPLaunch:      true,
+			CDPUserDataDir: "profile",
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: "https://example.com"},
+		},
+	}
+
+	if err := ValidateFlow(flow); err != nil {
+		t.Fatalf("validate flow: %v", err)
+	}
+	err := ValidateFlowSecurity(flow, FlowSecurityPolicy{
+		AllowBrowserState: true,
+		FileOutputRoot:    root,
+	})
+	if err == nil {
+		t.Fatalf("expected static browser cdp_user_data_dir symlink target to be rejected")
+	}
+	if !strings.Contains(err.Error(), "cdp_user_data_dir") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCDPLaunchUserDataDirAllowsCanonicalPathInsideAliasRoot(t *testing.T) {
+	realRoot := t.TempDir()
+	realRootCanonical, err := filepath.EvalSymlinks(realRoot)
+	if err != nil {
+		t.Fatalf("resolve real root: %v", err)
+	}
+	aliasParent := t.TempDir()
+	aliasRoot := filepath.Join(aliasParent, "artifact-root")
+	if err := os.Symlink(realRoot, aliasRoot); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+
+	dir := filepath.Join(realRootCanonical, "profiles", "cdp")
+	resolved, err := (FlowBrowserConfig{
+		CDPLaunch:      true,
+		CDPUserDataDir: dir,
+	}).cdpLaunchUserDataDir(FlowRunOptions{
+		ArtifactRoot: aliasRoot,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+			FileOutputRoot:    aliasRoot,
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve cdp user data dir inside alias root: %v", err)
+	}
+	if resolved != dir {
+		t.Fatalf("resolved = %q, want %q", resolved, dir)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("expected cdp user data dir to be created: %v", err)
+	}
+}
+
+func TestEnsureLocalCDPBrowserDoesNotCreateProfileWhenExecutableMissing(t *testing.T) {
+	root := t.TempDir()
+	profileDir := filepath.Join(root, "profile")
+
+	_, _, err := ensureLocalCDPBrowser(FlowBrowserConfig{
+		CDPLaunch:      true,
+		CDPExecutable:  filepath.Join(root, "missing-browser"),
+		CDPUserDataDir: profileDir,
+		Timeout:        1,
+	}, FlowRunOptions{
+		ArtifactRoot: root,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+			FileOutputRoot:    root,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected missing executable error")
+	}
+	if _, statErr := os.Stat(profileDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("profile dir should not be created when executable is missing, stat err=%v", statErr)
+	}
+}
+
 func TestRunFlowAssertVisibleAndText(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
@@ -1450,6 +2833,33 @@ func TestRunFlowLuaExtractAndAssertHelpers(t *testing.T) {
 	}
 	if got := assertResult["text"]; got != "complete" {
 		t.Fatalf("assert text = %#v", got)
+	}
+}
+
+func TestLuaAssertHelpersWorkWithoutFlowContext(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+	for _, fn := range GlobalPlayWrightFunc {
+		L.SetGlobal(fn.Name, L.NewFunction(fn.Func))
+	}
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+	runtime, err := OpenFlowBrowser(pw, FlowBrowserConfig{Headless: playwright.Bool(true)}, FlowRunOptions{}, nil)
+	if err != nil {
+		t.Fatalf("open browser: %v", err)
+	}
+	defer runtime.Browser.Close()
+	setFlowBrowserGlobals(L, runtime.Browser, runtime.Context, runtime.Page)
+	if _, err := runtime.Page.Goto(`data:text/html,<html><body><div id="ready">lua assertion ok</div></body></html>`); err != nil {
+		t.Fatalf("goto page: %v", err)
+	}
+
+	if err := L.DoString(`assert_visible("#ready", 1000); assert_text("#ready", "lua assertion ok", 1000)`); err != nil {
+		t.Fatalf("lua assert helpers without flow context: %v", err)
 	}
 }
 
@@ -1901,6 +3311,518 @@ func TestRunFlowBrowserStorageStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRunFlowConnectsOverCDP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><div id="ready">cdp attached</div></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	port := freeTCPPort(t)
+	remoteBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
+	})
+	if err != nil {
+		t.Fatalf("launch remote-debugging browser: %v", err)
+	}
+	defer remoteBrowser.Close()
+
+	result, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_attach_flow",
+		Browser: &FlowBrowserConfig{
+			CDPPort: port,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "assert_text", Selector: "#ready", Text: "cdp attached", Timeout: 3000},
+		},
+	}, FlowRunOptions{
+		Headless: true,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow over CDP: %v", err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if !remoteBrowser.IsConnected() {
+		t.Fatalf("external browser should remain connected after CDP flow")
+	}
+}
+
+func TestRunFlowCDPOptionReportsPlaywrightUsageForNonBrowserFlow(t *testing.T) {
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	port := freeTCPPort(t)
+	remoteBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
+	})
+	if err != nil {
+		t.Fatalf("launch remote-debugging browser: %v", err)
+	}
+	defer remoteBrowser.Close()
+
+	result, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_option_non_browser_result",
+		Steps: []FlowStep{
+			{Action: "set_var", SaveAs: "answer", Value: "ok"},
+		},
+	}, FlowRunOptions{
+		Headless:       true,
+		BrowserCDPPort: port,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run non-browser flow over CDP option: %v", err)
+	}
+	if result == nil || len(result.Trace) != 1 || result.Vars["answer"] != "ok" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if result.Playwright == nil || !result.Playwright.NeedsBrowserState {
+		t.Fatalf("expected CDP Playwright usage in result: %#v", result.Playwright)
+	}
+	if summary := result.Playwright.Summary(10); !strings.Contains(summary, "browser.cdp_port") {
+		t.Fatalf("expected browser.cdp_port in result Playwright summary, got %q", summary)
+	}
+	if !remoteBrowser.IsConnected() {
+		t.Fatalf("external browser should remain connected after CDP option flow")
+	}
+}
+
+func TestRunFlowConnectsOverCDPWebSocketEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><div id="ready">cdp websocket attached</div></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	port := freeTCPPort(t)
+	remoteBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
+	})
+	if err != nil {
+		t.Fatalf("launch remote-debugging browser: %v", err)
+	}
+	defer remoteBrowser.Close()
+
+	endpoint := cdpWebSocketEndpoint(t, port)
+	result, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_ws_attach_flow",
+		Browser: &FlowBrowserConfig{
+			CDPEndpoint: endpoint,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "assert_text", Selector: "#ready", Text: "cdp websocket attached", Timeout: 3000},
+		},
+	}, FlowRunOptions{
+		Headless: true,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow over CDP websocket endpoint %q: %v", endpoint, err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if !remoteBrowser.IsConnected() {
+		t.Fatalf("external browser should remain connected after websocket CDP flow")
+	}
+}
+
+func TestRunFlowConnectsOverCDPBareJSONVersionEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><div id="ready">cdp bare endpoint attached</div></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	port := freeTCPPort(t)
+	remoteBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
+	})
+	if err != nil {
+		t.Fatalf("launch remote-debugging browser: %v", err)
+	}
+	defer remoteBrowser.Close()
+
+	endpoint := fmt.Sprintf("127.0.0.1:%d/json/version", port)
+	result, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_bare_json_version_attach_flow",
+		Browser: &FlowBrowserConfig{
+			CDPEndpoint: endpoint,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "assert_text", Selector: "#ready", Text: "cdp bare endpoint attached", Timeout: 3000},
+		},
+	}, FlowRunOptions{
+		Headless: true,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow over bare CDP endpoint %q: %v", endpoint, err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if !remoteBrowser.IsConnected() {
+		t.Fatalf("external browser should remain connected after bare endpoint CDP flow")
+	}
+}
+
+func TestRunFlowCDPLaunchUsesExistingLocalEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><div id="ready">reused existing cdp</div></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	port := freeTCPPort(t)
+	remoteBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
+	})
+	if err != nil {
+		t.Fatalf("launch remote-debugging browser: %v", err)
+	}
+	defer remoteBrowser.Close()
+
+	result, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_launch_reuses_existing_flow",
+		Browser: &FlowBrowserConfig{
+			CDPLaunch:     true,
+			CDPPort:       port,
+			CDPExecutable: filepath.Join(t.TempDir(), "missing-browser"),
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "assert_text", Selector: "#ready", Text: "reused existing cdp", Timeout: 3000},
+		},
+	}, FlowRunOptions{
+		Headless: true,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow over existing CDP endpoint with cdp_launch: %v", err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if !remoteBrowser.IsConnected() {
+		t.Fatalf("external browser should remain connected when cdp_launch reuses an existing endpoint")
+	}
+}
+
+func TestRunFlowCDPFailureKeepsExternalBrowserConnected(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><div id="ready">actual text</div></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	defer pw.Stop()
+
+	port := freeTCPPort(t)
+	remoteBrowser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
+	})
+	if err != nil {
+		t.Fatalf("launch remote-debugging browser: %v", err)
+	}
+	defer remoteBrowser.Close()
+
+	_, err = RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_attach_failed_flow",
+		Browser: &FlowBrowserConfig{
+			CDPPort: port,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "assert_text", Selector: "#ready", Text: "expected mismatch", Timeout: 3000},
+		},
+	}, FlowRunOptions{
+		Headless: true,
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected flow assertion failure")
+	}
+	if !remoteBrowser.IsConnected() {
+		t.Fatalf("external browser should remain connected after failed CDP flow")
+	}
+}
+
+func TestRunFlowLaunchesLocalBrowserOverCDP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><div id="ready">cdp launched</div></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	executable := pw.Chromium.ExecutablePath()
+	if err := pw.Stop(); err != nil {
+		t.Fatalf("stop playwright: %v", err)
+	}
+	if executable == "" {
+		t.Skip("playwright chromium executable path is empty")
+	}
+
+	profileRoot, err := prepareRuntimeFileRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("prepare profile root: %v", err)
+	}
+	profileDir := filepath.Join(profileRoot, "cdp-profile")
+	result, err := RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_launch_flow",
+		Browser: &FlowBrowserConfig{
+			CDPLaunch:      true,
+			CDPExecutable:  executable,
+			CDPUserDataDir: profileDir,
+			Timeout:        15000,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "assert_text", Selector: "#ready", Text: "cdp launched", Timeout: 3000},
+		},
+	}, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: t.TempDir(),
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+			FileOutputRoot:    profileRoot,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow over launched CDP browser: %v", err)
+	}
+	if result == nil || len(result.Trace) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if _, err := os.Stat(profileDir); err != nil {
+		t.Fatalf("expected CDP launch profile dir: %v", err)
+	}
+}
+
+func TestRunFlowCleansUpLaunchedCDPBrowserWhenConnectFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process liveness check uses Unix signal semantics")
+	}
+
+	helperDir := t.TempDir()
+	helperSource := filepath.Join(helperDir, "fake_cdp_browser.go")
+	helperBinary := filepath.Join(helperDir, "fake-cdp-browser")
+	helperCode := `package main
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+func main() {
+	port := ""
+	userDataDir := ""
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "--remote-debugging-port=") {
+			port = strings.TrimPrefix(arg, "--remote-debugging-port=")
+		}
+		if strings.HasPrefix(arg, "--user-data-dir=") {
+			userDataDir = strings.TrimPrefix(arg, "--user-data-dir=")
+		}
+	}
+	if port == "" {
+		os.Exit(2)
+	}
+	if userDataDir != "" {
+		_ = os.MkdirAll(userDataDir, 0755)
+		_ = os.WriteFile(filepath.Join(userDataDir, "fake-browser.pid"), []byte(fmt.Sprint(os.Getpid())), 0644)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/json/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, ` + "`" + `{"Browser":"FakeChrome/1.0"}` + "`" + `)
+	})
+	if err := http.ListenAndServe("127.0.0.1:"+port, mux); err != nil {
+		os.Exit(3)
+	}
+}
+`
+	if err := os.WriteFile(helperSource, []byte(helperCode), 0644); err != nil {
+		t.Fatalf("write helper source: %v", err)
+	}
+	if output, err := exec.Command("go", "build", "-o", helperBinary, helperSource).CombinedOutput(); err != nil {
+		t.Fatalf("build fake CDP browser: %v\n%s", err, output)
+	}
+
+	profileRoot, err := prepareRuntimeFileRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("prepare profile root: %v", err)
+	}
+	profileDir := filepath.Join(profileRoot, "fake-profile")
+	port := freeTCPPort(t)
+	_, err = RunFlow(&Flow{
+		SchemaVersion: "1",
+		Name:          "cdp_launch_connect_failure_cleanup",
+		Browser: &FlowBrowserConfig{
+			CDPLaunch:      true,
+			CDPExecutable:  helperBinary,
+			CDPUserDataDir: profileDir,
+			CDPPort:        port,
+			Timeout:        2000,
+		},
+		Steps: []FlowStep{
+			{Action: "navigate", URL: `data:text/html,<html></html>`},
+		},
+	}, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: t.TempDir(),
+		Security: &FlowSecurityPolicy{
+			AllowBrowserState: true,
+			FileOutputRoot:    profileRoot,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected ConnectOverCDP failure for fake browser")
+	}
+
+	pidBytes, readErr := os.ReadFile(filepath.Join(profileDir, "fake-browser.pid"))
+	if readErr != nil {
+		t.Fatalf("read fake browser pid: %v", readErr)
+	}
+	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+	if parseErr != nil {
+		t.Fatalf("parse pid %q: %v", string(pidBytes), parseErr)
+	}
+	defer func() {
+		if processStillRunning(pid) {
+			if process, findErr := os.FindProcess(pid); findErr == nil {
+				_ = process.Kill()
+			}
+		}
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if !processStillRunning(pid) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("fake CDP browser process %d was not cleaned up after ConnectOverCDP failure: %v", pid, err)
+}
+
+func processStillRunning(pid int) bool {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return process.Signal(syscall.Signal(0)) == nil
+}
+
+func cdpWebSocketEndpoint(t *testing.T, port int) string {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	client := http.Client{Timeout: 500 * time.Millisecond}
+	var lastErr error
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", port))
+		if err != nil {
+			lastErr = err
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+			lastErr = fmt.Errorf("unexpected /json/version status %d", resp.StatusCode)
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		var payload struct {
+			WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&payload)
+		_ = resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if strings.TrimSpace(payload.WebSocketDebuggerURL) != "" {
+			return payload.WebSocketDebuggerURL
+		}
+		lastErr = fmt.Errorf("missing webSocketDebuggerUrl in /json/version response")
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("fetch CDP websocket endpoint on port %d: %v", port, lastErr)
+	return ""
+}
+
 func TestRunFlowLuaSaveStorageStateCreatesParentDirectory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -2114,4 +4036,20 @@ func TestRunFlowCapturesFailureArtifacts(t *testing.T) {
 			t.Fatalf("expected %s artifact file %s: %v", name, path, err)
 		}
 	}
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for free port: %v", err)
+	}
+	defer listener.Close()
+
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("unexpected TCP addr: %#v", listener.Addr())
+	}
+	return addr.Port
 }

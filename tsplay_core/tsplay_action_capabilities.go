@@ -349,6 +349,21 @@ func analyzeFlowBrowserConfigPlaywrightUsage(config *FlowBrowserConfig) Playwrig
 	if strings.TrimSpace(config.Session) != "" {
 		add("browser.session", "browser.session scopes a persistent browser session")
 	}
+	if config.CDPLaunch {
+		add("browser.cdp_launch", "browser.cdp_launch starts a local Chrome/Chromium/Edge over CDP")
+	}
+	if strings.TrimSpace(config.CDPEndpoint) != "" {
+		add("browser.cdp_endpoint", "browser.cdp_endpoint attaches to an existing Chromium browser over CDP")
+	}
+	if config.CDPPort != 0 {
+		add("browser.cdp_port", "browser.cdp_port attaches to an existing Chromium browser over CDP")
+	}
+	if strings.TrimSpace(config.CDPExecutable) != "" {
+		add("browser.cdp_executable", "browser.cdp_executable selects the local browser binary for CDP launch")
+	}
+	if strings.TrimSpace(config.CDPUserDataDir) != "" {
+		add("browser.cdp_user_data_dir", "browser.cdp_user_data_dir stores the CDP launch browser profile")
+	}
 	usage.normalize()
 	return usage
 }

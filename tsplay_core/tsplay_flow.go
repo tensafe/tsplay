@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -39,6 +40,11 @@ type FlowBrowserConfig struct {
 	StorageStatePath string        `json:"storage_state_path,omitempty" yaml:"storage_state_path,omitempty"`
 	LoadStorageState string        `json:"load_storage_state,omitempty" yaml:"load_storage_state,omitempty"`
 	SaveStorageState string        `json:"save_storage_state,omitempty" yaml:"save_storage_state,omitempty"`
+	CDPLaunch        bool          `json:"cdp_launch,omitempty" yaml:"cdp_launch,omitempty"`
+	CDPEndpoint      string        `json:"cdp_endpoint,omitempty" yaml:"cdp_endpoint,omitempty"`
+	CDPPort          int           `json:"cdp_port,omitempty" yaml:"cdp_port,omitempty"`
+	CDPExecutable    string        `json:"cdp_executable,omitempty" yaml:"cdp_executable,omitempty"`
+	CDPUserDataDir   string        `json:"cdp_user_data_dir,omitempty" yaml:"cdp_user_data_dir,omitempty"`
 	Persistent       bool          `json:"persistent,omitempty" yaml:"persistent,omitempty"`
 	Profile          string        `json:"profile,omitempty" yaml:"profile,omitempty"`
 	Session          string        `json:"session,omitempty" yaml:"session,omitempty"`
@@ -184,6 +190,11 @@ type FlowRunOptions struct {
 	BrowserVideoWidth      int
 	BrowserVideoHeight     int
 	BrowserVideoCooldownMS int
+	BrowserCDPLaunch       bool
+	BrowserCDPEndpoint     string
+	BrowserCDPPort         int
+	BrowserCDPExecutable   string
+	BrowserCDPUserDataDir  string
 }
 
 type FlowSecurityPolicy struct {
@@ -540,7 +551,17 @@ func validateFlowBrowserConfig(browser *FlowBrowserConfig) error {
 	if browser.UseSession != "" && strings.TrimSpace(browser.UseSession) == "" {
 		return fmt.Errorf("browser.use_session cannot be blank")
 	}
+	if browser.CDPExecutable != "" && strings.TrimSpace(browser.CDPExecutable) == "" {
+		return fmt.Errorf("browser.cdp_executable cannot be blank")
+	}
+	if browser.CDPUserDataDir != "" && strings.TrimSpace(browser.CDPUserDataDir) == "" {
+		return fmt.Errorf("browser.cdp_user_data_dir cannot be blank")
+	}
 	loadPath, err := browser.loadStorageStatePath()
+	if err != nil {
+		return err
+	}
+	cdpEndpoint, err := validateFlowBrowserCDPLaunchEndpoint(*browser)
 	if err != nil {
 		return err
 	}
@@ -550,6 +571,20 @@ func validateFlowBrowserConfig(browser *FlowBrowserConfig) error {
 		}
 		if browser.wantsPersistentContext() {
 			return fmt.Errorf("browser.use_session cannot be combined with browser.persistent/profile/session")
+		}
+	}
+	if cdpEndpoint != "" || browser.launchesCDP() {
+		if browser.UseSession != "" {
+			return fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.use_session")
+		}
+		if loadPath != "" {
+			return fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.storage_state/load_storage_state")
+		}
+		if browser.wantsPersistentContext() {
+			return fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.persistent/profile/session")
+		}
+		if strings.TrimSpace(browser.UserAgent) != "" {
+			return fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.user_agent")
 		}
 	}
 	if browser.wantsPersistentContext() && loadPath != "" {
@@ -576,6 +611,23 @@ func validateFlowBrowserConfig(browser *FlowBrowserConfig) error {
 		return fmt.Errorf("browser.session cannot be blank")
 	}
 	return nil
+}
+
+func validateFlowBrowserCDPLaunchEndpoint(browser FlowBrowserConfig) (string, error) {
+	endpoint, err := browser.cdpEndpointURL()
+	if err != nil {
+		return "", err
+	}
+	if !browser.launchesCDP() || endpoint == "" {
+		return endpoint, nil
+	}
+	if !cdpEndpointIsLocal(endpoint) {
+		return "", fmt.Errorf("browser.cdp_launch can only start or reuse a local browser; endpoint %q is not local", endpoint)
+	}
+	if _, err := cdpPortFromEndpoint(endpoint); err != nil {
+		return "", fmt.Errorf("browser.cdp_launch with browser.cdp_endpoint requires a local endpoint with an explicit port: %w", err)
+	}
+	return endpoint, nil
 }
 
 func validateFlowControlStep(stepPath string, step FlowStep, knownVars map[string]any) error {
@@ -1810,13 +1862,27 @@ func ValidateFlowSecurity(flow *Flow, policy FlowSecurityPolicy) error {
 		return fmt.Errorf("flow is nil")
 	}
 
+	return validateFlowSecurityWithBrowserConfig(flow, browserConfigFromFlow(flow), policy)
+}
+
+func browserConfigFromFlow(flow *Flow) FlowBrowserConfig {
+	if flow == nil || flow.Browser == nil {
+		return FlowBrowserConfig{}
+	}
+	return *flow.Browser
+}
+
+func validateFlowSecurityWithBrowserConfig(flow *Flow, browser FlowBrowserConfig, policy FlowSecurityPolicy) error {
+	if flow == nil {
+		return fmt.Errorf("flow is nil")
+	}
 	if err := validateFlowStepSequenceSecurity(flow.Steps, policy, ""); err != nil {
 		return err
 	}
 	if err := validateFlowFileAccessRoots(flow, policy); err != nil {
 		return err
 	}
-	if err := validateFlowBrowserConfigSecurity(flow.Browser, policy); err != nil {
+	if err := validateFlowBrowserConfigSecurity(&browser, policy); err != nil {
 		return err
 	}
 	return nil
@@ -1995,6 +2061,7 @@ func validateFlowBrowserConfigSecurity(browser *FlowBrowserConfig, policy FlowSe
 		return err
 	}
 	savePath := strings.TrimSpace(browser.SaveStorageState)
+	cdpUserDataDir := strings.TrimSpace(browser.CDPUserDataDir)
 	if !browser.usesBrowserState() {
 		return nil
 	}
@@ -2008,6 +2075,11 @@ func validateFlowBrowserConfigSecurity(browser *FlowBrowserConfig, policy FlowSe
 	}
 	if savePath != "" {
 		if err := validateFlowFilePathValue("browser", "browser", "save_storage_state", flowFileOutputPath, savePath, policy); err != nil {
+			return err
+		}
+	}
+	if cdpUserDataDir != "" {
+		if err := validateFlowFilePathValue("browser", "browser", "cdp_user_data_dir", flowFileOutputPath, cdpUserDataDir, policy); err != nil {
 			return err
 		}
 	}
@@ -2228,6 +2300,10 @@ func validatePathWithinRoot(path string, root string) error {
 	if err != nil {
 		return fmt.Errorf("resolve root: %w", err)
 	}
+	rootReal := rootAbs
+	if evaluated, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootReal = evaluated
+	}
 	candidate := path
 	if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(rootAbs, candidate)
@@ -2236,7 +2312,47 @@ func validatePathWithinRoot(path string, root string) error {
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
 	}
+	if candidateReal, err := resolvePathThroughExistingAncestor(candidateAbs); err == nil {
+		if err := ensurePathInsideRoot(candidateReal, rootReal); err == nil {
+			return nil
+		}
+		return fmt.Errorf("%q is outside %q", candidateReal, rootReal)
+	}
+	if err := ensurePathInsideAnyRoot(candidateAbs, rootAbs, rootReal); err == nil {
+		return nil
+	}
 	return ensurePathInsideRoot(candidateAbs, rootAbs)
+}
+
+func resolvePathThroughExistingAncestor(path string) (string, error) {
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	current := pathAbs
+	for {
+		if _, err := os.Lstat(current); err == nil {
+			real, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return "", err
+			}
+			rel, err := filepath.Rel(current, pathAbs)
+			if err != nil {
+				return "", err
+			}
+			if rel == "." {
+				return real, nil
+			}
+			return filepath.Join(real, rel), nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if sameRuntimePath(parent, current) {
+			return "", os.ErrNotExist
+		}
+		current = parent
+	}
 }
 
 func ensurePathInsideRoot(path string, root string) error {
@@ -2284,18 +2400,25 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	if err := ValidateFlow(flow); err != nil {
 		return nil, err
 	}
-	if options.Security != nil {
-		if err := ValidateFlowSecurity(flow, *options.Security); err != nil {
-			return nil, err
-		}
-	}
-	playwrightUsage := AnalyzeFlowPlaywrightUsage(flow)
-	needsPlaywright := playwrightUsage.NeedsPlaywright
-
-	browserConfig, err := resolveFlowBrowserConfig(flow, options)
+	browserConfig, err := mergeFlowBrowserConfig(flow, options)
 	if err != nil {
 		return nil, err
 	}
+	if options.Security != nil {
+		if err := validateFlowSecurityWithBrowserConfig(flow, browserConfig, *options.Security); err != nil {
+			return nil, err
+		}
+	}
+	browserConfig, err = resolveFlowBrowserConfig(flow, options)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(options.BrowserVideoOutputPath) != "" && browserConfig.connectsOverCDP() {
+		return nil, fmt.Errorf("browser video recording is not supported when attaching to a browser with browser.cdp_launch/cdp_endpoint/cdp_port")
+	}
+	playwrightUsage := AnalyzeFlowPlaywrightUsage(flow)
+	playwrightUsage.merge(analyzeFlowBrowserConfigPlaywrightUsage(&browserConfig))
+	needsPlaywright := playwrightUsage.NeedsPlaywright
 
 	L := lua.NewState()
 	defer L.Close()
@@ -2310,6 +2433,8 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 	var page playwright.Page
 	var browserVideo *BrowserVideoRecording
 	var browserVideoPath string
+	var connectedOverCDP bool
+	var closeBrowserRuntime func() error
 	closePlaywright := sync.OnceValue(func() error {
 		var closeErr error
 		if page != nil {
@@ -2322,20 +2447,26 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 				} else {
 					browserVideoPath = savedPath
 				}
-			} else if err := page.Close(); err != nil && closeErr == nil {
-				closeErr = err
+			} else if !connectedOverCDP {
+				if err := page.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
 			}
 			page = nil
 		}
 		if context != nil {
-			if err := context.Close(); err != nil && closeErr == nil {
-				closeErr = err
+			if !connectedOverCDP {
+				if err := context.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
 			}
 			context = nil
 		}
 		if browser != nil {
-			if err := browser.Close(); err != nil && closeErr == nil {
-				closeErr = err
+			if !connectedOverCDP {
+				if err := browser.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
 			}
 			browser = nil
 		}
@@ -2344,6 +2475,12 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 				closeErr = err
 			}
 			pw = nil
+		}
+		if closeBrowserRuntime != nil {
+			if err := closeBrowserRuntime(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+			closeBrowserRuntime = nil
 		}
 		return closeErr
 	})
@@ -2361,19 +2498,16 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 			}
 			return nil, err
 		}
-		if browserConfig.wantsPersistentContext() {
-			context, page, err = launchPersistentFlowBrowser(pw, browserConfig, flowBrowserStateRoot(options), browserVideo)
-			if err != nil {
-				_ = closePlaywright()
-				return nil, err
-			}
-		} else {
-			browser, context, page, err = launchFlowBrowser(pw, browserConfig, options, browserVideo)
-			if err != nil {
-				_ = closePlaywright()
-				return nil, err
-			}
+		browserRuntime, err := OpenFlowBrowser(pw, browserConfig, options, browserVideo)
+		if err != nil {
+			_ = closePlaywright()
+			return nil, err
 		}
+		browser = browserRuntime.Browser
+		context = browserRuntime.Context
+		page = browserRuntime.Page
+		connectedOverCDP = browserRuntime.ConnectedOverCDP
+		closeBrowserRuntime = browserRuntime.Close
 		stopWatcher = watchContextCancel(options.Context, func() {
 			_ = closePlaywright()
 		})
@@ -2383,6 +2517,10 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 
 	result, runErr := RunFlowInStateWithOptions(L, flow, options)
 	closeErr := closePlaywright()
+	if result != nil && playwrightUsage.NeedsPlaywright {
+		usageCopy := playwrightUsage
+		result.Playwright = &usageCopy
+	}
 	if result != nil && browserVideoPath != "" {
 		result.BrowserVideo = browserVideoPath
 	}
@@ -2396,9 +2534,9 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 }
 
 func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserConfig, error) {
-	config := FlowBrowserConfig{}
-	if flow != nil && flow.Browser != nil {
-		config = *flow.Browser
+	config, err := mergeFlowBrowserConfig(flow, options)
+	if err != nil {
+		return FlowBrowserConfig{}, err
 	}
 	if strings.TrimSpace(config.UseSession) != "" {
 		actor := FlowSavedSessionAccessInfo{
@@ -2434,15 +2572,86 @@ func resolveFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserCo
 				config.Session = savedConfig.Session
 			}
 		}
+		resolvedConfig := config
+		resolvedConfig.UseSession = ""
+		if err := validateFlowBrowserConfig(&resolvedConfig); err != nil {
+			return FlowBrowserConfig{}, err
+		}
 	}
 	if config.Headless == nil {
 		headless := options.Headless
 		config.Headless = &headless
 	}
-	if _, err := config.loadStorageStatePath(); err != nil {
+	return config, nil
+}
+
+func mergeFlowBrowserConfig(flow *Flow, options FlowRunOptions) (FlowBrowserConfig, error) {
+	config := FlowBrowserConfig{}
+	if flow != nil && flow.Browser != nil {
+		config = *flow.Browser
+	}
+	if strings.TrimSpace(options.BrowserCDPEndpoint) != "" && options.BrowserCDPPort != 0 {
+		return FlowBrowserConfig{}, fmt.Errorf("browser CDP endpoint and browser CDP port cannot both be set")
+	}
+	if options.BrowserCDPLaunch {
+		config.CDPLaunch = true
+	}
+	if strings.TrimSpace(options.BrowserCDPEndpoint) != "" {
+		config.CDPEndpoint = strings.TrimSpace(options.BrowserCDPEndpoint)
+		config.CDPPort = 0
+	} else if options.BrowserCDPPort != 0 {
+		config.CDPEndpoint = ""
+		config.CDPPort = options.BrowserCDPPort
+	}
+	if strings.TrimSpace(options.BrowserCDPExecutable) != "" {
+		config.CDPLaunch = true
+		config.CDPExecutable = strings.TrimSpace(options.BrowserCDPExecutable)
+	}
+	if strings.TrimSpace(options.BrowserCDPUserDataDir) != "" {
+		config.CDPLaunch = true
+		config.CDPUserDataDir = strings.TrimSpace(options.BrowserCDPUserDataDir)
+	}
+	if err := validateFlowBrowserConfig(&config); err != nil {
 		return FlowBrowserConfig{}, err
 	}
 	return config, nil
+}
+
+type FlowBrowserRuntime struct {
+	Browser          playwright.Browser
+	Context          playwright.BrowserContext
+	Page             playwright.Page
+	ConnectedOverCDP bool
+	CDPEndpoint      string
+	Close            func() error
+}
+
+func OpenFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, options FlowRunOptions, browserVideo *BrowserVideoRecording) (*FlowBrowserRuntime, error) {
+	if pw == nil {
+		return nil, fmt.Errorf("playwright runtime is nil")
+	}
+	if config.connectsOverCDP() {
+		return connectOverCDPFlowBrowser(pw, config, options, browserVideo)
+	}
+	if config.wantsPersistentContext() {
+		context, page, err := launchPersistentFlowBrowser(pw, config, flowBrowserStateRoot(options), browserVideo)
+		if err != nil {
+			return nil, err
+		}
+		return &FlowBrowserRuntime{
+			Context: context,
+			Page:    page,
+		}, nil
+	}
+	browser, context, page, err := launchFlowBrowser(pw, config, options, browserVideo)
+	if err != nil {
+		return nil, err
+	}
+	return &FlowBrowserRuntime{
+		Browser: browser,
+		Context: context,
+		Page:    page,
+	}, nil
 }
 
 func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, options FlowRunOptions, browserVideo *BrowserVideoRecording) (playwright.Browser, playwright.BrowserContext, playwright.Page, error) {
@@ -2471,6 +2680,99 @@ func launchFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, opti
 	}
 	applyFlowBrowserTimeouts(context, page, config)
 	return browser, context, page, nil
+}
+
+func connectOverCDPFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, options FlowRunOptions, browserVideo *BrowserVideoRecording) (*FlowBrowserRuntime, error) {
+	if browserVideo != nil {
+		return nil, fmt.Errorf("browser video recording is not supported when attaching to a browser with browser.cdp_launch/cdp_endpoint/cdp_port")
+	}
+	loadPath, err := config.loadStorageStatePath()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(config.UseSession) != "" {
+		return nil, fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.use_session")
+	}
+	if loadPath != "" {
+		return nil, fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.storage_state/load_storage_state")
+	}
+	if config.wantsPersistentContext() {
+		return nil, fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.persistent/profile/session")
+	}
+	if strings.TrimSpace(config.UserAgent) != "" {
+		return nil, fmt.Errorf("browser.cdp_launch/cdp_endpoint/cdp_port cannot be combined with browser.user_agent")
+	}
+	endpoint, err := config.cdpEndpointURL()
+	if err != nil {
+		return nil, err
+	}
+	var closeLaunchedBrowser func() error
+	if config.launchesCDP() {
+		launchedBrowser, launchedEndpoint, err := ensureLocalCDPBrowser(config, options)
+		if err != nil {
+			return nil, err
+		}
+		endpoint = launchedEndpoint
+		if launchedBrowser != nil {
+			closeLaunchedBrowser = launchedBrowser.Close
+		}
+	}
+	cleanupLaunchedBrowser := func() {
+		if closeLaunchedBrowser != nil {
+			_ = closeLaunchedBrowser()
+			closeLaunchedBrowser = nil
+		}
+	}
+	if endpoint == "" {
+		cleanupLaunchedBrowser()
+		return nil, fmt.Errorf("browser.cdp_endpoint or browser.cdp_port is required")
+	}
+
+	var browser playwright.Browser
+	if config.Timeout > 0 {
+		browser, err = pw.Chromium.ConnectOverCDP(endpoint, playwright.BrowserTypeConnectOverCDPOptions{
+			Timeout: playwright.Float(float64(config.Timeout)),
+		})
+	} else {
+		browser, err = pw.Chromium.ConnectOverCDP(endpoint)
+	}
+	if err != nil {
+		cleanupLaunchedBrowser()
+		return nil, fmt.Errorf("could not connect to browser over CDP %q: %w", endpoint, err)
+	}
+
+	contexts := browser.Contexts()
+	if len(contexts) == 0 {
+		cleanupLaunchedBrowser()
+		return nil, fmt.Errorf("CDP browser %q has no browser contexts", endpoint)
+	}
+	context := contexts[0]
+	pages := context.Pages()
+	var page playwright.Page
+	if len(pages) > 0 {
+		page = pages[0]
+	} else {
+		page, err = context.NewPage()
+		if err != nil {
+			cleanupLaunchedBrowser()
+			return nil, fmt.Errorf("could not create page in CDP browser %q: %w", endpoint, err)
+		}
+	}
+	if config.Viewport != nil {
+		if err := page.SetViewportSize(config.Viewport.Width, config.Viewport.Height); err != nil {
+			cleanupLaunchedBrowser()
+			return nil, fmt.Errorf("could not set page viewport in CDP browser %q: %w", endpoint, err)
+		}
+	}
+	applyFlowBrowserTimeouts(context, page, config)
+	return &FlowBrowserRuntime{
+		Browser:          browser,
+		Context:          context,
+		Page:             page,
+		ConnectedOverCDP: true,
+		CDPEndpoint:      endpoint,
+		Close:            closeLaunchedBrowser,
+	}, nil
 }
 
 func launchPersistentFlowBrowser(pw *playwright.Playwright, config FlowBrowserConfig, stateRoot string, browserVideo *BrowserVideoRecording) (playwright.BrowserContext, playwright.Page, error) {
@@ -3286,11 +3588,43 @@ func (browser FlowBrowserConfig) runtimeSaveStorageStatePath(security *FlowSecur
 
 func (browser FlowBrowserConfig) usesBrowserState() bool {
 	loadPath, _ := browser.loadStorageStatePath()
-	return loadPath != "" || strings.TrimSpace(browser.SaveStorageState) != "" || browser.wantsPersistentContext()
+	return loadPath != "" || strings.TrimSpace(browser.SaveStorageState) != "" || browser.wantsPersistentContext() || browser.connectsOverCDP()
 }
 
 func (browser FlowBrowserConfig) wantsPersistentContext() bool {
 	return browser.Persistent || strings.TrimSpace(browser.Profile) != "" || strings.TrimSpace(browser.Session) != ""
+}
+
+func (browser FlowBrowserConfig) connectsOverCDP() bool {
+	return strings.TrimSpace(browser.CDPEndpoint) != "" || browser.CDPPort != 0 || browser.launchesCDP()
+}
+
+func (browser FlowBrowserConfig) launchesCDP() bool {
+	return browser.CDPLaunch || strings.TrimSpace(browser.CDPExecutable) != "" || strings.TrimSpace(browser.CDPUserDataDir) != ""
+}
+
+func (browser FlowBrowserConfig) cdpEndpointURL() (string, error) {
+	endpoint := strings.TrimSpace(browser.CDPEndpoint)
+	if browser.CDPEndpoint != "" && endpoint == "" {
+		return "", fmt.Errorf("browser.cdp_endpoint cannot be blank")
+	}
+	if endpoint != "" && browser.CDPPort != 0 {
+		return "", fmt.Errorf("browser.cdp_endpoint cannot be combined with browser.cdp_port")
+	}
+	if browser.CDPPort < 0 || browser.CDPPort > 65535 {
+		return "", fmt.Errorf("browser.cdp_port must be between 1 and 65535")
+	}
+	if endpoint != "" {
+		normalized, err := normalizeCDPEndpoint(endpoint)
+		if err != nil {
+			return "", err
+		}
+		return normalized, nil
+	}
+	if browser.CDPPort > 0 {
+		return fmt.Sprintf("http://127.0.0.1:%d", browser.CDPPort), nil
+	}
+	return "", nil
 }
 
 func (browser FlowBrowserConfig) persistentContextDir(root string) (string, error) {
@@ -3644,7 +3978,11 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	args, err = rewriteFlowFileAccessArgs(step, args, ctx.Security)
+	var security *FlowSecurityPolicy
+	if ctx != nil {
+		security = ctx.Security
+	}
+	args, err = rewriteFlowFileAccessArgs(step, args, security)
 	if err != nil {
 		return nil, err
 	}
@@ -4187,6 +4525,10 @@ func resolveRuntimeFilePath(path string, role flowFilePathRole, policy FlowSecur
 	if err != nil {
 		return "", fmt.Errorf("resolve file %s root %q: %w", role, root, err)
 	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve file %s root %q: %w", role, root, err)
+	}
 
 	candidate := path
 	if !filepath.IsAbs(candidate) {
@@ -4196,7 +4538,7 @@ func resolveRuntimeFilePath(path string, role flowFilePathRole, policy FlowSecur
 	if err != nil {
 		return "", fmt.Errorf("resolve path %q: %w", path, err)
 	}
-	if err := ensurePathInsideRoot(candidateAbs, rootReal); err != nil {
+	if err := ensurePathInsideAnyRoot(candidateAbs, rootAbs, rootReal); err != nil {
 		return "", fmt.Errorf("path %q is outside allowed file %s root %q", path, role, rootReal)
 	}
 
@@ -4212,6 +4554,9 @@ func resolveRuntimeFilePath(path string, role flowFilePathRole, policy FlowSecur
 		return candidateReal, nil
 	case flowFileOutputPath:
 		parent := filepath.Dir(candidateAbs)
+		if err := ensureRuntimeOutputParentInsideRoot(parent, rootAbs, rootReal); err != nil {
+			return "", err
+		}
 		if err := os.MkdirAll(parent, 0755); err != nil {
 			return "", fmt.Errorf("create output directory %q: %w", parent, err)
 		}
@@ -4222,8 +4567,9 @@ func resolveRuntimeFilePath(path string, role flowFilePathRole, policy FlowSecur
 		if err := ensurePathInsideRoot(parentReal, rootReal); err != nil {
 			return "", fmt.Errorf("output path %q is outside allowed file output root %q", path, rootReal)
 		}
-		if info, err := os.Lstat(candidateAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			targetReal, err := filepath.EvalSymlinks(candidateAbs)
+		candidateReal := filepath.Join(parentReal, filepath.Base(candidateAbs))
+		if info, err := os.Lstat(candidateReal); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			targetReal, err := filepath.EvalSymlinks(candidateReal)
 			if err != nil {
 				return "", fmt.Errorf("resolve output symlink %q: %w", path, err)
 			}
@@ -4231,7 +4577,7 @@ func resolveRuntimeFilePath(path string, role flowFilePathRole, policy FlowSecur
 				return "", fmt.Errorf("output path %q is outside allowed file output root %q", path, rootReal)
 			}
 		}
-		return candidateAbs, nil
+		return candidateReal, nil
 	default:
 		return path, nil
 	}
@@ -4250,6 +4596,77 @@ func prepareRuntimeFileRoot(root string) (string, error) {
 		return "", err
 	}
 	return rootReal, nil
+}
+
+func ensurePathInsideAnyRoot(path string, roots ...string) error {
+	var lastErr error
+	for _, root := range roots {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		if err := ensurePathInsideRoot(path, root); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("%q has no allowed root", path)
+}
+
+func ensureRuntimeOutputParentInsideRoot(parent string, rootAbs string, rootReal string) error {
+	parentAbs, err := filepath.Abs(parent)
+	if err != nil {
+		return fmt.Errorf("resolve output directory %q: %w", parent, err)
+	}
+	if err := ensurePathInsideAnyRoot(parentAbs, rootAbs, rootReal); err != nil {
+		return fmt.Errorf("output path %q is outside allowed file output root %q", parent, rootReal)
+	}
+	current := parentAbs
+	for {
+		info, err := os.Lstat(current)
+		if err == nil {
+			real, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return fmt.Errorf("resolve output directory ancestor %q: %w", current, err)
+			}
+			if err := ensurePathInsideRoot(real, rootReal); err != nil {
+				return fmt.Errorf("output path %q is outside allowed file output root %q", parent, rootReal)
+			}
+			if sameRuntimePath(current, rootAbs) || sameRuntimePath(current, rootReal) {
+				return nil
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("output path %q uses symlink ancestor %q", parent, current)
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("output path ancestor %q is not a directory", current)
+			}
+			return nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("check output directory ancestor %q: %w", current, err)
+		}
+		parentDir := filepath.Dir(current)
+		if sameRuntimePath(parentDir, current) {
+			return fmt.Errorf("output path %q is outside allowed file output root %q", parent, rootReal)
+		}
+		current = parentDir
+		if err := ensurePathInsideAnyRoot(current, rootAbs, rootReal); err != nil {
+			return fmt.Errorf("output path %q is outside allowed file output root %q", parent, rootReal)
+		}
+	}
+}
+
+func sameRuntimePath(left string, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func callLuaChunk(L *lua.LState, code string) (any, error) {

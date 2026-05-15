@@ -133,12 +133,16 @@ func enrichTSPlayToolPayload(tool string, payload map[string]any) map[string]any
 		}
 	}
 	if _, ok := payload["run"]; !ok && (tool == "tsplay.draft_flow" || tool == "tsplay.finalize_flow") {
+		source := "preflight"
+		if _, ok := payload["observation"]; ok {
+			source = "provided_observation"
+		}
 		payload["run"] = map[string]any{
 			"id":     "",
 			"tool":   tool,
 			"status": "not_started",
 			"details": map[string]any{
-				"source": "provided_observation",
+				"source": source,
 			},
 		}
 	}

@@ -5,8 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/playwright-community/playwright-go"
 )
 
 func TestObservePageCapturesInteractiveElements(t *testing.T) {
@@ -126,6 +129,137 @@ func findObservedElement(elements []PageObservationElement, match func(PageObser
 		}
 	}
 	return nil
+}
+
+func TestObservePageWithCDPLaunch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html><html><head><title>CDP Observe</title></head><body><button id="ready">Observed over CDP</button></body></html>`)
+	}))
+	defer server.Close()
+
+	pw, err := StartPlaywright()
+	if err != nil {
+		t.Fatalf("start playwright: %v", err)
+	}
+	executable := pw.Chromium.ExecutablePath()
+	if err := pw.Stop(); err != nil {
+		t.Fatalf("stop playwright: %v", err)
+	}
+	if executable == "" {
+		t.Skip("playwright chromium executable path is empty")
+	}
+
+	profileRoot, err := prepareRuntimeFileRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("prepare profile root: %v", err)
+	}
+	observation, err := ObservePage(PageObservationOptions{
+		URL:            server.URL,
+		Headless:       true,
+		CDPLaunch:      true,
+		CDPExecutable:  executable,
+		CDPUserDataDir: filepath.Join(profileRoot, "observe-cdp-profile"),
+		ArtifactRoot:   t.TempDir(),
+		TimeoutMS:      15000,
+	})
+	if err != nil {
+		t.Fatalf("observe page over CDP launch: %v", err)
+	}
+	if observation.Title != "CDP Observe" {
+		t.Fatalf("title = %q", observation.Title)
+	}
+	foundButton := false
+	for _, element := range observation.Elements {
+		if strings.Contains(element.Text, "Observed over CDP") {
+			foundButton = true
+			break
+		}
+	}
+	if !foundButton {
+		t.Fatalf("expected observed CDP button, got %#v", observation.Elements)
+	}
+}
+
+func TestObservePageRejectsInvalidCDPEndpointBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, nil)
+	defer restore()
+
+	_, err := ObservePage(PageObservationOptions{
+		URL:         "https://example.com",
+		CDPEndpoint: "127.0.0.1:70000/json/version",
+	})
+	if err == nil {
+		t.Fatalf("expected invalid CDP endpoint error")
+	}
+	if !strings.Contains(err.Error(), "invalid port") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled {
+		t.Fatalf("invalid CDP endpoint should be rejected before starting Playwright")
+	}
+}
+
+func TestObservePageRejectsRemoteCDPLaunchBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, func() (*playwright.Playwright, error) {
+		runCalled = true
+		return nil, fmt.Errorf("unexpected playwright startup")
+	})
+	defer restore()
+
+	_, err := ObservePage(PageObservationOptions{
+		URL:         "https://example.com",
+		CDPLaunch:   true,
+		CDPEndpoint: "http://192.0.2.1:9222",
+		Security:    &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected remote CDP launch endpoint error")
+	}
+	if !strings.Contains(err.Error(), "only start or reuse a local browser") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("remote CDP launch endpoint should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
+}
+
+func TestObservePageRejectsLocalCDPLaunchEndpointWithoutPortBeforePlaywrightStart(t *testing.T) {
+	installCalled := false
+	runCalled := false
+	restore := stubPlaywrightRuntime(t, func() error {
+		installCalled = true
+		return fmt.Errorf("unexpected playwright install")
+	}, func() (*playwright.Playwright, error) {
+		runCalled = true
+		return nil, fmt.Errorf("unexpected playwright startup")
+	})
+	defer restore()
+
+	_, err := ObservePage(PageObservationOptions{
+		URL:         "https://example.com",
+		CDPLaunch:   true,
+		CDPEndpoint: "http://127.0.0.1",
+		Security:    &FlowSecurityPolicy{AllowBrowserState: true},
+	})
+	if err == nil {
+		t.Fatalf("expected local CDP launch endpoint without port error")
+	}
+	if !strings.Contains(err.Error(), "explicit port") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installCalled || runCalled {
+		t.Fatalf("local CDP launch endpoint without port should be rejected before Playwright starts, install=%v run=%v", installCalled, runCalled)
+	}
 }
 
 func findObservedContentElement(elements []PageObservationContentElement, match func(PageObservationContentElement) bool) *PageObservationContentElement {
