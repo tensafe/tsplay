@@ -104,7 +104,7 @@ if ($DetectedTsplay) {
     Write-Log "Optional next step: $DetectedTsplay -action list-assets"
 } else {
     Write-Log "tsplay was not found on PATH."
-    Write-Log "Install a matching tsplay release binary, or use .\\tsplay.exe / go run . when working inside the repo."
+    Write-Log "Install a matching tsplay release binary from https://github.com/tensafe/tsplay/releases/latest, or rerun with -Tsplay C:\path\to\tsplay.exe."
 }
 
 Write-Log "Skill install complete."

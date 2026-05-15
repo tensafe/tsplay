@@ -14,8 +14,10 @@ Use this guide when Codex needs to write, repair, or review a TSPlay Flow and sh
 
 ## Runtime Assumptions
 
-- Prefer a `tsplay` executable already available on PATH.
-- If the task is happening inside the TSPlay repository, `./tsplay` or `go run .` is a valid fallback.
+- Prefer a release `tsplay` executable already available on PATH.
+- If the binary is not on PATH, use the downloaded release binary path such as `./tsplay` or `.\tsplay.exe`.
+- For new users, point them to `https://github.com/tensafe/tsplay/releases/latest` for the matching OS/architecture binary and skill zip.
+- Only mention `go run .` when the user explicitly says they are developing or debugging the TSPlay source repository.
 - Do not assume a fixed absolute executable path unless the user or environment explicitly provides one.
 
 ## Default Workflow

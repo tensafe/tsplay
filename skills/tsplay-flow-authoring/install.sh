@@ -151,7 +151,7 @@ if TSPLAY_PATH=$(find_tsplay); then
   log "Optional next step: $TSPLAY_PATH -action list-assets"
 else
   log "tsplay was not found on PATH."
-  log "Install a matching tsplay release binary, or use ./tsplay / go run . when working inside the repo."
+  log "Install a matching tsplay release binary from https://github.com/tensafe/tsplay/releases/latest, or rerun with --tsplay /path/to/tsplay."
 fi
 
 log "Skill install complete."

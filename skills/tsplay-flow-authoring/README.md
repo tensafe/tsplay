@@ -25,6 +25,17 @@
 
 ## 安装方式
 
+### 推荐方式：从 GitHub Release 下载
+
+如果只是使用 TSPlay 和这份 skill，不需要先克隆源码，也不需要用 `go run .`。
+
+打开 [TSPlay Releases](https://github.com/tensafe/tsplay/releases/latest)，下载：
+
+- 适合自己系统和 CPU 架构的 `tsplay` 二进制包，例如 `tsplay_<version>_darwin_arm64.tar.gz`、`tsplay_<version>_linux_amd64.tar.gz`、`tsplay_<version>_windows_amd64.zip`
+- 对应的 skill 包，例如 `tsplay-flow-authoring-codex_<version>.zip`，或通用包 `tsplay-flow-authoring_<version>.zip`
+
+如果环境不能联网下载浏览器运行时，优先选择带 `playwright-offline` 的二进制包。
+
 ### 方式 1：运行安装脚本
 
 如果你是把 skill 目录先解压到任意临时目录，推荐直接运行安装脚本：
@@ -105,8 +116,9 @@ GitHub Release 会同时生成面向 Codex / OpenClaw 的命名包：
 
 ## 运行前假设
 
-- 优先使用当前 PATH 里的 `tsplay`
-- 如果在 TSPlay 仓库内，也可以用 `./tsplay` 或 `go run .`
+- 优先使用从 GitHub Release 下载并放到 PATH 里的 `tsplay`
+- 如果没有放到 PATH，也可以使用下载解压后的 `./tsplay` 或 Windows 下的 `.\tsplay.exe`
+- 只有在明确做源码开发或调试 TSPlay 仓库时，才需要考虑 `go run .`
 - 不要求 skill 绑定某个固定绝对路径的可执行文件
 
 ## 如何触发这份 skill

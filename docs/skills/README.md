@@ -142,16 +142,17 @@
 
 ## 如果你要在本地安装
 
-仓库里当前的 skill 目录是：
+普通用户推荐直接从 [TSPlay Releases](https://github.com/tensafe/tsplay/releases/latest) 下载：
 
-```text
-skills/tsplay-flow-authoring/
-```
+- 适合自己系统和 CPU 架构的 `tsplay` 二进制包
+- `tsplay-flow-authoring-codex_<version>.zip` 或通用 `tsplay-flow-authoring_<version>.zip`
 
-常见做法有两种：
+安装 skill 的常见做法有两种：
 
-1. 运行目录里的安装脚本，把它安装到本地 Codex `skills/` 目录
+1. 解压 release 里的 skill 包，运行目录里的安装脚本，把它安装到本地 Codex `skills/` 目录
 2. 直接把整个目录复制到 `~/.codex/skills/` 或 `$CODEX_HOME/skills/`
+
+只有在开发或调试 TSPlay 源码仓库时，才需要从仓库里的 `skills/tsplay-flow-authoring/` 目录安装。
 
 ## Release 包里会生成什么
 
@@ -165,6 +166,8 @@ skills/tsplay-flow-authoring/
 | `tsplay-skills_<version>.json` | skill 发布 manifest，列出入口文件、安装目录和适配的 Agent 类型 |
 
 安装时把压缩包解到 Codex 的 `skills/` 目录即可，解压后应保留 `tsplay-flow-authoring/SKILL.md` 这一层目录结构。
+
+同一个 Release 里也会提供 macOS、Linux、Windows 的 `tsplay` 二进制包；skill 文档默认假设用户使用这些 release binary 或 PATH 里的 `tsplay`，而不是 `go run .`。
 
 ## 推荐阅读顺序
 

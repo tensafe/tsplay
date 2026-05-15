@@ -22,11 +22,13 @@ Use this file when the skill is running inside the TSPlay repository. If the rep
 ## Common Commands
 
 - If `tsplay` is already on PATH, prefer that form for shareable instructions.
-- Run one Flow: `go run . -flow script/demo_baidu.flow.yaml`
-- Start demo file server: `go run . -action file-srv -addr :8000`
-- Start MCP over stdio: `go run . -action mcp-stdio -flow-root script -artifact-root artifacts`
-- Start MCP over HTTP: `go run . -action srv -addr :8081 -flow-root script -artifact-root artifacts`
-- Inspect available MCP tools: `go run . -action mcp-tool -tool tsplay.list_actions`
+- For normal users, recommend downloading the latest matching binary from `https://github.com/tensafe/tsplay/releases/latest` instead of asking them to run from source.
+- Run one Flow: `tsplay -flow script/demo_baidu.flow.yaml`
+- Start demo file server: `tsplay -action file-srv -addr :8000`
+- Start MCP over stdio: `tsplay -action mcp-stdio -flow-root script -artifact-root artifacts`
+- Start MCP over HTTP: `tsplay -action srv -addr :8081 -flow-root script -artifact-root artifacts`
+- Inspect available MCP tools: `tsplay -action mcp-tool -tool tsplay.list_actions`
+- Source checkout maintainers may replace `tsplay` with a locally built `./tsplay` or, only for development, `go run .`.
 
 ## Decision Rules
 

@@ -36,9 +36,10 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 ## Runtime Assumptions
 
 - Do not hardcode one absolute binary path into the skill.
-- Prefer `tsplay` from the current PATH when it is already installed.
-- If the user is inside the TSPlay repository, `./tsplay` or `go run .` is an acceptable fallback.
-- If neither PATH nor repo-local entry points exist, ask the user where the TSPlay executable lives before assuming a custom path.
+- Prefer a release `tsplay` binary from the current PATH, or a downloaded local release binary such as `./tsplay` / `.\tsplay.exe`.
+- For new users, point them to `https://github.com/tensafe/tsplay/releases/latest` to download the matching OS/architecture binary package and the `tsplay-flow-authoring` skill zip.
+- Do not use `go run .` in user-facing skill guidance unless the user explicitly says they are developing inside the TSPlay source repository.
+- If neither PATH nor a downloaded binary exists, guide the user to the latest release before assuming a custom path.
 
 ## Flow Authoring Priorities
 
@@ -56,7 +57,7 @@ Use this skill when the task is about the TSPlay codebase or, most importantly, 
 ## Operating Workflow
 
 1. Clarify the page or system target, the user intent, required inputs, and the minimum authorization boundary.
-2. Pick the smallest viable entry point: `tsplay -flow ...` when the binary is already on PATH, `./tsplay -flow ...` or `go run . -flow ...` inside the repo, `file-srv` for local demo pages, `mcp-stdio` for local agent integration, or `srv` for HTTP MCP.
+2. Pick the smallest viable entry point: `tsplay -flow ...` when the binary is already on PATH, `./tsplay -flow ...` or `.\tsplay.exe -flow ...` when using a downloaded release binary, `file-srv` for local demo pages, `mcp-stdio` for local agent integration, or `srv` for HTTP MCP.
 3. Check validation results, warnings, unresolved selectors, and repair hints before treating a draft as complete.
 4. If execution fails, inspect artifacts under `artifacts/` and prefer validation or repair tools over blindly rewriting selectors.
 5. If login state matters, prefer saved sessions and put `browser.use_session` in top-level browser config instead of scattering login steps.
