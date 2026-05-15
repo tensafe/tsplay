@@ -1949,6 +1949,7 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["on_error"] = "Run nested Flow steps and execute an error handler block if they fail."
 	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
 	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
+	descriptions["ocr_request"] = "Send an image file to a goddddocr-compatible OCR HTTP service and return text, confidence, and response metadata."
 	descriptions["send_email"] = "Send an outbound email through an SMTP connection resolved from environment variables or provided inline in Flow."
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
 	descriptions["read_json"] = "Read any local JSON file and return its decoded value."

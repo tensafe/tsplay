@@ -1,0 +1,30 @@
+schema_version: "1"
+name: goddddocr_ocr_flow
+description: Send a local captcha image to a goddddocr service and write the OCR result.
+vars:
+  goddddocr_url: http://127.0.0.1:8088
+  captcha_path: ../goddddocr/samples/yzm1.png
+  charset_range: 0123456789abcdefghijklmnopqrstuvwxyz
+steps:
+  - action: ocr_request
+    url: "{{goddddocr_url}}"
+    file_path: "{{captcha_path}}"
+    save_as: ocr_result
+    save_path: artifacts/goddddocr/ocr-response.json
+    with:
+      charset_range: "{{charset_range}}"
+      confidence: true
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        captcha_text: "{{ocr_result.text}}"
+        confidence: "{{ocr_result.confidence}}"
+        request_id: "{{ocr_result.request_id}}"
+        image_path: "{{captcha_path}}"
+        service_url: "{{goddddocr_url}}"
+
+  - action: write_json
+    file_path: artifacts/goddddocr/ocr-flow-result.json
+    value: "{{payload}}"

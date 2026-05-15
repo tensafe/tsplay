@@ -6,6 +6,7 @@
 | 动作 | Flow | Lua | MCP | 典型写法 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `http_request` | 是 | 是 | 是 | `action: http_request` / `http_request({url=..., method=..., json=...})` | 发起 HTTP 请求。支持 headers、query、json、form、multipart、保存响应文件，以及复用浏览器 cookies / referer / UA。 |
+| `ocr_request` | 是 | 否 | 是 | `action: ocr_request` + `file_path,url` | 调用本地或内网的 goddddocr 兼容服务，把图片识别结果整理成 `text/result/confidence`。 |
 | `json_extract` | 是 | 是 | 是 | `action: json_extract` + `from,path` / `json_extract(value, '$.items[0]')` | 从 JSON 或 JSON 字符串里取值。适合把接口结果再拆成可复用变量。 |
 
 ## 最小示例小代码
@@ -28,6 +29,28 @@ steps:
     save_as: open_count
 ```
 
+### goddddocr OCR
+
+`ocr_request` 是给 tsplay 调验证码识别服务的轻量封装。它默认读取 `GODDDDOCR_URL`，没有配置时使用 `http://127.0.0.1:8088/ocr/file`；如果传入的是服务根地址，例如 `http://127.0.0.1:8088`，会自动补成 `/ocr/file`。
+
+```yaml
+schema_version: "1"
+name: goddddocr_ocr_demo
+steps:
+  - action: ocr_request
+    url: http://127.0.0.1:8088
+    file_path: ../goddddocr/samples/yzm1.png
+    save_as: ocr_result
+    with:
+      charset_range: 0123456789abcdefghijklmnopqrstuvwxyz
+      confidence: true
+
+  - action: set_var
+    save_as: captcha_text
+    with:
+      value: "{{ocr_result.text}}"
+```
+
 ### Lua
 
 ```lua
@@ -42,6 +65,7 @@ print(open_count)
 ## 使用建议
 
 - 页面能直接抓 API 时，`http_request` 往往比“继续点页面”更稳定
+- 验证码识别优先用 `ocr_request`，业务 Flow 只处理 `ocr_result.text` 和必要的置信度判断
 - `json_extract` 很适合和 `save_as`、`set_var` 串起来，把响应拆成后续步骤要用的字段
 - `use_browser_cookies=true` 时，意味着这条请求会依赖浏览器上下文
 

@@ -3083,6 +3083,114 @@ func TestRunFlowHTTPRequestMultipartAndSavePath(t *testing.T) {
 	}
 }
 
+func TestRunFlowOCRRequest(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.png"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ocr/file" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		if got := r.FormValue("charset_range"); got != "0123456789abcdef" {
+			t.Fatalf("unexpected charset_range: %q", got)
+		}
+		if got := r.FormValue("confidence"); got != "true" {
+			t.Fatalf("unexpected confidence: %q", got)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart content: %v", err)
+		}
+		if string(content) != "captcha-image" {
+			t.Fatalf("unexpected multipart content: %q", string(content))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"result":"3n3d","confidence":0.99,"request_id":"req-1","processing_time_ms":12.5}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_ocr",
+		Steps: []FlowStep{
+			{
+				Action:   "ocr_request",
+				FilePath: "captcha.png",
+				URL:      server.URL,
+				SaveAs:   "ocr_result",
+				SavePath: "responses/ocr.json",
+				With: map[string]any{
+					"charset_range": "0123456789abcdef",
+				},
+			},
+			{
+				Action: "json_extract",
+				From:   "{{ocr_result}}",
+				Path:   "$.text",
+				SaveAs: "captcha_text",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["captcha_text"]; got != "3n3d" {
+		t.Fatalf("captcha_text = %#v", got)
+	}
+	ocrResult, ok := result.Vars["ocr_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("ocr_result = %#v", result.Vars["ocr_result"])
+	}
+	if got := ocrResult["confidence"]; got != 0.99 {
+		t.Fatalf("confidence = %#v", got)
+	}
+	if got := ocrResult["request_id"]; got != "req-1" {
+		t.Fatalf("request_id = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "ocr.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"result":"3n3d"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
+func TestGoddddocrOCRTutorialFlowValidates(t *testing.T) {
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_ocr.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load tutorial flow: %v", err)
+	}
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate tutorial flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true}); err != nil {
+		t.Fatalf("validate tutorial flow security: %v", err)
+	}
+}
+
 func TestRunFlowLuaHTTPRequestHonorsAllowHTTP(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("request should not have been sent: %s", r.URL.String())

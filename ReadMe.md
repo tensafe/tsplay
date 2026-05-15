@@ -154,7 +154,7 @@ The goal of this matrix is not to force every capability into mechanical 1:1 par
 | --- | --- | --- | --- | --- | --- |
 | page primitives | `navigate`, `click`, `type_text`, `select_option` | Yes | Yes | Yes | Keep aligned |
 | file and spreadsheet I/O | `screenshot`, `save_html`, `read_json`, `read_csv`, `read_excel`, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` | Yes | Yes | Yes | Keep aligned; constrained by `allow_file_access` in MCP |
-| HTTP requests | `http_request`, `json_extract` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_http`, `allow_file_access`, and file-root constraints |
+| HTTP requests | `http_request`, `ocr_request`, `json_extract` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_http`, `allow_file_access`, and file-root constraints |
 | email delivery | `send_email` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_email` |
 | Redis operations | `redis_get`, `redis_set`, `redis_del`, `redis_incr` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_redis` |
 | database operations | `db_insert`, `db_insert_many`, `db_upsert`, `db_query`, `db_query_one`, `db_execute`, `db_transaction` | Yes | Yes | Yes | Keep aligned; Lua inside Flow / MCP also obeys `allow_database`, and `db_transaction` auto-commits or rolls back |
@@ -561,7 +561,7 @@ Explicit `allow_*` flags override the corresponding fields inside `security_pres
 | `allow_javascript=true` | `execute_script`, `evaluate` |
 | `allow_file_access=true` | `screenshot`, `save_html`, `read_csv`, `read_excel`, upload/download, `write_json`, `write_csv`, `write_excel`, `zip_compress`, `zip_extract` |
 | `allow_browser_state=true` | cookies / storage state / `browser.use_session` / persistent profile / `browser.cdp_*` and MCP `browser_cdp_*` |
-| `allow_http=true` | `http_request` |
+| `allow_http=true` | `http_request`, `ocr_request` |
 | `allow_email=true` | `send_email` |
 | `allow_redis=true` | `redis_get`, `redis_set`, `redis_del`, `redis_incr`, `foreach.with.progress_key` |
 | `allow_database=true` | `db_insert`, `db_insert_many`, `db_upsert`, `db_query`, `db_query_one`, `db_execute`, `db_transaction` |

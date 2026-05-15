@@ -274,6 +274,7 @@ func buildFlowActionCapabilitiesRegistry() map[string]FlowActionCapabilities {
 		"write_excel",
 		"zip_compress",
 		"zip_extract",
+		"ocr_request",
 		"send_email",
 		"json_extract",
 		"redis_get",

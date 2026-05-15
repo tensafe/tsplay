@@ -280,6 +280,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"get_all_links":         {Args: []flowArgSpec{{Name: "selector"}}},
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
+	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "confidence"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
 	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
@@ -1917,7 +1918,7 @@ func flowActionSecurityGroup(action string) string {
 		return "lua"
 	case "execute_script", "evaluate":
 		return "javascript"
-	case "http_request":
+	case "http_request", "ocr_request":
 		return "http"
 	case "send_email":
 		return "email"
@@ -2266,6 +2267,8 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "http_request":
 		return map[string]flowFilePathRole{"multipart_files": flowFileInputPath, "save_path": flowFileOutputPath}
+	case "ocr_request":
+		return map[string]flowFilePathRole{"file_path": flowFileInputPath, "save_path": flowFileOutputPath}
 	case "send_email":
 		return map[string]flowFilePathRole{"attachments": flowFileInputPath}
 	case "upload_file":
@@ -3934,6 +3937,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowAppendVarStep(ctx, step)
 	case "http_request":
 		return runFlowHTTPRequestStep(L, ctx, step)
+	case "ocr_request":
+		return runFlowOCRRequestStep(L, ctx, step)
 	case "send_email":
 		return runFlowSendEmailStep(ctx, step)
 	case "json_extract":
