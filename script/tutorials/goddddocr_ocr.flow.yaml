@@ -6,6 +6,13 @@ vars:
   captcha_path: ../goddddocr/samples/yzm1.png
   charset_range: 0123456789abcdefghijklmnopqrstuvwxyz
 steps:
+  - action: ocr_ready
+    url: "{{goddddocr_url}}"
+    save_as: ocr_service
+    save_path: artifacts/goddddocr/ready-response.json
+    with:
+      timeout: 3000
+
   - action: ocr_request
     url: "{{goddddocr_url}}"
     file_path: "{{captcha_path}}"
@@ -22,6 +29,7 @@ steps:
         captcha_text: "{{ocr_result.text}}"
         confidence: "{{ocr_result.confidence}}"
         request_id: "{{ocr_result.request_id}}"
+        service_model: "{{ocr_service.model}}"
         image_path: "{{captcha_path}}"
         service_url: "{{goddddocr_url}}"
 

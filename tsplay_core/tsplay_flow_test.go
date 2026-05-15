@@ -3083,6 +3083,69 @@ func TestRunFlowHTTPRequestMultipartAndSavePath(t *testing.T) {
 	}
 }
 
+func TestRunFlowOCRReady(t *testing.T) {
+	root := t.TempDir()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ready" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ready","model":"old"}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_ready",
+		Steps: []FlowStep{
+			{
+				Action:   "ocr_ready",
+				URL:      server.URL + "/ocr/file",
+				SaveAs:   "ocr_service",
+				SavePath: "responses/ready.json",
+			},
+			{
+				Action: "json_extract",
+				From:   "{{ocr_service}}",
+				Path:   "$.model",
+				SaveAs: "ocr_model",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	readyResult, ok := result.Vars["ocr_service"].(map[string]any)
+	if !ok {
+		t.Fatalf("ocr_service = %#v", result.Vars["ocr_service"])
+	}
+	if got := readyResult["ready"]; got != true {
+		t.Fatalf("ready = %#v", got)
+	}
+	if got := result.Vars["ocr_model"]; got != "old" {
+		t.Fatalf("ocr_model = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "ready.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"status":"ready"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
 func TestRunFlowOCRRequest(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "captcha.png"), []byte("captcha-image"), 0600); err != nil {

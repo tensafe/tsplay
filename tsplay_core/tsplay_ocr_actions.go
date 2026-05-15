@@ -10,7 +10,60 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-const defaultGoddddocrEndpoint = "http://127.0.0.1:8088/ocr/file"
+const (
+	defaultGoddddocrBaseURL       = "http://127.0.0.1:8088"
+	defaultGoddddocrEndpoint      = defaultGoddddocrBaseURL + "/ocr/file"
+	defaultGoddddocrReadyEndpoint = defaultGoddddocrBaseURL + "/ready"
+)
+
+func runFlowOCRReadyStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
+	if err != nil {
+		return nil, err
+	}
+	endpoint = normalizeGoddddocrReadyEndpoint(endpoint)
+
+	with := map[string]any{"response_as": "json"}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "timeout"); err != nil {
+		return nil, err
+	} else if ok {
+		with["timeout"] = value
+	}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "save_path"); err != nil {
+		return nil, err
+	} else if ok {
+		with["save_path"] = value
+	}
+
+	responseValue, err := runFlowHTTPRequestStep(L, ctx, FlowStep{
+		Action: "http_request",
+		URL:    endpoint,
+		With:   with,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	response, ok := responseValue.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("ocr_ready expected http response object, got %T", responseValue)
+	}
+
+	result, ready := buildOCRReadyResult(response)
+	strict := true
+	if value, ok, err := flowStepResolvedParam(ctx, step, "strict"); err != nil {
+		return nil, err
+	} else if ok {
+		strict, err = ocrBoolParam(value)
+		if err != nil {
+			return nil, fmt.Errorf("ocr_ready strict %w", err)
+		}
+	}
+	if strict && !ready {
+		return nil, fmt.Errorf("ocr_ready failed with HTTP status %v: %s", response["status"], describeOCRResponseBody(response["body"]))
+	}
+	return result, nil
+}
 
 func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 	filePath, err := flowStepStringParam(ctx, step, "file_path")
@@ -81,11 +134,16 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 	return buildOCRRequestResult(response)
 }
 
-func normalizeGoddddocrEndpoint(value string) string {
+func goddddocrEndpointValue(value string) string {
 	endpoint := strings.TrimSpace(value)
 	if endpoint == "" {
 		endpoint = strings.TrimSpace(os.Getenv("GODDDDOCR_URL"))
 	}
+	return endpoint
+}
+
+func normalizeGoddddocrEndpoint(value string) string {
+	endpoint := goddddocrEndpointValue(value)
 	if endpoint == "" {
 		return defaultGoddddocrEndpoint
 	}
@@ -94,8 +152,25 @@ func normalizeGoddddocrEndpoint(value string) string {
 		return endpoint
 	}
 	switch strings.Trim(parsed.Path, "/") {
-	case "", "ocr":
+	case "", "ocr", "ready":
 		parsed.Path = "/ocr/file"
+		return parsed.String()
+	}
+	return endpoint
+}
+
+func normalizeGoddddocrReadyEndpoint(value string) string {
+	endpoint := goddddocrEndpointValue(value)
+	if endpoint == "" {
+		return defaultGoddddocrReadyEndpoint
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return endpoint
+	}
+	switch strings.Trim(parsed.Path, "/") {
+	case "", "health", "ocr", "ocr/file":
+		parsed.Path = "/ready"
 		return parsed.String()
 	}
 	return endpoint
@@ -110,6 +185,38 @@ func ocrBoolParam(value any) (bool, error) {
 		return parsed, nil
 	}
 	return boolParam(value)
+}
+
+func buildOCRReadyResult(response map[string]any) (map[string]any, bool) {
+	httpOK, _ := response["ok"].(bool)
+	body, _ := response["body"].(map[string]any)
+
+	serviceStatus := ""
+	if body != nil {
+		serviceStatus = strings.TrimSpace(fmt.Sprint(body["status"]))
+	}
+	bodyReady, _ := body["ready"].(bool)
+	ready := httpOK && (bodyReady || strings.EqualFold(serviceStatus, "ready"))
+
+	result := map[string]any{
+		"ready":    ready,
+		"ok":       httpOK,
+		"status":   response["status"],
+		"url":      response["url"],
+		"response": response,
+	}
+	if serviceStatus != "" {
+		result["service_status"] = serviceStatus
+	}
+	for _, name := range []string{"model", "time", "request_id"} {
+		if value, ok := body[name]; ok {
+			result[name] = value
+		}
+	}
+	if savePath, ok := response["save_path"]; ok && savePath != nil {
+		result["save_path"] = savePath
+	}
+	return result, ready
 }
 
 func buildOCRRequestResult(response map[string]any) (map[string]any, error) {

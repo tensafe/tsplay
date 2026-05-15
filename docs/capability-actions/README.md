@@ -26,7 +26,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 页面原子动作 | `navigate`、`click`、`type_text`、`select_option` | 是 | 是 | 是 | 保持强同步 | [页面原子动作](page-primitives.md) |
 | 文件与表格 I/O | `screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`、`zip_compress`、`zip_extract` | 是 | 是 | 是 | 保持强同步；MCP 下受 `allow_file_access` 约束 | [文件与表格 I/O](file-and-spreadsheet-io.md) |
-| HTTP 请求 | `http_request`、`ocr_request`、`json_extract` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守授权边界 | [HTTP 请求](http-requests.md) |
+| HTTP 请求 | `http_request`、`ocr_ready`、`ocr_request`、`json_extract` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守授权边界 | [HTTP 请求](http-requests.md) |
 | 邮件通知 | `send_email` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守 `allow_email` | [邮件通知](email-delivery.md) |
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守 `allow_redis` | [Redis 操作](redis-operations.md) |
 | 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 保持强同步；`db_transaction` 自动提交或回滚 | [数据库操作](database-operations.md) |
@@ -39,7 +39,7 @@
 
 - 页面原子动作：`navigate`、`click`、`type_text`、`select_option`
 - 文件与表格 I/O：`screenshot`、`save_html`、`read_json`、`read_csv`、`read_excel`、`write_json`、`write_csv`、`write_excel`、`zip_compress`、`zip_extract`
-- HTTP 请求：`http_request`、`ocr_request`、`json_extract`
+- HTTP 请求：`http_request`、`ocr_ready`、`ocr_request`、`json_extract`
 - 邮件通知：`send_email`
 - Redis 操作：`redis_get`、`redis_set`、`redis_del`、`redis_incr`
 - 数据库操作：`db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction`

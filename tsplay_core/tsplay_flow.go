@@ -280,6 +280,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"get_all_links":         {Args: []flowArgSpec{{Name: "selector"}}},
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
+	"ocr_ready":             {Args: []flowArgSpec{{Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "strict"}}},
 	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "confidence"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
 	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
@@ -1829,9 +1830,9 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "strict":
 		return "bool"
 	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
@@ -1851,7 +1852,7 @@ func flowParamType(name string) string {
 		return "items"
 	case "condition":
 		return "condition"
-	case "from", "json", "progress_value":
+	case "from", "json", "progress_value", "charset_range":
 		return "any"
 	default:
 		return ""
@@ -1918,7 +1919,7 @@ func flowActionSecurityGroup(action string) string {
 		return "lua"
 	case "execute_script", "evaluate":
 		return "javascript"
-	case "http_request", "ocr_request":
+	case "http_request", "ocr_ready", "ocr_request":
 		return "http"
 	case "send_email":
 		return "email"
@@ -2267,6 +2268,8 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "http_request":
 		return map[string]flowFilePathRole{"multipart_files": flowFileInputPath, "save_path": flowFileOutputPath}
+	case "ocr_ready":
+		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "ocr_request":
 		return map[string]flowFilePathRole{"file_path": flowFileInputPath, "save_path": flowFileOutputPath}
 	case "send_email":
@@ -3937,6 +3940,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowAppendVarStep(ctx, step)
 	case "http_request":
 		return runFlowHTTPRequestStep(L, ctx, step)
+	case "ocr_ready":
+		return runFlowOCRReadyStep(L, ctx, step)
 	case "ocr_request":
 		return runFlowOCRRequestStep(L, ctx, step)
 	case "send_email":
