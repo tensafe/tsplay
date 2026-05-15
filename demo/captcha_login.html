@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Captcha Login Demo</title>
+  <style>
+    body {
+      margin: 32px;
+      background: #f7f9fc;
+      color: #1f2328;
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+    }
+    .panel {
+      max-width: 780px;
+      margin-bottom: 24px;
+      padding: 20px 24px;
+      border: 1px solid #d0d7de;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(31, 35, 40, 0.06);
+    }
+    .field-row {
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      max-width: 360px;
+      padding: 10px 12px;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: #0969da;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    .captcha-box {
+      width: fit-content;
+      margin: 8px 0 14px;
+      padding: 10px;
+      border: 1px solid #d8dee4;
+      border-radius: 8px;
+      background: #f6f8fa;
+    }
+    #captcha-image {
+      display: block;
+      width: 665px;
+      max-width: 100%;
+      height: auto;
+    }
+    .status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border: 1px solid #d8dee4;
+      border-radius: 10px;
+      background: #f6f8fa;
+    }
+    .error {
+      color: #8a1c1c;
+      background: #fff1f0;
+      border-color: #ffccc7;
+    }
+  </style>
+</head>
+<body>
+  <section class="panel">
+    <h1 id="page-title">Captcha Login Demo</h1>
+    <p id="login-summary">Protected form</p>
+  </section>
+
+  <section class="panel">
+    <form id="login-form">
+      <div class="field-row">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" type="text">
+      </div>
+      <div class="field-row">
+        <label for="password">Password</label>
+        <input id="password" name="password" autocomplete="current-password" type="password">
+      </div>
+      <div class="field-row">
+        <label for="captcha-code">Captcha</label>
+        <div class="captcha-box">
+          <img id="captcha-image" src="data/captcha_3n3d.png" alt="captcha">
+        </div>
+        <input id="captcha-code" name="captcha" type="text" inputmode="latin" autocomplete="off">
+      </div>
+      <button id="login" type="submit">Login</button>
+    </form>
+    <div class="status" id="login-status">Waiting for login</div>
+  </section>
+
+  <section class="panel" id="account-panel" hidden>
+    <h2>Account</h2>
+    <div id="account-message">Session opened</div>
+  </section>
+
+  <script>
+    const expected = {
+      username: "demo",
+      password: "secret",
+      captcha: "3n3d",
+    };
+
+    const form = document.getElementById("login-form");
+    const status = document.getElementById("login-status");
+    const accountPanel = document.getElementById("account-panel");
+    const accountMessage = document.getElementById("account-message");
+
+    function setStatus(message, failed) {
+      status.textContent = message;
+      status.classList.toggle("error", Boolean(failed));
+    }
+
+    form.addEventListener("submit", function(event) {
+      event.preventDefault();
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const captcha = document.getElementById("captcha-code").value.trim().toLowerCase();
+
+      if (username !== expected.username || password !== expected.password) {
+        accountPanel.hidden = true;
+        setStatus("Login failed: invalid credentials", true);
+        return;
+      }
+      if (captcha !== expected.captcha) {
+        accountPanel.hidden = true;
+        setStatus("Login failed: invalid captcha", true);
+        return;
+      }
+
+      accountPanel.hidden = false;
+      accountMessage.textContent = "Session opened for " + username;
+      setStatus("Login complete", false);
+    });
+  </script>
+</body>
+</html>

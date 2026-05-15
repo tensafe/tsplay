@@ -3254,6 +3254,19 @@ func TestGoddddocrOCRTutorialFlowValidates(t *testing.T) {
 	}
 }
 
+func TestGoddddocrLoginTutorialFlowValidates(t *testing.T) {
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_login.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load login tutorial flow: %v", err)
+	}
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate login tutorial flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true}); err != nil {
+		t.Fatalf("validate login tutorial flow security: %v", err)
+	}
+}
+
 func TestRunFlowLuaHTTPRequestHonorsAllowHTTP(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("request should not have been sent: %s", r.URL.String())

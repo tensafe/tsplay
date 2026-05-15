@@ -1,0 +1,84 @@
+schema_version: "1"
+name: goddddocr_login_flow
+description: Capture a local captcha image, recognize it through goddddocr, and submit the demo login form.
+vars:
+  page_url: http://127.0.0.1:8000/demo/captcha_login.html
+  goddddocr_url: http://127.0.0.1:8088
+  username: demo
+  password: secret
+  captcha_image_path: artifacts/goddddocr/login-captcha.png
+  charset_range: 0123456789abcdefghijklmnopqrstuvwxyz
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: "#captcha-image"
+    timeout: 5000
+
+  - action: screenshot_element
+    selector: "#captcha-image"
+    path: "{{captcha_image_path}}"
+
+  - action: ocr_ready
+    url: "{{goddddocr_url}}"
+    save_as: ocr_service
+    save_path: artifacts/goddddocr/login-ready-response.json
+    with:
+      timeout: 3000
+
+  - action: ocr_request
+    url: "{{goddddocr_url}}"
+    file_path: "{{captcha_image_path}}"
+    save_as: ocr_result
+    save_path: artifacts/goddddocr/login-ocr-response.json
+    with:
+      charset_range: "{{charset_range}}"
+      confidence: true
+      timeout: 10000
+
+  - action: type_text
+    selector: "#username"
+    text: "{{username}}"
+
+  - action: type_text
+    selector: "#password"
+    text: "{{password}}"
+
+  - action: type_text
+    selector: "#captcha-code"
+    text: "{{ocr_result.text}}"
+
+  - action: click
+    selector: "#login"
+
+  - action: assert_text
+    selector: "#login-status"
+    text: "Login complete"
+    timeout: 5000
+
+  - action: extract_text
+    selector: "#login-status"
+    timeout: 5000
+    save_as: login_status
+
+  - action: extract_text
+    selector: "#account-message"
+    timeout: 5000
+    save_as: account_message
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        page_url: "{{page_url}}"
+        service_model: "{{ocr_service.model}}"
+        captcha_text: "{{ocr_result.text}}"
+        confidence: "{{ocr_result.confidence}}"
+        login_status: "{{login_status}}"
+        account_message: "{{account_message}}"
+        captcha_image_path: "{{captcha_image_path}}"
+
+  - action: write_json
+    file_path: artifacts/goddddocr/login-flow-result.json
+    value: "{{payload}}"
