@@ -3091,7 +3091,7 @@ func TestRunFlowOCRReady(t *testing.T) {
 			t.Fatalf("unexpected path: %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"ready","model":"old"}`)
+		fmt.Fprint(w, `{"status":"ready","model":"old","detection":true,"slide_comparison":true,"slide_match":true}`)
 	}))
 	defer server.Close()
 
@@ -3136,6 +3136,9 @@ func TestRunFlowOCRReady(t *testing.T) {
 	}
 	if got := result.Vars["ocr_model"]; got != "old" {
 		t.Fatalf("ocr_model = %#v", got)
+	}
+	if got := readyResult["detection"]; got != true {
+		t.Fatalf("detection = %#v", got)
 	}
 	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "ready.json"))
 	if err != nil {
@@ -3257,6 +3260,249 @@ func TestRunFlowOCRRequest(t *testing.T) {
 	}
 	if !strings.Contains(string(savedBody), `"result":"3n3d"`) {
 		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
+func TestRunFlowOCRDetect(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.png"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/det/file" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		if got := r.FormValue("detailed"); got != "true" {
+			t.Fatalf("unexpected detailed: %q", got)
+		}
+		if got := r.FormValue("score_threshold"); got != "0.2" {
+			t.Fatalf("unexpected score_threshold: %q", got)
+		}
+		if got := r.FormValue("nms_threshold"); got != "0.35" {
+			t.Fatalf("unexpected nms_threshold: %q", got)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart content: %v", err)
+		}
+		if string(content) != "captcha-image" {
+			t.Fatalf("unexpected multipart content: %q", string(content))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"result":[[1,2,3,4]],"boxes":[{"x1":1,"y1":2,"x2":3,"y2":4,"score":0.92,"label":0}],"request_id":"det-1","processing_time_ms":4.2}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_detect",
+		Steps: []FlowStep{
+			{
+				Action:   "ocr_detect",
+				FilePath: "captcha.png",
+				URL:      server.URL,
+				SaveAs:   "det_result",
+				SavePath: "responses/det.json",
+				With: map[string]any{
+					"score_threshold": 0.2,
+					"nms_threshold":   0.35,
+				},
+			},
+			{
+				Action: "json_extract",
+				From:   "{{det_result}}",
+				Path:   "$.boxes[0].score",
+				SaveAs: "first_score",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["first_score"]; got != 0.92 {
+		t.Fatalf("first_score = %#v", got)
+	}
+	detResult, ok := result.Vars["det_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("det_result = %#v", result.Vars["det_result"])
+	}
+	if got := detResult["request_id"]; got != "det-1" {
+		t.Fatalf("request_id = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "det.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"request_id":"det-1"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
+func TestRunFlowOCRSlideComparison(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "target.png"), []byte("target-image"), 0600); err != nil {
+		t.Fatalf("write target file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "background.png"), []byte("background-image"), 0600); err != nil {
+		t.Fatalf("write background file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/slide_comparison/file" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		for name, want := range map[string]string{"target_file": "target-image", "background_file": "background-image"} {
+			file, _, err := r.FormFile(name)
+			if err != nil {
+				t.Fatalf("read multipart file %s: %v", name, err)
+			}
+			content, err := io.ReadAll(file)
+			file.Close()
+			if err != nil {
+				t.Fatalf("read multipart content %s: %v", name, err)
+			}
+			if string(content) != want {
+				t.Fatalf("unexpected multipart content %s: %q", name, string(content))
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"result":{"target":[40,20],"target_x":40,"target_y":20},"request_id":"slide-1","processing_time_ms":5.5}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_slide_comparison",
+		Steps: []FlowStep{
+			{
+				Action:             "ocr_slide_comparison",
+				URL:                server.URL + "/slide_comparison",
+				TargetFilePath:     "target.png",
+				BackgroundFilePath: "background.png",
+				SaveAs:             "slide_result",
+			},
+			{
+				Action: "json_extract",
+				From:   "{{slide_result}}",
+				Path:   "$.target_x",
+				SaveAs: "gap_x",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["gap_x"]; got != float64(40) {
+		t.Fatalf("gap_x = %#v", got)
+	}
+}
+
+func TestRunFlowOCRSlideMatch(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "target.png"), []byte("target-image"), 0600); err != nil {
+		t.Fatalf("write target file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "background.png"), []byte("background-image"), 0600); err != nil {
+		t.Fatalf("write background file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/slide_match/file" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		if got := r.FormValue("simple_target"); got != "true" {
+			t.Fatalf("unexpected simple_target: %q", got)
+		}
+		for name := range map[string]bool{"target_file": true, "background_file": true} {
+			file, _, err := r.FormFile(name)
+			if err != nil {
+				t.Fatalf("read multipart file %s: %v", name, err)
+			}
+			file.Close()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"result":{"target":[48,16],"target_x":48,"target_y":16,"confidence":0.88},"request_id":"match-1","processing_time_ms":6.1}`)
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_slide_match",
+		Steps: []FlowStep{
+			{
+				Action:             "ocr_slide_match",
+				URL:                server.URL,
+				TargetFilePath:     "target.png",
+				BackgroundFilePath: "background.png",
+				SaveAs:             "match_result",
+				With: map[string]any{
+					"simple_target": true,
+				},
+			},
+			{
+				Action: "json_extract",
+				From:   "{{match_result}}",
+				Path:   "$.confidence",
+				SaveAs: "match_confidence",
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if got := result.Vars["match_confidence"]; got != 0.88 {
+		t.Fatalf("match_confidence = %#v", got)
 	}
 }
 

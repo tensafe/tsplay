@@ -12,9 +12,12 @@ import (
 )
 
 const (
-	defaultGoddddocrBaseURL       = "http://127.0.0.1:8088"
-	defaultGoddddocrEndpoint      = defaultGoddddocrBaseURL + "/ocr/file"
-	defaultGoddddocrReadyEndpoint = defaultGoddddocrBaseURL + "/ready"
+	defaultGoddddocrBaseURL                 = "http://127.0.0.1:8088"
+	defaultGoddddocrEndpoint                = defaultGoddddocrBaseURL + "/ocr/file"
+	defaultGoddddocrReadyEndpoint           = defaultGoddddocrBaseURL + "/ready"
+	defaultGoddddocrDetectEndpoint          = defaultGoddddocrBaseURL + "/det/file"
+	defaultGoddddocrSlideComparisonEndpoint = defaultGoddddocrBaseURL + "/slide_comparison/file"
+	defaultGoddddocrSlideMatchEndpoint      = defaultGoddddocrBaseURL + "/slide_match/file"
 )
 
 func runFlowOCRReadyStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
@@ -157,6 +160,155 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 	return buildOCRRequestResult(response)
 }
 
+func runFlowOCRDetectStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	filePath, err := flowStepStringParam(ctx, step, "file_path")
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
+	if err != nil {
+		return nil, err
+	}
+	endpoint = normalizeGoddddocrDetectEndpoint(endpoint)
+
+	fieldName, err := flowStepOptionalStringParam(ctx, step, "field_name")
+	if err != nil {
+		return nil, err
+	}
+	fieldName = strings.TrimSpace(fieldName)
+	if fieldName == "" {
+		fieldName = "file"
+	}
+
+	multipartFields := map[string]any{"detailed": true}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "detailed"); err != nil {
+		return nil, err
+	} else if ok {
+		detailed, err := ocrBoolParam(value)
+		if err != nil {
+			return nil, fmt.Errorf("ocr_detect detailed %w", err)
+		}
+		multipartFields["detailed"] = detailed
+	}
+	for _, name := range []string{"score_threshold", "nms_threshold"} {
+		if value, ok, err := flowStepResolvedParam(ctx, step, name); err != nil {
+			return nil, err
+		} else if ok {
+			threshold, err := ocrFloatParam(value)
+			if err != nil {
+				return nil, fmt.Errorf("ocr_detect %s %w", name, err)
+			}
+			multipartFields[name] = threshold
+		}
+	}
+
+	with := map[string]any{
+		"multipart_files":  map[string]any{fieldName: filePath},
+		"multipart_fields": multipartFields,
+		"response_as":      "json",
+	}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "timeout"); err != nil {
+		return nil, err
+	} else if ok {
+		with["timeout"] = value
+	}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "save_path"); err != nil {
+		return nil, err
+	} else if ok {
+		with["save_path"] = value
+	}
+
+	responseValue, err := runFlowHTTPRequestStep(L, ctx, FlowStep{
+		Action: "http_request",
+		URL:    endpoint,
+		With:   with,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	response, ok := responseValue.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("ocr_detect expected http response object, got %T", responseValue)
+	}
+	return buildOCRDetectResult(response)
+}
+
+func runFlowOCRSlideComparisonStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	return runFlowOCRSlideStep(L, ctx, step, "ocr_slide_comparison", normalizeGoddddocrSlideComparisonEndpoint, false)
+}
+
+func runFlowOCRSlideMatchStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	return runFlowOCRSlideStep(L, ctx, step, "ocr_slide_match", normalizeGoddddocrSlideMatchEndpoint, true)
+}
+
+func runFlowOCRSlideStep(L *lua.LState, ctx *FlowContext, step FlowStep, actionName string, normalizeEndpoint func(string) string, includeSimpleTarget bool) (any, error) {
+	targetFilePath, err := flowStepStringParam(ctx, step, "target_file_path")
+	if err != nil {
+		return nil, err
+	}
+	backgroundFilePath, err := flowStepStringParam(ctx, step, "background_file_path")
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
+	if err != nil {
+		return nil, err
+	}
+	endpoint = normalizeEndpoint(endpoint)
+
+	multipartFields := map[string]any{}
+	if includeSimpleTarget {
+		if value, ok, err := flowStepResolvedParam(ctx, step, "simple_target"); err != nil {
+			return nil, err
+		} else if ok {
+			simpleTarget, err := ocrBoolParam(value)
+			if err != nil {
+				return nil, fmt.Errorf("%s simple_target %w", actionName, err)
+			}
+			multipartFields["simple_target"] = simpleTarget
+		}
+	}
+
+	with := map[string]any{
+		"multipart_files": map[string]any{
+			"target_file":     targetFilePath,
+			"background_file": backgroundFilePath,
+		},
+		"response_as": "json",
+	}
+	if len(multipartFields) > 0 {
+		with["multipart_fields"] = multipartFields
+	}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "timeout"); err != nil {
+		return nil, err
+	} else if ok {
+		with["timeout"] = value
+	}
+	if value, ok, err := flowStepResolvedParam(ctx, step, "save_path"); err != nil {
+		return nil, err
+	} else if ok {
+		with["save_path"] = value
+	}
+
+	responseValue, err := runFlowHTTPRequestStep(L, ctx, FlowStep{
+		Action: "http_request",
+		URL:    endpoint,
+		With:   with,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	response, ok := responseValue.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s expected http response object, got %T", actionName, responseValue)
+	}
+	return buildOCRSlideResult(response, actionName)
+}
+
 func goddddocrEndpointValue(value string) string {
 	endpoint := strings.TrimSpace(value)
 	if endpoint == "" {
@@ -177,6 +329,47 @@ func normalizeGoddddocrEndpoint(value string) string {
 	switch strings.Trim(parsed.Path, "/") {
 	case "", "ocr", "ready":
 		parsed.Path = "/ocr/file"
+		return parsed.String()
+	}
+	return endpoint
+}
+
+func normalizeGoddddocrDetectEndpoint(value string) string {
+	return normalizeGoddddocrFeatureEndpoint(value, defaultGoddddocrDetectEndpoint, "/det/file", "det", "detect", "detection")
+}
+
+func normalizeGoddddocrSlideComparisonEndpoint(value string) string {
+	return normalizeGoddddocrFeatureEndpoint(value, defaultGoddddocrSlideComparisonEndpoint, "/slide_comparison/file", "slide_comparison", "slide-comparison")
+}
+
+func normalizeGoddddocrSlideMatchEndpoint(value string) string {
+	return normalizeGoddddocrFeatureEndpoint(value, defaultGoddddocrSlideMatchEndpoint, "/slide_match/file", "slide_match", "slide-match")
+}
+
+func normalizeGoddddocrFeatureEndpoint(value string, defaultEndpoint string, filePath string, aliases ...string) string {
+	endpoint := goddddocrEndpointValue(value)
+	if endpoint == "" {
+		return defaultEndpoint
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return endpoint
+	}
+	path := strings.Trim(parsed.Path, "/")
+	convertible := map[string]bool{
+		"":         true,
+		"ready":    true,
+		"health":   true,
+		"ocr":      true,
+		"ocr/file": true,
+	}
+	for _, alias := range aliases {
+		alias = strings.Trim(alias, "/")
+		convertible[alias] = true
+		convertible[alias+"/file"] = true
+	}
+	if convertible[path] {
+		parsed.Path = filePath
 		return parsed.String()
 	}
 	return endpoint
@@ -208,6 +401,35 @@ func ocrBoolParam(value any) (bool, error) {
 		return parsed, nil
 	}
 	return boolParam(value)
+}
+
+func ocrFloatParam(value any) (float64, error) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, nil
+	case float32:
+		return float64(typed), nil
+	case int:
+		return float64(typed), nil
+	case int64:
+		return float64(typed), nil
+	case int32:
+		return float64(typed), nil
+	case json.Number:
+		parsed, err := typed.Float64()
+		if err != nil {
+			return 0, fmt.Errorf("must be a number")
+		}
+		return parsed, nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return 0, fmt.Errorf("must be a number")
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("must be a number")
+	}
 }
 
 func ocrMultipartFieldString(value any) (string, error) {
@@ -242,7 +464,7 @@ func buildOCRReadyResult(response map[string]any) (map[string]any, bool) {
 	if serviceStatus != "" {
 		result["service_status"] = serviceStatus
 	}
-	for _, name := range []string{"model", "time", "request_id"} {
+	for _, name := range []string{"model", "time", "request_id", "detection", "slide_comparison", "slide_match"} {
 		if value, ok := body[name]; ok {
 			result[name] = value
 		}
@@ -283,6 +505,73 @@ func buildOCRRequestResult(response map[string]any) (map[string]any, error) {
 		"response": response,
 	}
 	for _, name := range []string{"confidence", "probability", "request_id", "processing_time_ms"} {
+		if value, ok := body[name]; ok {
+			result[name] = value
+		}
+	}
+	if savePath, ok := response["save_path"]; ok && savePath != nil {
+		result["save_path"] = savePath
+	}
+	return result, nil
+}
+
+func buildOCRDetectResult(response map[string]any) (map[string]any, error) {
+	if okValue, ok := response["ok"].(bool); ok && !okValue {
+		return nil, fmt.Errorf("ocr_detect failed with HTTP status %v: %s", response["status"], describeOCRResponseBody(response["body"]))
+	}
+
+	body, ok := response["body"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("ocr_detect expected JSON object response body, got %T", response["body"])
+	}
+	resultValue, ok := body["result"]
+	if !ok {
+		return nil, fmt.Errorf("ocr_detect response body missing result")
+	}
+
+	result := map[string]any{
+		"result":   resultValue,
+		"ok":       response["ok"],
+		"status":   response["status"],
+		"response": response,
+	}
+	for _, name := range []string{"boxes", "request_id", "processing_time_ms"} {
+		if value, ok := body[name]; ok {
+			result[name] = value
+		}
+	}
+	if savePath, ok := response["save_path"]; ok && savePath != nil {
+		result["save_path"] = savePath
+	}
+	return result, nil
+}
+
+func buildOCRSlideResult(response map[string]any, actionName string) (map[string]any, error) {
+	if okValue, ok := response["ok"].(bool); ok && !okValue {
+		return nil, fmt.Errorf("%s failed with HTTP status %v: %s", actionName, response["status"], describeOCRResponseBody(response["body"]))
+	}
+
+	body, ok := response["body"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s expected JSON object response body, got %T", actionName, response["body"])
+	}
+	resultValue, ok := body["result"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s response body missing result object", actionName)
+	}
+
+	result := map[string]any{
+		"result":   resultValue,
+		"ok":       response["ok"],
+		"status":   response["status"],
+		"response": response,
+	}
+	for _, name := range []string{"target", "target_x", "target_y", "confidence"} {
+		if value, ok := resultValue[name]; ok {
+			result[name] = value
+		}
+	}
+	for _, name := range []string{"request_id", "processing_time_ms"} {
 		if value, ok := body[name]; ok {
 			result[name] = value
 		}

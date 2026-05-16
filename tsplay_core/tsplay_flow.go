@@ -73,40 +73,42 @@ type FlowStep struct {
 
 	// Common named parameters. Flow accepts both args: [...] and these named
 	// fields because named fields are easier for humans and AI to review.
-	URL          string   `json:"url,omitempty" yaml:"url,omitempty"`
-	Selector     string   `json:"selector,omitempty" yaml:"selector,omitempty"`
-	Text         string   `json:"text,omitempty" yaml:"text,omitempty"`
-	Value        string   `json:"value,omitempty" yaml:"value,omitempty"`
-	Timeout      int      `json:"timeout,omitempty" yaml:"timeout,omitempty"`
-	Seconds      float64  `json:"seconds,omitempty" yaml:"seconds,omitempty"`
-	Path         string   `json:"path,omitempty" yaml:"path,omitempty"`
-	Range        string   `json:"range,omitempty" yaml:"range,omitempty"`
-	Script       string   `json:"script,omitempty" yaml:"script,omitempty"`
-	Code         string   `json:"code,omitempty" yaml:"code,omitempty"`
-	Attribute    string   `json:"attribute,omitempty" yaml:"attribute,omitempty"`
-	Sheet        string   `json:"sheet,omitempty" yaml:"sheet,omitempty"`
-	Key          string   `json:"key,omitempty" yaml:"key,omitempty"`
-	FilePath     string   `json:"file_path,omitempty" yaml:"file_path,omitempty"`
-	SourcePath   string   `json:"source_path,omitempty" yaml:"source_path,omitempty"`
-	Folder       string   `json:"folder,omitempty" yaml:"folder,omitempty"`
-	FolderPath   string   `json:"folder_path,omitempty" yaml:"folder_path,omitempty"`
-	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
-	Folders      []string `json:"folders,omitempty" yaml:"folders,omitempty"`
-	SavePath     string   `json:"save_path,omitempty" yaml:"save_path,omitempty"`
-	Password     string   `json:"password,omitempty" yaml:"password,omitempty"`
-	BaseDir      string   `json:"base_dir,omitempty" yaml:"base_dir,omitempty"`
-	Pattern      string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
-	From         any      `json:"from,omitempty" yaml:"from,omitempty"`
-	Connection   string   `json:"connection,omitempty" yaml:"connection,omitempty"`
-	Index        int      `json:"index,omitempty" yaml:"index,omitempty"`
-	ContextIndex int      `json:"context_index,omitempty" yaml:"context_index,omitempty"`
-	Delta        int      `json:"delta,omitempty" yaml:"delta,omitempty"`
-	TTLSeconds   int      `json:"ttl_seconds,omitempty" yaml:"ttl_seconds,omitempty"`
-	Times        int      `json:"times,omitempty" yaml:"times,omitempty"`
-	IntervalMS   int      `json:"interval_ms,omitempty" yaml:"interval_ms,omitempty"`
-	Items        any      `json:"items,omitempty" yaml:"items,omitempty"`
-	ItemVar      string   `json:"item_var,omitempty" yaml:"item_var,omitempty"`
-	IndexVar     string   `json:"index_var,omitempty" yaml:"index_var,omitempty"`
+	URL                string   `json:"url,omitempty" yaml:"url,omitempty"`
+	Selector           string   `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Text               string   `json:"text,omitempty" yaml:"text,omitempty"`
+	Value              string   `json:"value,omitempty" yaml:"value,omitempty"`
+	Timeout            int      `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+	Seconds            float64  `json:"seconds,omitempty" yaml:"seconds,omitempty"`
+	Path               string   `json:"path,omitempty" yaml:"path,omitempty"`
+	Range              string   `json:"range,omitempty" yaml:"range,omitempty"`
+	Script             string   `json:"script,omitempty" yaml:"script,omitempty"`
+	Code               string   `json:"code,omitempty" yaml:"code,omitempty"`
+	Attribute          string   `json:"attribute,omitempty" yaml:"attribute,omitempty"`
+	Sheet              string   `json:"sheet,omitempty" yaml:"sheet,omitempty"`
+	Key                string   `json:"key,omitempty" yaml:"key,omitempty"`
+	FilePath           string   `json:"file_path,omitempty" yaml:"file_path,omitempty"`
+	TargetFilePath     string   `json:"target_file_path,omitempty" yaml:"target_file_path,omitempty"`
+	BackgroundFilePath string   `json:"background_file_path,omitempty" yaml:"background_file_path,omitempty"`
+	SourcePath         string   `json:"source_path,omitempty" yaml:"source_path,omitempty"`
+	Folder             string   `json:"folder,omitempty" yaml:"folder,omitempty"`
+	FolderPath         string   `json:"folder_path,omitempty" yaml:"folder_path,omitempty"`
+	Files              []string `json:"files,omitempty" yaml:"files,omitempty"`
+	Folders            []string `json:"folders,omitempty" yaml:"folders,omitempty"`
+	SavePath           string   `json:"save_path,omitempty" yaml:"save_path,omitempty"`
+	Password           string   `json:"password,omitempty" yaml:"password,omitempty"`
+	BaseDir            string   `json:"base_dir,omitempty" yaml:"base_dir,omitempty"`
+	Pattern            string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
+	From               any      `json:"from,omitempty" yaml:"from,omitempty"`
+	Connection         string   `json:"connection,omitempty" yaml:"connection,omitempty"`
+	Index              int      `json:"index,omitempty" yaml:"index,omitempty"`
+	ContextIndex       int      `json:"context_index,omitempty" yaml:"context_index,omitempty"`
+	Delta              int      `json:"delta,omitempty" yaml:"delta,omitempty"`
+	TTLSeconds         int      `json:"ttl_seconds,omitempty" yaml:"ttl_seconds,omitempty"`
+	Times              int      `json:"times,omitempty" yaml:"times,omitempty"`
+	IntervalMS         int      `json:"interval_ms,omitempty" yaml:"interval_ms,omitempty"`
+	Items              any      `json:"items,omitempty" yaml:"items,omitempty"`
+	ItemVar            string   `json:"item_var,omitempty" yaml:"item_var,omitempty"`
+	IndexVar           string   `json:"index_var,omitempty" yaml:"index_var,omitempty"`
 }
 
 type FlowResult struct {
@@ -282,6 +284,9 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
 	"ocr_ready":             {Args: []flowArgSpec{{Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "strict"}}},
 	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "color_filter_colors"}, {Name: "color_filter_custom_ranges"}, {Name: "confidence"}, {Name: "probability"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
+	"ocr_detect":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "detailed"}, {Name: "score_threshold"}, {Name: "nms_threshold"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
+	"ocr_slide_comparison":  {Args: []flowArgSpec{{Name: "target_file_path", Required: true}, {Name: "background_file_path", Required: true}, {Name: "url"}, {Name: "timeout"}, {Name: "save_path"}}},
+	"ocr_slide_match":       {Args: []flowArgSpec{{Name: "target_file_path", Required: true}, {Name: "background_file_path", Required: true}, {Name: "url"}, {Name: "simple_target"}, {Name: "timeout"}, {Name: "save_path"}}},
 	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
@@ -1919,7 +1924,7 @@ func flowActionSecurityGroup(action string) string {
 		return "lua"
 	case "execute_script", "evaluate":
 		return "javascript"
-	case "http_request", "ocr_ready", "ocr_request":
+	case "http_request", "ocr_ready", "ocr_request", "ocr_detect", "ocr_slide_comparison", "ocr_slide_match":
 		return "http"
 	case "send_email":
 		return "email"
@@ -2272,6 +2277,14 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 		return map[string]flowFilePathRole{"save_path": flowFileOutputPath}
 	case "ocr_request":
 		return map[string]flowFilePathRole{"file_path": flowFileInputPath, "save_path": flowFileOutputPath}
+	case "ocr_detect":
+		return map[string]flowFilePathRole{"file_path": flowFileInputPath, "save_path": flowFileOutputPath}
+	case "ocr_slide_comparison", "ocr_slide_match":
+		return map[string]flowFilePathRole{
+			"target_file_path":     flowFileInputPath,
+			"background_file_path": flowFileInputPath,
+			"save_path":            flowFileOutputPath,
+		}
 	case "send_email":
 		return map[string]flowFilePathRole{"attachments": flowFileInputPath}
 	case "upload_file":
@@ -3944,6 +3957,12 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowOCRReadyStep(L, ctx, step)
 	case "ocr_request":
 		return runFlowOCRRequestStep(L, ctx, step)
+	case "ocr_detect":
+		return runFlowOCRDetectStep(L, ctx, step)
+	case "ocr_slide_comparison":
+		return runFlowOCRSlideComparisonStep(L, ctx, step)
+	case "ocr_slide_match":
+		return runFlowOCRSlideMatchStep(L, ctx, step)
 	case "send_email":
 		return runFlowSendEmailStep(ctx, step)
 	case "json_extract":
@@ -4740,6 +4759,8 @@ func (step FlowStep) presentNamedParams() map[string]any {
 	addString("sheet", step.Sheet)
 	addString("key", step.Key)
 	addString("file_path", step.FilePath)
+	addString("target_file_path", step.TargetFilePath)
+	addString("background_file_path", step.BackgroundFilePath)
 	addString("source_path", step.SourcePath)
 	addString("folder", step.Folder)
 	addString("folder_path", step.FolderPath)
@@ -4875,6 +4896,10 @@ func (step FlowStep) param(name string) (any, bool) {
 		return stringParam(step.Key)
 	case "file_path":
 		return stringParam(step.FilePath)
+	case "target_file_path":
+		return stringParam(step.TargetFilePath)
+	case "background_file_path":
+		return stringParam(step.BackgroundFilePath)
 	case "source_path":
 		return stringParam(step.SourcePath)
 	case "folder":
