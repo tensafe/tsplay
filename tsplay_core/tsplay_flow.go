@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -234,7 +238,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"navigate":              {Args: []flowArgSpec{{Name: "url", Required: true}}},
 	"click":                 {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"click_at":              {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "x", Required: true}, {Name: "y", Required: true}, {Name: "timeout"}}},
-	"click_box":             {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "box", Required: true}, {Name: "index"}, {Name: "scale_x"}, {Name: "scale_y"}, {Name: "timeout"}}},
+	"click_box":             {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "box", Required: true}, {Name: "index"}, {Name: "scale_x"}, {Name: "scale_y"}, {Name: "timeout"}, {Name: "image_path"}, {Name: "auto_scale"}}},
 	"reload":                {},
 	"go_back":               {},
 	"go_forward":            {},
@@ -1838,9 +1842,9 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "image_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict", "auto_scale":
 		return "bool"
 	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "move_steps", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
@@ -2288,6 +2292,8 @@ func flowFilePathParams(action string) map[string]flowFilePathRole {
 			"background_file_path": flowFileInputPath,
 			"save_path":            flowFileOutputPath,
 		}
+	case "click_box":
+		return map[string]flowFilePathRole{"image_path": flowFileInputPath}
 	case "send_email":
 		return map[string]flowFilePathRole{"attachments": flowFileInputPath}
 	case "upload_file":
@@ -4091,19 +4097,38 @@ func runFlowClickBoxStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, e
 	if err != nil {
 		return nil, err
 	}
-	scaleX, err := flowStepOptionalFloatParam(ctx, step, "scale_x")
+	scaleX, scaleXSet, err := flowStepOptionalFloatParamWithPresence(ctx, step, "scale_x")
 	if err != nil {
 		return nil, err
 	}
-	if scaleX == 0 {
+	if scaleXSet && scaleX <= 0 {
+		return nil, fmt.Errorf("action %q scale_x must be greater than 0", step.Action)
+	}
+	if !scaleXSet {
 		scaleX = 1
 	}
-	scaleY, err := flowStepOptionalFloatParam(ctx, step, "scale_y")
+	scaleY, scaleYSet, err := flowStepOptionalFloatParamWithPresence(ctx, step, "scale_y")
 	if err != nil {
 		return nil, err
 	}
-	if scaleY == 0 {
+	if scaleYSet && scaleY <= 0 {
+		return nil, fmt.Errorf("action %q scale_y must be greater than 0", step.Action)
+	}
+	if !scaleYSet {
 		scaleY = 1
+	}
+	imagePath, err := flowStepOptionalStringParam(ctx, step, "image_path")
+	if err != nil {
+		return nil, err
+	}
+	autoScale := strings.TrimSpace(imagePath) != ""
+	if value, ok, err := flowStepResolvedParam(ctx, step, "auto_scale"); err != nil {
+		return nil, err
+	} else if ok {
+		autoScale, err = boolParam(value)
+		if err != nil {
+			return nil, fmt.Errorf("action %q auto_scale %w", step.Action, err)
+		}
 	}
 	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
 	if err != nil {
@@ -4115,20 +4140,42 @@ func runFlowClickBoxStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, e
 		}
 	}
 
+	page, err := pageFromLuaState(L)
+	if err != nil {
+		return nil, err
+	}
+	scaleInfo := map[string]any{}
+	if strings.TrimSpace(imagePath) != "" && autoScale && (!scaleXSet || !scaleYSet) {
+		derived, err := deriveFlowClickBoxImageScale(ctx, page, selector, imagePath)
+		if err != nil {
+			return nil, err
+		}
+		if !scaleXSet {
+			scaleX = derived.ScaleX
+		}
+		if !scaleYSet {
+			scaleY = derived.ScaleY
+		}
+		scaleInfo["auto_scale"] = true
+		scaleInfo["image_path"] = derived.ImagePath
+		scaleInfo["image_width"] = derived.ImageWidth
+		scaleInfo["image_height"] = derived.ImageHeight
+		scaleInfo["element_width"] = derived.ElementWidth
+		scaleInfo["element_height"] = derived.ElementHeight
+	} else {
+		scaleInfo["auto_scale"] = false
+	}
+
 	box, err := flowDetectionBoxFromValue(boxValue, index)
 	if err != nil {
 		return nil, err
 	}
 	x, y := box.center(scaleX, scaleY)
 
-	page, err := pageFromLuaState(L)
-	if err != nil {
-		return nil, err
-	}
 	if err := clickElementAtOffset(page, selector, x, y); err != nil {
 		return nil, err
 	}
-	return map[string]any{
+	result := map[string]any{
 		"selector": selector,
 		"box": map[string]any{
 			"x1": box.X1,
@@ -4141,7 +4188,11 @@ func runFlowClickBoxStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, e
 		"scale_y": scaleY,
 		"x":       x,
 		"y":       y,
-	}, nil
+	}
+	for key, value := range scaleInfo {
+		result[key] = value
+	}
+	return result, nil
 }
 
 type flowDetectionBox struct {
@@ -4294,6 +4345,72 @@ func flowNumberFromMap(value map[string]any, keys ...string) (float64, bool, err
 		}
 	}
 	return 0, false, nil
+}
+
+type flowClickBoxImageScale struct {
+	ScaleX        float64
+	ScaleY        float64
+	ImagePath     string
+	ImageWidth    int
+	ImageHeight   int
+	ElementWidth  float64
+	ElementHeight float64
+}
+
+func deriveFlowClickBoxImageScale(ctx *FlowContext, page playwright.Page, selector string, imagePath string) (flowClickBoxImageScale, error) {
+	resolvedPath := strings.TrimSpace(imagePath)
+	if resolvedPath == "" {
+		return flowClickBoxImageScale{}, fmt.Errorf("action %q image_path cannot be empty", "click_box")
+	}
+	if ctx != nil && ctx.Security != nil {
+		var err error
+		resolvedPath, err = resolveRuntimeFilePath(resolvedPath, flowFileInputPath, *ctx.Security)
+		if err != nil {
+			return flowClickBoxImageScale{}, fmt.Errorf("action %q parameter %q %w", "click_box", "image_path", err)
+		}
+	}
+	imageWidth, imageHeight, err := imageDimensions(resolvedPath)
+	if err != nil {
+		return flowClickBoxImageScale{}, fmt.Errorf("read click_box image_path %q: %w", resolvedPath, err)
+	}
+
+	locator := page.Locator(selector)
+	box, err := locator.BoundingBox()
+	if err != nil {
+		return flowClickBoxImageScale{}, fmt.Errorf("read selector %q bounding box for click_box scale: %w", selector, err)
+	}
+	if box == nil {
+		return flowClickBoxImageScale{}, fmt.Errorf("selector %q has no bounding box for click_box scale", selector)
+	}
+	if box.Width <= 0 || box.Height <= 0 {
+		return flowClickBoxImageScale{}, fmt.Errorf("selector %q has invalid bounding box %.1fx%.1f", selector, box.Width, box.Height)
+	}
+	return flowClickBoxImageScale{
+		ScaleX:        float64(imageWidth) / box.Width,
+		ScaleY:        float64(imageHeight) / box.Height,
+		ImagePath:     resolvedPath,
+		ImageWidth:    imageWidth,
+		ImageHeight:   imageHeight,
+		ElementWidth:  box.Width,
+		ElementHeight: box.Height,
+	}, nil
+}
+
+func imageDimensions(path string) (int, int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer file.Close()
+
+	config, _, err := image.DecodeConfig(file)
+	if err != nil {
+		return 0, 0, err
+	}
+	if config.Width <= 0 || config.Height <= 0 {
+		return 0, 0, fmt.Errorf("image has invalid dimensions %dx%d", config.Width, config.Height)
+	}
+	return config.Width, config.Height, nil
 }
 
 func runFlowDragStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
@@ -4683,6 +4800,22 @@ func flowStepOptionalFloatParam(ctx *FlowContext, step FlowStep, name string) (f
 		return 0, err
 	}
 	return floatParam(resolved)
+}
+
+func flowStepOptionalFloatParamWithPresence(ctx *FlowContext, step FlowStep, name string) (float64, bool, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return 0, false, nil
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return 0, true, err
+	}
+	number, err := floatParam(resolved)
+	if err != nil {
+		return 0, true, err
+	}
+	return number, true, nil
 }
 
 func flowStepOptionalStringParam(ctx *FlowContext, step FlowStep, name string) (string, error) {

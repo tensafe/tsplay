@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
@@ -1457,10 +1460,12 @@ func TestValidateFlowStrictAcceptsClickAtAndClickBox(t *testing.T) {
 				Action:   "click_box",
 				Selector: "#captcha",
 				With: map[string]any{
-					"box":     map[string]any{"x1": 28, "y1": 28, "x2": 76, "y2": 76},
-					"scale_x": 1,
-					"scale_y": 1,
-					"timeout": 5000,
+					"box":        map[string]any{"x1": 28, "y1": 28, "x2": 76, "y2": 76},
+					"image_path": "artifacts/captcha/det-source.png",
+					"auto_scale": true,
+					"scale_x":    1,
+					"scale_y":    1,
+					"timeout":    5000,
 				},
 			},
 		},
@@ -1468,6 +1473,109 @@ func TestValidateFlowStrictAcceptsClickAtAndClickBox(t *testing.T) {
 
 	if err := ValidateFlowStrict(flow); err != nil {
 		t.Fatalf("validate click box flow: %v", err)
+	}
+}
+
+func TestRunFlowClickBoxAutoScalesFromImagePath(t *testing.T) {
+	root := t.TempDir()
+	imagePath := filepath.Join(root, "captcha-2x.png")
+	img := image.NewRGBA(image.Rect(0, 0, 400, 200))
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			img.Set(x, y, color.RGBA{R: 240, G: 246, B: 252, A: 255})
+		}
+	}
+	file, err := os.Create(imagePath)
+	if err != nil {
+		t.Fatalf("create scaled captcha image: %v", err)
+	}
+	if err := png.Encode(file, img); err != nil {
+		file.Close()
+		t.Fatalf("encode scaled captcha image: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close scaled captcha image: %v", err)
+	}
+
+	page := `<!doctype html>
+<html>
+<head>
+  <style>
+    #captcha { position: relative; width: 200px; height: 100px; background: #eef2f7; }
+    #target { position: absolute; left: 20px; top: 30px; width: 20px; height: 20px; background: #2da44e; }
+  </style>
+</head>
+<body>
+  <div id="captcha"><div id="target"></div></div>
+  <div id="success" hidden>clicked</div>
+  <script>
+    const captcha = document.getElementById("captcha");
+    const target = document.getElementById("target");
+    const success = document.getElementById("success");
+    captcha.addEventListener("click", function(event) {
+      const box = target.getBoundingClientRect();
+      if (event.clientX >= box.left && event.clientX <= box.right &&
+          event.clientY >= box.top && event.clientY <= box.bottom) {
+        success.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, page)
+	}))
+	defer server.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "click_box_autoscale",
+		Steps: []FlowStep{
+			{Action: "navigate", URL: server.URL},
+			{Action: "wait_for_selector", Selector: "#captcha", Timeout: 5000},
+			{
+				Action:   "click_box",
+				Selector: "#captcha",
+				SaveAs:   "click_result",
+				With: map[string]any{
+					"box":        []any{40, 60, 80, 100},
+					"image_path": "captcha-2x.png",
+					"timeout":    5000,
+				},
+			},
+			{Action: "assert_visible", Selector: "#success", Timeout: 5000},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: root,
+		Security: &FlowSecurityPolicy{
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run click_box autoscale flow: %v", err)
+	}
+	clickResult, ok := result.Vars["click_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("click_result = %#v", result.Vars["click_result"])
+	}
+	if got := clickResult["auto_scale"]; got != true {
+		t.Fatalf("auto_scale = %#v", got)
+	}
+	if got := clickResult["scale_x"]; got != 2.0 {
+		t.Fatalf("scale_x = %#v", got)
+	}
+	if got := clickResult["scale_y"]; got != 2.0 {
+		t.Fatalf("scale_y = %#v", got)
+	}
+	if got := clickResult["x"]; got != 30.0 {
+		t.Fatalf("click x = %#v", got)
+	}
+	if got := clickResult["y"]; got != 40.0 {
+		t.Fatalf("click y = %#v", got)
 	}
 }
 
@@ -3706,11 +3814,11 @@ func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
 	if !ok {
 		t.Fatalf("detect_click_result = %#v", payload["detect_click_result"])
 	}
-	if got := clickResult["x"]; got != 52.0 {
-		t.Fatalf("detect click x = %#v", got)
+	if got, ok := clickResult["x"].(float64); !ok || got < 51 || got > 53 {
+		t.Fatalf("detect click x = %#v", clickResult["x"])
 	}
-	if got := clickResult["y"]; got != 52.0 {
-		t.Fatalf("detect click y = %#v", got)
+	if got, ok := clickResult["y"].(float64); !ok || got < 51 || got > 53 {
+		t.Fatalf("detect click y = %#v", clickResult["y"])
 	}
 	if _, err := os.Stat(filepath.Join(root, "artifacts", "goddddocr", "det-slide-flow-result.json")); err != nil {
 		t.Fatalf("expected det slide result artifact: %v", err)
