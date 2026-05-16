@@ -10,6 +10,7 @@
 - tsplay 新增验证码登录 demo 与端到端 Flow，覆盖截图、OCR、填表和断言链路。
 - `ocr_request` 返回 `text/result/confidence/request_id/processing_time_ms`，业务 Flow 可以直接读取 `{{ocr_result.text}}`；彩色验证码可传 `color_filter_colors` / `color_filter_custom_ranges`，需要排查准确率时可开启 `probability` 返回完整概率矩阵。
 - `ocr_detect` 返回 `result/boxes/request_id/processing_time_ms`，点选类验证码可以把 `boxes[0]` 交给 `click_box` 点击框中心，并用 `image_path` 自动换算截图像素和页面元素坐标；`ocr_slide_match` 返回 `target_x/target_y/confidence`，滑块 Flow 可以直接把 `target_x` 接到拖动距离计算。
+- tsplay 提供 goddddocr 点选与滑块失败恢复模板，用 `retry + on_error` 处理识别失败、点选偏移、滑块未验证，并写出诊断 JSON、截图和 HTML。
 - `goddddocr` 支持外部 ONNX 模型和 charset JSON，服务可通过 `GODDDDOCR_MODEL_PATH` / `GODDDDOCR_CHARSET_PATH` 挂载项目私有验证码模型，tsplay 侧仍按同一个 HTTP action 调用。
 - `goddddocr` 提供 `ocrdoctor` 本地诊断命令，部署到 Windows、macOS、Linux 后可先验证 ONNX Runtime、模型、charset 和样本识别，再接入 tsplay Flow。
 - 安全边界沿用 tsplay 现有策略：需要 `allow_http=true`，读图片和保存响应时需要 `allow_file_access=true`。
@@ -38,5 +39,5 @@ ocrdoctor -image /opt/models/smoke.png -expect abcd -json
 
 - 扩充 Python ddddocr 与 Go goddddocr 的 golden fixtures 对比集，记录更多真实验证码样本的准确率和耗时差异。
 - 给 tsplay 文档补一套部署说明：Windows、macOS、Linux 下安装 ONNX Runtime、运行 `ocrdoctor`、启动 goddddocr 服务并配置 `GODDDDOCR_URL`。
-- 增加真实站点适配模板：验证码元素定位、刷新验证码、识别失败重试、低置信度人工接管。
+- 增加真实站点适配模板：验证码元素定位、刷新验证码、低置信度人工接管。
 - 评估是否需要把 `ocr_request` 扩展为多引擎接口，预留将来接云 OCR 或项目内私有 OCR 服务。

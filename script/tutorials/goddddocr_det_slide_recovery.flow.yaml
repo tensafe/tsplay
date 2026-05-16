@@ -1,0 +1,218 @@
+schema_version: "1"
+name: goddddocr_det_slide_recovery_flow
+description: Retry goddddocr detection and slide captcha verification, capture diagnostics for failed attempts, and write a final recovery payload.
+vars:
+  page_url: http://127.0.0.1:8000/demo/slider_login.html
+  goddddocr_url: http://127.0.0.1:8088
+  detect_image_path: artifacts/goddddocr/recovery-det-source.png
+  slide_target_path: artifacts/goddddocr/recovery-slide-target.png
+  slide_background_path: artifacts/goddddocr/recovery-slide-background.png
+  ready_response_path: artifacts/goddddocr/det-slide-recovery-ready-response.json
+  det_response_path: artifacts/goddddocr/det-slide-recovery-det-response.json
+  slide_response_path: artifacts/goddddocr/det-slide-recovery-slide-response.json
+  result_path: artifacts/goddddocr/det-slide-recovery-result.json
+  diagnostic_path: artifacts/goddddocr/det-slide-recovery-diagnostic.json
+  diagnostic_screenshot_path: artifacts/goddddocr/det-slide-recovery-failure.png
+  diagnostic_html_path: artifacts/goddddocr/det-slide-recovery-failure.html
+  final_screenshot_path: artifacts/goddddocr/det-slide-recovery-final-failure.png
+  final_html_path: artifacts/goddddocr/det-slide-recovery-final-failure.html
+  detect_source_selector: "#captcha-area"
+  detect_success_selector: "#detect-success"
+  slide_target_selector: "#slider-piece"
+  slide_background_selector: "#slider-background"
+  slider_handle_selector: "#slider-handle"
+  slide_success_selector: "#slider-success"
+  slider_status_selector: "#slider-status"
+  current_phase: starting
+  ocr_service: {}
+  retry_result: {}
+  det_result: {}
+  detect_click_result: {}
+  slide_result: {}
+  drag_result: {}
+  diagnostic_payload: {}
+  payload: {}
+  slider_status: ""
+steps:
+  - action: on_error
+    save_as: recovery_guard
+    steps:
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: ready
+
+      - action: ocr_ready
+        url: "{{goddddocr_url}}"
+        save_as: ocr_service
+        save_path: "{{ready_response_path}}"
+        with:
+          timeout: 3000
+
+      - action: retry
+        times: 4
+        interval_ms: 200
+        save_as: retry_result
+        steps:
+          - action: on_error
+            steps:
+              - action: set_var
+                save_as: current_phase
+                with:
+                  value: capture
+
+              - action: navigate
+                url: "{{page_url}}"
+
+              - action: wait_for_selector
+                selector: "{{detect_source_selector}}"
+                timeout: 5000
+
+              - action: screenshot_element
+                selector: "{{detect_source_selector}}"
+                path: "{{detect_image_path}}"
+
+              - action: screenshot_element
+                selector: "{{slide_target_selector}}"
+                path: "{{slide_target_path}}"
+
+              - action: screenshot_element
+                selector: "{{slide_background_selector}}"
+                path: "{{slide_background_path}}"
+
+              - action: set_var
+                save_as: current_phase
+                with:
+                  value: detect
+
+              - action: ocr_detect
+                url: "{{goddddocr_url}}"
+                file_path: "{{detect_image_path}}"
+                save_as: det_result
+                save_path: "{{det_response_path}}"
+                with:
+                  detailed: true
+                  score_threshold: 0.2
+                  nms_threshold: 0.45
+                  timeout: 10000
+
+              - action: click_box
+                selector: "{{detect_source_selector}}"
+                save_as: detect_click_result
+                with:
+                  box: "{{det_result.boxes[0]}}"
+                  image_path: "{{detect_image_path}}"
+                  timeout: 5000
+
+              - action: assert_visible
+                selector: "{{detect_success_selector}}"
+                timeout: 500
+
+              - action: set_var
+                save_as: current_phase
+                with:
+                  value: slide
+
+              - action: ocr_slide_match
+                url: "{{goddddocr_url}}"
+                target_file_path: "{{slide_target_path}}"
+                background_file_path: "{{slide_background_path}}"
+                save_as: slide_result
+                save_path: "{{slide_response_path}}"
+                with:
+                  simple_target: true
+                  timeout: 10000
+
+              - action: drag
+                selector: "{{slider_handle_selector}}"
+                save_as: drag_result
+                with:
+                  delta_x: "{{slide_result.target_x}}"
+                  delta_y: 0
+                  move_steps: 30
+                  timeout: 5000
+
+              - action: assert_visible
+                selector: "{{slide_success_selector}}"
+                timeout: 500
+            on_error:
+              - action: screenshot
+                path: "{{diagnostic_screenshot_path}}"
+                continue_on_error: true
+
+              - action: save_html
+                path: "{{diagnostic_html_path}}"
+                continue_on_error: true
+
+              - action: set_var
+                save_as: diagnostic_payload
+                with:
+                  value:
+                    status: retrying
+                    phase: "{{current_phase}}"
+                    error: "{{last_error}}"
+                    page_url: "{{page_url}}"
+                    detect_image_path: "{{detect_image_path}}"
+                    slide_target_path: "{{slide_target_path}}"
+                    slide_background_path: "{{slide_background_path}}"
+                    screenshot_path: "{{diagnostic_screenshot_path}}"
+                    html_path: "{{diagnostic_html_path}}"
+
+              - action: write_json
+                file_path: "{{diagnostic_path}}"
+                value: "{{diagnostic_payload}}"
+
+              - action: assert_visible
+                selector: "#__tsplay_retry_next_attempt__"
+                timeout: 10
+
+      - action: extract_text
+        selector: "{{slider_status_selector}}"
+        timeout: 5000
+        save_as: slider_status
+
+      - action: set_var
+        save_as: payload
+        with:
+          value:
+            status: success
+            page_url: "{{page_url}}"
+            service_detection: "{{ocr_service.detection}}"
+            service_slide_match: "{{ocr_service.slide_match}}"
+            retry_result: "{{retry_result}}"
+            slider_status: "{{slider_status}}"
+            det_boxes: "{{det_result.boxes}}"
+            detect_click_result: "{{detect_click_result}}"
+            slide_target: "{{slide_result.target}}"
+            slide_target_x: "{{slide_result.target_x}}"
+            slide_confidence: "{{slide_result.confidence}}"
+            drag_result: "{{drag_result}}"
+            diagnostic_path: "{{diagnostic_path}}"
+
+      - action: write_json
+        file_path: "{{result_path}}"
+        value: "{{payload}}"
+    on_error:
+      - action: screenshot
+        path: "{{final_screenshot_path}}"
+        continue_on_error: true
+
+      - action: save_html
+        path: "{{final_html_path}}"
+        continue_on_error: true
+
+      - action: set_var
+        save_as: payload
+        with:
+          value:
+            status: failed
+            page_url: "{{page_url}}"
+            phase: "{{current_phase}}"
+            error: "{{last_error}}"
+            diagnostic_path: "{{diagnostic_path}}"
+            screenshot_path: "{{final_screenshot_path}}"
+            html_path: "{{final_html_path}}"
+
+      - action: write_json
+        file_path: "{{result_path}}"
+        value: "{{payload}}"

@@ -3708,6 +3708,19 @@ func TestGoddddocrDetSlideTutorialFlowValidates(t *testing.T) {
 	}
 }
 
+func TestGoddddocrDetSlideRecoveryTutorialFlowValidates(t *testing.T) {
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_det_slide_recovery.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load det slide recovery tutorial flow: %v", err)
+	}
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate det slide recovery tutorial flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true}); err != nil {
+		t.Fatalf("validate det slide recovery tutorial flow security: %v", err)
+	}
+}
+
 func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
 	root := t.TempDir()
 
@@ -3822,6 +3835,149 @@ func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "artifacts", "goddddocr", "det-slide-flow-result.json")); err != nil {
 		t.Fatalf("expected det slide result artifact: %v", err)
+	}
+}
+
+func TestRunGoddddocrDetSlideRecoveryTutorialFlowRetriesAndWritesDiagnostics(t *testing.T) {
+	root := t.TempDir()
+
+	demoServer := httptest.NewServer(http.FileServer(http.Dir("..")))
+	defer demoServer.Close()
+
+	var detCalls int
+	var slideCalls int
+	ocrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ready":
+			fmt.Fprint(w, `{"status":"ready","model":"old","detection":true,"slide_match":true,"slide_comparison":true}`)
+		case "/det/file":
+			detCalls++
+			if err := r.ParseMultipartForm(4 << 20); err != nil {
+				t.Fatalf("parse det multipart form: %v", err)
+			}
+			file, _, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("read det multipart file: %v", err)
+			}
+			content, err := io.ReadAll(file)
+			file.Close()
+			if err != nil {
+				t.Fatalf("read det multipart content: %v", err)
+			}
+			if len(content) == 0 {
+				t.Fatalf("expected det screenshot content")
+			}
+			switch detCalls {
+			case 1:
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprint(w, `{"error":"temporary detection failure"}`)
+			case 2:
+				fmt.Fprint(w, `{"result":[[180,28,220,76]],"boxes":[{"x1":180,"y1":28,"x2":220,"y2":76,"score":0.61,"label":0}],"request_id":"det-offset","processing_time_ms":3.4}`)
+			default:
+				fmt.Fprint(w, `{"result":[[28,28,76,76]],"boxes":[{"x1":28,"y1":28,"x2":76,"y2":76,"score":0.93,"label":0}],"request_id":"det-ok","processing_time_ms":3.1}`)
+			}
+		case "/slide_match/file":
+			slideCalls++
+			if err := r.ParseMultipartForm(4 << 20); err != nil {
+				t.Fatalf("parse slide multipart form: %v", err)
+			}
+			for _, field := range []string{"target_file", "background_file"} {
+				file, _, err := r.FormFile(field)
+				if err != nil {
+					t.Fatalf("read slide multipart file %s: %v", field, err)
+				}
+				content, err := io.ReadAll(file)
+				file.Close()
+				if err != nil {
+					t.Fatalf("read slide multipart content %s: %v", field, err)
+				}
+				if len(content) == 0 {
+					t.Fatalf("expected slide screenshot content for %s", field)
+				}
+			}
+			if slideCalls == 1 {
+				fmt.Fprint(w, `{"result":{"target":[40,82],"target_x":40,"target_y":82,"confidence":0.44},"request_id":"slide-short","processing_time_ms":5.2}`)
+				return
+			}
+			fmt.Fprint(w, `{"result":{"target":[126,82],"target_x":126,"target_y":82,"confidence":0.96},"request_id":"slide-ok","processing_time_ms":4.8}`)
+		default:
+			t.Fatalf("unexpected OCR path: %s", r.URL.Path)
+		}
+	}))
+	defer ocrServer.Close()
+
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_det_slide_recovery.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load det slide recovery tutorial flow: %v", err)
+	}
+	flow.Vars["page_url"] = demoServer.URL + "/demo/slider_login.html"
+	flow.Vars["goddddocr_url"] = ocrServer.URL
+
+	result, err := RunFlow(flow, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: root,
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run det slide recovery tutorial flow: %v", err)
+	}
+	if detCalls != 4 {
+		t.Fatalf("det calls = %d", detCalls)
+	}
+	if slideCalls != 2 {
+		t.Fatalf("slide calls = %d", slideCalls)
+	}
+
+	payload, ok := result.Vars["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v", result.Vars["payload"])
+	}
+	if got := payload["status"]; got != "success" {
+		t.Fatalf("payload status = %#v", got)
+	}
+	retryResult, ok := payload["retry_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("retry_result = %#v", payload["retry_result"])
+	}
+	if got := retryResult["attempts"]; got != 4 {
+		t.Fatalf("retry attempts = %#v", got)
+	}
+	if got := retryResult["status"]; got != "succeeded" {
+		t.Fatalf("retry status = %#v", got)
+	}
+
+	diagnosticPath := filepath.Join(root, "artifacts", "goddddocr", "det-slide-recovery-diagnostic.json")
+	diagnosticBytes, err := os.ReadFile(diagnosticPath)
+	if err != nil {
+		t.Fatalf("read recovery diagnostic: %v", err)
+	}
+	var diagnostic map[string]any
+	if err := json.Unmarshal(diagnosticBytes, &diagnostic); err != nil {
+		t.Fatalf("parse recovery diagnostic: %v", err)
+	}
+	if got := diagnostic["status"]; got != "retrying" {
+		t.Fatalf("diagnostic status = %#v", got)
+	}
+	if got := diagnostic["phase"]; got != "slide" {
+		t.Fatalf("diagnostic phase = %#v", got)
+	}
+	if got := fmt.Sprint(diagnostic["error"]); !strings.Contains(got, "assert_visible") {
+		t.Fatalf("diagnostic error = %#v", got)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "artifacts", "goddddocr", "det-slide-recovery-result.json"),
+		filepath.Join(root, "artifacts", "goddddocr", "det-slide-recovery-failure.png"),
+		filepath.Join(root, "artifacts", "goddddocr", "det-slide-recovery-failure.html"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected recovery artifact %s: %v", path, err)
+		}
 	}
 }
 
