@@ -243,6 +243,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"append_var":            {Args: []flowArgSpec{{Name: "value", Required: true}}},
 	"set_value":             {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "value", Required: true}}},
 	"select_option":         {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "value", Required: true}}},
+	"drag":                  {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "delta_x", Required: true}, {Name: "delta_y"}, {Name: "move_steps"}, {Name: "timeout"}}},
 	"hover":                 {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"scroll_to":             {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"wait_for_network_idle": {},
@@ -1839,9 +1840,9 @@ func flowParamType(name string) string {
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict":
 		return "bool"
-	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "start_row", "limit", "timeout_ms", "timeout_seconds":
+	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "move_steps", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
-	case "seconds":
+	case "seconds", "delta_x", "delta_y":
 		return "number"
 	case "headers", "query", "form", "multipart_files", "multipart_fields", "row", "smtp":
 		return "object"
@@ -3951,6 +3952,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowSetVarStep(ctx, step)
 	case "append_var":
 		return runFlowAppendVarStep(ctx, step)
+	case "drag":
+		return runFlowDragStep(L, ctx, step)
 	case "http_request":
 		return runFlowHTTPRequestStep(L, ctx, step)
 	case "ocr_ready":
@@ -4027,6 +4030,51 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return nil, err
 	}
 	return collectReturns(L, top), nil
+}
+
+func runFlowDragStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	selector, err := flowStepStringParam(ctx, step, "selector")
+	if err != nil {
+		return nil, err
+	}
+	deltaX, err := flowStepFloatParam(ctx, step, "delta_x")
+	if err != nil {
+		return nil, err
+	}
+	deltaY, err := flowStepOptionalFloatParam(ctx, step, "delta_y")
+	if err != nil {
+		return nil, err
+	}
+	steps, err := flowStepOptionalIntParam(ctx, step, "move_steps")
+	if err != nil {
+		return nil, err
+	}
+	if steps == 0 {
+		steps = 20
+	}
+	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
+	if err != nil {
+		return nil, err
+	}
+	if timeout > 0 {
+		if _, err := runFlowStep(L, ctx, FlowStep{Action: "wait_for_selector", Selector: selector, Timeout: timeout}); err != nil {
+			return nil, err
+		}
+	}
+
+	page, err := pageFromLuaState(L)
+	if err != nil {
+		return nil, err
+	}
+	if err := dragElementByOffset(page, selector, deltaX, deltaY, steps); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"selector": selector,
+		"delta_x":  deltaX,
+		"delta_y":  deltaY,
+		"steps":    steps,
+	}, nil
 }
 
 func runFlowAssertVisibleStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
@@ -4347,6 +4395,30 @@ func flowStepStringParam(ctx *FlowContext, step FlowStep, name string) (string, 
 		return "", fmt.Errorf("action %q %q must be a string", step.Action, name)
 	}
 	return text, nil
+}
+
+func flowStepFloatParam(ctx *FlowContext, step FlowStep, name string) (float64, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return 0, fmt.Errorf("action %q requires %q", step.Action, name)
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return 0, err
+	}
+	return floatParam(resolved)
+}
+
+func flowStepOptionalFloatParam(ctx *FlowContext, step FlowStep, name string) (float64, error) {
+	value, ok := step.param(name)
+	if !ok {
+		return 0, nil
+	}
+	resolved, err := resolveValue(value, ctx)
+	if err != nil {
+		return 0, err
+	}
+	return floatParam(resolved)
 }
 
 func flowStepOptionalStringParam(ctx *FlowContext, step FlowStep, name string) (string, error) {
@@ -5434,6 +5506,49 @@ func intParam(value any) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("must be an integer")
+}
+
+func floatParam(value any) (float64, error) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, nil
+	case float32:
+		return float64(typed), nil
+	case int:
+		return float64(typed), nil
+	case int8:
+		return float64(typed), nil
+	case int16:
+		return float64(typed), nil
+	case int32:
+		return float64(typed), nil
+	case int64:
+		return float64(typed), nil
+	case uint:
+		return float64(typed), nil
+	case uint8:
+		return float64(typed), nil
+	case uint16:
+		return float64(typed), nil
+	case uint32:
+		return float64(typed), nil
+	case uint64:
+		return float64(typed), nil
+	case json.Number:
+		parsed, err := typed.Float64()
+		if err != nil {
+			return 0, fmt.Errorf("must be a number")
+		}
+		return parsed, nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return 0, fmt.Errorf("must be a number")
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("must be a number")
+	}
 }
 
 func isNumberValue(value any) bool {

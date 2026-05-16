@@ -35,6 +35,7 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"append_var", append_var, "向列表变量追加值", "Append a value to a list variable. Example: append_var('processed_rows', row.source_row). Parameters: name (string) - Variable name; value (any) - Value to append. Returns: the updated list."},
 	{"set_value", set_value, "设置指定元素的值", "Set the value of a specified element. Example: set_value('#input-id', 'new value'). Parameters: selector (string) - The selector of the input element; value (string) - The value to set."},
 	{"select_option", select_option, "选择下拉框中的选项", "Select an option in a dropdown. Example: select_option('#dropdown-id', 'option-value'). Parameters: selector (string) - The selector of the dropdown; value (string) - The value of the option to select."},
+	{"drag", drag, "按像素偏移拖动元素", "Drag an element by a pixel offset. Example: drag('#slider', 120, 0, 20). Parameters: selector (string) - Element to drag; delta_x (number) - Horizontal pixels; delta_y (number, optional) - Vertical pixels; move_steps/steps (int, optional) - Intermediate mousemove steps."},
 	{"hover", hover, "将鼠标悬停在指定元素上", "Hover the mouse over a specified element. Example: hover('#element-id'). Parameters: selector (string) - The selector of the element to hover over."},
 	{"scroll_to", scroll_to, "滚动页面到指定位置", "Scroll the page to a specified position. Example: scroll_to('#element-id'). Parameters: selector (string) - The selector of the element to scroll to."},
 
@@ -121,36 +122,41 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	{"get_cookies_string", get_cookies_string, "获取当前页面的 Cookie 字符串", "Get cookies as a string. Example: get_cookies_string(). No parameters."},
 }
 
-// 安全获得page
-func safe_page(L *lua.LState) playwright.Page {
+func pageFromLuaState(L *lua.LState) (playwright.Page, error) {
 	pageUserData := L.GetGlobal("page")
 	if pageUserData != lua.LNil {
 		page, ok := pageUserData.(*lua.LUserData)
 		if !ok {
-			L.RaiseError("'page' is not of the expected type")
-			return nil
+			return nil, fmt.Errorf("'page' is not of the expected type")
 		}
 		if page != nil && page.Value != nil {
 			playwrightPage, ok := page.Value.(playwright.Page)
 			if !ok {
-				L.RaiseError("'page' does not contain a valid Playwright Page object")
-				return nil
+				return nil, fmt.Errorf("'page' does not contain a valid Playwright Page object")
 			}
-			return playwrightPage
+			return playwrightPage, nil
 		}
 	}
 
-	if context := safe_context(L); context != nil {
+	if context, ok := flowBrowserContextFromState(L); ok && context != nil {
 		pages := context.Pages()
 		if len(pages) == 0 {
-			L.RaiseError("No page found")
-			return nil
+			return nil, fmt.Errorf("No page found")
 		}
-		return pages[0]
+		return pages[0], nil
 	}
 
-	L.RaiseError("No 'page' object found in Lua context")
-	return nil
+	return nil, fmt.Errorf("No 'page' object found in Lua context")
+}
+
+// 安全获得page
+func safe_page(L *lua.LState) playwright.Page {
+	page, err := pageFromLuaState(L)
+	if err != nil {
+		L.RaiseError("%v", err)
+		return nil
+	}
+	return page
 }
 
 func safe_browser(L *lua.LState) playwright.Browser {
@@ -714,6 +720,69 @@ func hover(L *lua.LState) int {
 	fmt.Printf("Successfully hovered on selector: %s\n", selector)
 	return 0
 }
+
+func drag(L *lua.LState) int {
+	page := safe_page(L)
+	if page == nil {
+		return 0
+	}
+
+	selector := L.CheckString(1)
+	deltaX := float64(L.CheckNumber(2))
+	deltaY := 0.0
+	if L.GetTop() >= 3 {
+		deltaY = float64(L.CheckNumber(3))
+	}
+	steps := 20
+	if L.GetTop() >= 4 {
+		steps = L.CheckInt(4)
+	}
+
+	if err := dragElementByOffset(page, selector, deltaX, deltaY, steps); err != nil {
+		L.RaiseError("Failed to drag selector '%s': %v", selector, err)
+		return 0
+	}
+
+	fmt.Printf("Successfully dragged selector: %s by %.1f, %.1f\n", selector, deltaX, deltaY)
+	return 0
+}
+
+func dragElementByOffset(page playwright.Page, selector string, deltaX float64, deltaY float64, steps int) error {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return fmt.Errorf("selector cannot be empty")
+	}
+	if steps < 1 {
+		return fmt.Errorf("steps must be at least 1")
+	}
+	locator := page.Locator(selector)
+	box, err := locator.BoundingBox()
+	if err != nil {
+		return fmt.Errorf("read bounding box: %w", err)
+	}
+	if box == nil {
+		return fmt.Errorf("element has no bounding box")
+	}
+	startX := box.X + box.Width/2
+	startY := box.Y + box.Height/2
+	mouse := page.Mouse()
+	if err := mouse.Move(startX, startY); err != nil {
+		return fmt.Errorf("move to start: %w", err)
+	}
+	if err := mouse.Down(); err != nil {
+		return fmt.Errorf("mouse down: %w", err)
+	}
+	moveErr := mouse.Move(startX+deltaX, startY+deltaY, playwright.MouseMoveOptions{Steps: &steps})
+	upErr := mouse.Up()
+	if moveErr != nil {
+		return fmt.Errorf("move by offset: %w", moveErr)
+	}
+	if upErr != nil {
+		return fmt.Errorf("mouse up: %w", upErr)
+	}
+	return nil
+}
+
 func scroll_to(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {

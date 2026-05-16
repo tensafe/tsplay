@@ -6,6 +6,7 @@
 - tsplay 新增 `ocr_ready` Flow action，负责在识别前检查 goddddocr `/ready`。
 - tsplay 新增 `ocr_request` Flow action，负责上传本地图片到 goddddocr 兼容服务。
 - tsplay 新增 `ocr_detect`、`ocr_slide_comparison`、`ocr_slide_match` Flow action，分别对接 goddddocr 的目标检测、滑块差分、滑块模板匹配能力。
+- tsplay 新增 `drag` Flow/Lua action，滑块识别得到 `target_x` 后可以直接拖动页面手柄。
 - tsplay 新增验证码登录 demo 与端到端 Flow，覆盖截图、OCR、填表和断言链路。
 - `ocr_request` 返回 `text/result/confidence/request_id/processing_time_ms`，业务 Flow 可以直接读取 `{{ocr_result.text}}`；彩色验证码可传 `color_filter_colors` / `color_filter_custom_ranges`，需要排查准确率时可开启 `probability` 返回完整概率矩阵。
 - `ocr_detect` 返回 `result/boxes/request_id/processing_time_ms`，点选类验证码可以用 `boxes` 生成点击点；`ocr_slide_match` 返回 `target_x/target_y/confidence`，滑块 Flow 可以直接把 `target_x` 接到拖动距离计算。

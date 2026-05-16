@@ -12,6 +12,7 @@
 | `type_text` | 是 | 是 | 是 | `action: type_text` + `selector,text` / `type_text(selector, text)` | 在输入框里输入文本。`fill`、`type` 可以视作常见别名心智模型。 |
 | `set_value` | 是 | 是 | 是 | `action: set_value` + `selector,value` / `set_value(selector, value)` | 直接设置元素值，适合不希望逐字输入的场景。 |
 | `select_option` | 是 | 是 | 是 | `action: select_option` + `selector,value` / `select_option(selector, value)` | 选择下拉项。 |
+| `drag` | 是 | 是 | 是 | `action: drag` + `selector,delta_x` / `drag(selector, dx, dy, steps)` | 按像素偏移拖动元素，适合滑块验证码、拖拽排序这类动作。 |
 | `hover` | 是 | 是 | 是 | `action: hover` + `selector` / `hover(selector)` | 鼠标悬停。适合下拉菜单、悬浮操作。 |
 | `scroll_to` | 是 | 是 | 是 | `action: scroll_to` + `selector` / `scroll_to(selector)` | 滚动到目标元素。 |
 | `wait_for_network_idle` | 是 | 是 | 是 | `action: wait_for_network_idle` / `wait_for_network_idle()` | 等待页面请求基本稳定。适合提交后、跳转后收口。 |
@@ -40,6 +41,13 @@ steps:
 
   - action: click
     selector: "#su"
+
+  - action: drag
+    selector: "#slider-handle"
+    with:
+      delta_x: 120
+      delta_y: 0
+      move_steps: 24
 ```
 
 ### Lua
@@ -49,11 +57,13 @@ navigate("https://www.baidu.com")
 wait_for_selector("#kw", 5000)
 type_text("#kw", "TSPlay")
 click("#su")
+drag("#slider-handle", 120, 0, 24)
 ```
 
 ## 使用建议
 
 - 先用 `wait_for_selector` 建页面同步，再点 `click / type_text / select_option`
+- 滑块类动作优先把识别出的距离接到 `drag.delta_x`，再用 `move_steps` 控制拖动平滑度
 - 页面容易抖动时，优先 `wait_for_selector + retry`，不要直接堆 `sleep`
 - 新手路线里，这组动作通常是最先需要跑熟的一层
 

@@ -15,6 +15,12 @@ def copy_path(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def copy_go_reference(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    content = src.read_text(encoding="utf-8")
+    dst.write_text("//go:build ignore\n// +build ignore\n\n" + content, encoding="utf-8")
+
+
 def reset_site_root(site_root: Path) -> None:
     if not site_root.exists():
         return
@@ -42,8 +48,8 @@ def main() -> None:
     copy_path(repo_root / "site-src", site_root)
     copy_path(repo_root / "README.zh-CN.md", site_root / "README.zh-CN.md")
     copy_path(repo_root / "ReadMe.md", site_root / "ReadMe.md")
-    copy_path(repo_root / "embedded_assets.go", site_root / "embedded_assets.go")
-    copy_path(repo_root / "static_server.go", site_root / "static_server.go")
+    copy_go_reference(repo_root / "embedded_assets.go", site_root / "embedded_assets.go")
+    copy_go_reference(repo_root / "static_server.go", site_root / "static_server.go")
     copy_path(repo_root / "docs", site_root / "docs")
     copy_path(repo_root / "script", site_root / "script")
     copy_path(repo_root / "demo", site_root / "demo")

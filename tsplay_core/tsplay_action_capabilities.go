@@ -214,6 +214,7 @@ func buildFlowActionCapabilitiesRegistry() map[string]FlowActionCapabilities {
 		"extract_text",
 		"set_value",
 		"select_option",
+		"drag",
 		"hover",
 		"scroll_to",
 		"wait_for_network_idle",

@@ -1416,6 +1416,29 @@ func TestValidateFlowStrictRejectsTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestValidateFlowStrictAcceptsDrag(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "drag_slider",
+		Steps: []FlowStep{
+			{
+				Action:   "drag",
+				Selector: "#slider",
+				With: map[string]any{
+					"delta_x":    120,
+					"delta_y":    0,
+					"move_steps": 24,
+					"timeout":    5000,
+				},
+			},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate drag flow: %v", err)
+	}
+}
+
 func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
@@ -3529,6 +3552,19 @@ func TestGoddddocrLoginTutorialFlowValidates(t *testing.T) {
 	}
 	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true}); err != nil {
 		t.Fatalf("validate login tutorial flow security: %v", err)
+	}
+}
+
+func TestGoddddocrDetSlideTutorialFlowValidates(t *testing.T) {
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_det_slide.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load det slide tutorial flow: %v", err)
+	}
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate det slide tutorial flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true}); err != nil {
+		t.Fatalf("validate det slide tutorial flow security: %v", err)
 	}
 }
 
