@@ -33,8 +33,11 @@ func TestGoddddocrDemoAssetsAreBundled(t *testing.T) {
 		want string
 	}{
 		{path: "demo/captcha_login.html", want: "Captcha Login Demo"},
+		{path: "demo/slider_login.html", want: "Slider Captcha Demo"},
 		{path: "script/tutorials/goddddocr_login.flow.yaml", want: "goddddocr_login_flow"},
+		{path: "script/tutorials/goddddocr_det_slide.flow.yaml", want: "goddddocr_det_slide_flow"},
 		{path: "docs/tutorials/goddddocr-captcha-login.md", want: "goddddocr 验证码登录示例"},
+		{path: "docs/tutorials/goddddocr-det-slide.md", want: "goddddocr 点选与滑块验证码模板"},
 	}
 
 	for _, tc := range cases {
@@ -76,9 +79,12 @@ func TestExtractBundledAssets(t *testing.T) {
 
 	for _, path := range []string{
 		filepath.Join(root, "demo", "captcha_login.html"),
+		filepath.Join(root, "demo", "slider_login.html"),
 		filepath.Join(root, "demo", "data", "captcha_3n3d.png"),
 		filepath.Join(root, "script", "tutorials", "goddddocr_login.flow.yaml"),
+		filepath.Join(root, "script", "tutorials", "goddddocr_det_slide.flow.yaml"),
 		filepath.Join(root, "docs", "tutorials", "goddddocr-captcha-login.md"),
+		filepath.Join(root, "docs", "tutorials", "goddddocr-det-slide.md"),
 	} {
 		info, err := os.Stat(path)
 		if err != nil {

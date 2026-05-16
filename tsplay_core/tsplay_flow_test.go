@@ -3568,6 +3568,113 @@ func TestGoddddocrDetSlideTutorialFlowValidates(t *testing.T) {
 	}
 }
 
+func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
+	root := t.TempDir()
+
+	demoServer := httptest.NewServer(http.FileServer(http.Dir("..")))
+	defer demoServer.Close()
+
+	var detCalled bool
+	var slideCalled bool
+	ocrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ready":
+			fmt.Fprint(w, `{"status":"ready","model":"old","detection":true,"slide_match":true,"slide_comparison":true}`)
+		case "/det/file":
+			detCalled = true
+			if err := r.ParseMultipartForm(4 << 20); err != nil {
+				t.Fatalf("parse det multipart form: %v", err)
+			}
+			if got := r.FormValue("detailed"); got != "true" {
+				t.Fatalf("unexpected detailed: %q", got)
+			}
+			if got := r.FormValue("score_threshold"); got != "0.2" {
+				t.Fatalf("unexpected score_threshold: %q", got)
+			}
+			if got := r.FormValue("nms_threshold"); got != "0.45" {
+				t.Fatalf("unexpected nms_threshold: %q", got)
+			}
+			file, _, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("read det multipart file: %v", err)
+			}
+			content, err := io.ReadAll(file)
+			file.Close()
+			if err != nil {
+				t.Fatalf("read det multipart content: %v", err)
+			}
+			if len(content) == 0 {
+				t.Fatalf("expected det screenshot content")
+			}
+			fmt.Fprint(w, `{"result":[[126,58,174,106]],"boxes":[{"x1":126,"y1":58,"x2":174,"y2":106,"score":0.91,"label":0}],"request_id":"det-demo","processing_time_ms":3.2}`)
+		case "/slide_match/file":
+			slideCalled = true
+			if err := r.ParseMultipartForm(4 << 20); err != nil {
+				t.Fatalf("parse slide multipart form: %v", err)
+			}
+			if got := r.FormValue("simple_target"); got != "true" {
+				t.Fatalf("unexpected simple_target: %q", got)
+			}
+			for _, field := range []string{"target_file", "background_file"} {
+				file, _, err := r.FormFile(field)
+				if err != nil {
+					t.Fatalf("read slide multipart file %s: %v", field, err)
+				}
+				content, err := io.ReadAll(file)
+				file.Close()
+				if err != nil {
+					t.Fatalf("read slide multipart content %s: %v", field, err)
+				}
+				if len(content) == 0 {
+					t.Fatalf("expected slide screenshot content for %s", field)
+				}
+			}
+			fmt.Fprint(w, `{"result":{"target":[126,82],"target_x":126,"target_y":82,"confidence":0.96},"request_id":"slide-demo","processing_time_ms":4.8}`)
+		default:
+			t.Fatalf("unexpected OCR path: %s", r.URL.Path)
+		}
+	}))
+	defer ocrServer.Close()
+
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_det_slide.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load det slide tutorial flow: %v", err)
+	}
+	flow.Vars["page_url"] = demoServer.URL + "/demo/slider_login.html"
+	flow.Vars["goddddocr_url"] = ocrServer.URL
+
+	result, err := RunFlow(flow, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: root,
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run det slide tutorial flow: %v", err)
+	}
+	if !detCalled || !slideCalled {
+		t.Fatalf("expected det and slide endpoints to be called, det=%v slide=%v", detCalled, slideCalled)
+	}
+	payload, ok := result.Vars["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v", result.Vars["payload"])
+	}
+	if got := payload["slide_target_x"]; got != 126.0 {
+		t.Fatalf("slide_target_x = %#v", got)
+	}
+	if got := payload["service_detection"]; got != true {
+		t.Fatalf("service_detection = %#v", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "artifacts", "goddddocr", "det-slide-flow-result.json")); err != nil {
+		t.Fatalf("expected det slide result artifact: %v", err)
+	}
+}
+
 func TestRunFlowLuaHTTPRequestHonorsAllowHTTP(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("request should not have been sent: %s", r.URL.String())

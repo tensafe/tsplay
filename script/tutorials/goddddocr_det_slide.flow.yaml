@@ -11,7 +11,7 @@ vars:
   slide_target_selector: "#slider-piece"
   slide_background_selector: "#slider-background"
   slider_handle_selector: "#slider-handle"
-  slide_success_selector: "#slider-status"
+  slide_success_selector: "#slider-success"
 steps:
   - action: navigate
     url: "{{page_url}}"

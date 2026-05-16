@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slider Captcha Demo</title>
+  <style>
+    body {
+      margin: 32px;
+      background: #f7f9fc;
+      color: #1f2328;
+      font-family: Arial, sans-serif;
+      line-height: 1.5;
+    }
+    .panel {
+      max-width: 780px;
+      margin-bottom: 24px;
+      padding: 20px 24px;
+      border: 1px solid #d0d7de;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(31, 35, 40, 0.06);
+    }
+    .captcha-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 360px) 120px;
+      gap: 18px;
+      align-items: start;
+    }
+    #captcha-area {
+      padding: 12px;
+      border: 1px solid #d8dee4;
+      border-radius: 10px;
+      background: #f6f8fa;
+    }
+    #slider-background {
+      position: relative;
+      width: 320px;
+      height: 160px;
+      overflow: hidden;
+      border: 1px solid #c9d1d9;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(9, 105, 218, 0.12), transparent 36%),
+        linear-gradient(45deg, rgba(44, 187, 99, 0.18), transparent 42%),
+        #dbeafe;
+    }
+    .ridge {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+    .ridge.one {
+      top: 28px;
+    }
+    .ridge.two {
+      top: 78px;
+      left: 48px;
+    }
+    .ridge.three {
+      top: 120px;
+      right: 44px;
+    }
+    #gap-marker {
+      position: absolute;
+      left: 126px;
+      top: 58px;
+      width: 48px;
+      height: 48px;
+      border: 2px dashed rgba(87, 96, 106, 0.72);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.36);
+    }
+    #slider-piece {
+      width: 52px;
+      height: 52px;
+      border: 1px solid #57606a;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 18px 18px, #ffffff 0 5px, transparent 6px),
+        linear-gradient(145deg, #9ec5ff, #5b8def);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 8px 20px rgba(31, 35, 40, 0.16);
+    }
+    .piece-label {
+      margin: 8px 0 0;
+      color: #57606a;
+      font-size: 13px;
+    }
+    #slider-track {
+      position: relative;
+      width: 320px;
+      height: 44px;
+      margin-top: 14px;
+      border: 1px solid #c9d1d9;
+      border-radius: 999px;
+      background: #eef2f7;
+    }
+    #slider-handle {
+      position: absolute;
+      left: 0;
+      top: 3px;
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 999px;
+      background: #0969da;
+      color: #ffffff;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+    #slider-handle:active {
+      cursor: grabbing;
+    }
+    .status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border: 1px solid #d8dee4;
+      border-radius: 10px;
+      background: #f6f8fa;
+    }
+    #slider-success {
+      margin-top: 12px;
+      color: #116329;
+      font-weight: 700;
+    }
+    @media (max-width: 640px) {
+      body {
+        margin: 16px;
+      }
+      .captcha-layout {
+        grid-template-columns: 1fr;
+      }
+      #slider-background,
+      #slider-track {
+        width: min(320px, 100%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="panel">
+    <h1 id="page-title">Slider Captcha Demo</h1>
+    <p id="page-summary">A local page for validating goddddocr slide matching and TSPlay drag actions.</p>
+  </section>
+
+  <section class="panel" id="captcha-area">
+    <div class="captcha-layout">
+      <div>
+        <div id="slider-background" aria-label="slider captcha background">
+          <div class="ridge one"></div>
+          <div class="ridge two"></div>
+          <div class="ridge three"></div>
+          <div id="gap-marker"></div>
+        </div>
+        <div id="slider-track">
+          <button id="slider-handle" type="button" aria-label="drag slider handle">></button>
+        </div>
+      </div>
+      <div>
+        <div id="slider-piece" aria-label="slider captcha target"></div>
+        <p class="piece-label">Target piece</p>
+      </div>
+    </div>
+    <div class="status" id="slider-status">Waiting for slider</div>
+    <div id="slider-success" hidden>Slider verified</div>
+  </section>
+
+  <script>
+    const targetX = 126;
+    const tolerance = 8;
+    const track = document.getElementById("slider-track");
+    const handle = document.getElementById("slider-handle");
+    const status = document.getElementById("slider-status");
+    const success = document.getElementById("slider-success");
+    let dragging = false;
+    let startClientX = 0;
+    let startLeft = 0;
+
+    function maxLeft() {
+      return track.clientWidth - handle.offsetWidth - 6;
+    }
+
+    function setLeft(value) {
+      const next = Math.max(0, Math.min(maxLeft(), value));
+      handle.style.left = next + "px";
+      status.textContent = "Slider offset: " + Math.round(next);
+      if (Math.abs(next - targetX) <= tolerance || next >= targetX) {
+        success.hidden = false;
+        status.textContent = "Slider complete";
+      }
+    }
+
+    function beginDrag(clientX) {
+      dragging = true;
+      startClientX = clientX;
+      startLeft = parseFloat(handle.style.left || "0");
+      success.hidden = true;
+    }
+
+    function moveDrag(clientX) {
+      if (!dragging) {
+        return;
+      }
+      setLeft(startLeft + clientX - startClientX);
+    }
+
+    function endDrag() {
+      dragging = false;
+    }
+
+    handle.addEventListener("mousedown", function(event) {
+      event.preventDefault();
+      beginDrag(event.clientX);
+    });
+    document.addEventListener("mousemove", function(event) {
+      moveDrag(event.clientX);
+    });
+    document.addEventListener("mouseup", endDrag);
+    handle.addEventListener("pointerdown", function(event) {
+      handle.setPointerCapture(event.pointerId);
+      beginDrag(event.clientX);
+    });
+    handle.addEventListener("pointermove", function(event) {
+      moveDrag(event.clientX);
+    });
+    handle.addEventListener("pointerup", endDrag);
+  </script>
+</body>
+</html>

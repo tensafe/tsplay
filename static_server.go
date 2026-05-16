@@ -24,6 +24,7 @@ func serveStaticFiles(addr string, root string) error {
 		fmt.Printf("Demo page: %s/demo/demo.html\n", baseURL)
 		fmt.Printf("Table page: %s/demo/tables.html\n", baseURL)
 		fmt.Printf("Extract page: %s/demo/extract.html\n", baseURL)
+		fmt.Printf("Slider captcha page: %s/demo/slider_login.html\n", baseURL)
 		fmt.Printf("JSON data: %s/demo/data/order_summary.json\n", baseURL)
 	}
 	return http.ListenAndServe(addr, handler)

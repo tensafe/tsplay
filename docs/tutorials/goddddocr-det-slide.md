@@ -9,11 +9,19 @@ cd ../goddddocr
 go run ./cmd/goddddocr-server -addr :8088 -det
 ```
 
-运行前把 Flow 里的页面地址和选择器替换成目标站点：
+仓库里带了一个本地滑块 demo，先启动静态服务：
+
+```bash
+go run . -action file-srv -addr :8000 -serve-root .
+```
+
+然后运行模板：
 
 ```bash
 go run . -flow script/tutorials/goddddocr_det_slide.flow.yaml -headless
 ```
+
+接入真实站点时，把 Flow 里的 `page_url` 和选择器替换成目标页面。
 
 关键产物：
 
