@@ -206,6 +206,8 @@ func buildFlowActionCapabilitiesRegistry() map[string]FlowActionCapabilities {
 	register(pageCapabilities,
 		"navigate",
 		"click",
+		"click_at",
+		"click_box",
 		"reload",
 		"go_back",
 		"go_forward",

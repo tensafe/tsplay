@@ -8,6 +8,7 @@ vars:
   slide_target_path: artifacts/goddddocr/slide-target.png
   slide_background_path: artifacts/goddddocr/slide-background.png
   detect_source_selector: "#captcha-area"
+  detect_success_selector: "#detect-success"
   slide_target_selector: "#slider-piece"
   slide_background_selector: "#slider-background"
   slider_handle_selector: "#slider-handle"
@@ -50,6 +51,17 @@ steps:
       nms_threshold: 0.45
       timeout: 10000
 
+  - action: click_box
+    selector: "{{detect_source_selector}}"
+    save_as: detect_click_result
+    with:
+      box: "{{det_result.boxes[0]}}"
+      timeout: 5000
+
+  - action: assert_visible
+    selector: "{{detect_success_selector}}"
+    timeout: 5000
+
   - action: ocr_slide_match
     url: "{{goddddocr_url}}"
     target_file_path: "{{slide_target_path}}"
@@ -81,6 +93,7 @@ steps:
         service_detection: "{{ocr_service.detection}}"
         service_slide_match: "{{ocr_service.slide_match}}"
         det_boxes: "{{det_result.boxes}}"
+        detect_click_result: "{{detect_click_result}}"
         slide_target: "{{slide_result.target}}"
         slide_target_x: "{{slide_result.target_x}}"
         slide_confidence: "{{slide_result.confidence}}"

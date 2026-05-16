@@ -1439,6 +1439,38 @@ func TestValidateFlowStrictAcceptsDrag(t *testing.T) {
 	}
 }
 
+func TestValidateFlowStrictAcceptsClickAtAndClickBox(t *testing.T) {
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "click_detection_box",
+		Steps: []FlowStep{
+			{
+				Action:   "click_at",
+				Selector: "#captcha",
+				With: map[string]any{
+					"x":       52,
+					"y":       52,
+					"timeout": 5000,
+				},
+			},
+			{
+				Action:   "click_box",
+				Selector: "#captcha",
+				With: map[string]any{
+					"box":     map[string]any{"x1": 28, "y1": 28, "x2": 76, "y2": 76},
+					"scale_x": 1,
+					"scale_y": 1,
+					"timeout": 5000,
+				},
+			},
+		},
+	}
+
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate click box flow: %v", err)
+	}
+}
+
 func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
@@ -3607,7 +3639,7 @@ func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
 			if len(content) == 0 {
 				t.Fatalf("expected det screenshot content")
 			}
-			fmt.Fprint(w, `{"result":[[126,58,174,106]],"boxes":[{"x1":126,"y1":58,"x2":174,"y2":106,"score":0.91,"label":0}],"request_id":"det-demo","processing_time_ms":3.2}`)
+			fmt.Fprint(w, `{"result":[[28,28,76,76]],"boxes":[{"x1":28,"y1":28,"x2":76,"y2":76,"score":0.91,"label":0}],"request_id":"det-demo","processing_time_ms":3.2}`)
 		case "/slide_match/file":
 			slideCalled = true
 			if err := r.ParseMultipartForm(4 << 20); err != nil {
@@ -3669,6 +3701,16 @@ func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
 	}
 	if got := payload["service_detection"]; got != true {
 		t.Fatalf("service_detection = %#v", got)
+	}
+	clickResult, ok := payload["detect_click_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("detect_click_result = %#v", payload["detect_click_result"])
+	}
+	if got := clickResult["x"]; got != 52.0 {
+		t.Fatalf("detect click x = %#v", got)
+	}
+	if got := clickResult["y"]; got != 52.0 {
+		t.Fatalf("detect click y = %#v", got)
 	}
 	if _, err := os.Stat(filepath.Join(root, "artifacts", "goddddocr", "det-slide-flow-result.json")); err != nil {
 		t.Fatalf("expected det slide result artifact: %v", err)

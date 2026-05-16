@@ -23,6 +23,8 @@ var GlobalPlayWrightFunc = []LuaFunction{
 	// 导航类 / Navigation
 	{"navigate", navigate, "导航到指定的 URL", "Navigate to a specified URL. Example: navigate('https://example.com'). Parameters: url (string) - The URL to navigate to."},
 	{"click", click, "点击页面上的元素", "Click on an element on the page. Example: click('#button-id'). Parameters: selector (string) - The selector of the element to click."},
+	{"click_at", click_at, "点击元素内的相对坐标", "Click a point relative to an element. Example: click_at('#captcha', 120, 80). Parameters: selector (string) - Element used as the coordinate origin; x (number) - X offset; y (number) - Y offset."},
+	{"click_box", click_box, "点击元素内的检测框中心", "Click the center of a detection box relative to an element. Example: click_box('#captcha', {x1=20, y1=30, x2=80, y2=90}). Parameters: selector (string) - Element used as the coordinate origin; box (table/list) - Detection box; index (number, optional) - Box index when passing a list of boxes."},
 	{"reload", reload, "重新加载当前页面", "Reload the current page. Example: reload(). No parameters."},
 	{"go_back", go_back, "返回到上一个页面", "Go back to the previous page. Example: go_back(). No parameters."},
 	{"go_forward", go_forward, "前进到下一个页面", "Go forward to the next page. Example: go_forward(). No parameters."},
@@ -397,6 +399,77 @@ func click(L *lua.LState) int {
 	fmt.Printf("Successfully clicked on selector: %s\n", selector)
 	return 0
 }
+
+func click_at(L *lua.LState) int {
+	page := safe_page(L)
+	if page == nil {
+		return 0
+	}
+
+	selector := L.CheckString(1)
+	x := float64(L.CheckNumber(2))
+	y := float64(L.CheckNumber(3))
+	if err := clickElementAtOffset(page, selector, x, y); err != nil {
+		L.RaiseError("Failed to click selector '%s' at %.1f, %.1f: %v", selector, x, y, err)
+		return 0
+	}
+
+	fmt.Printf("Successfully clicked selector: %s at %.1f, %.1f\n", selector, x, y)
+	return 0
+}
+
+func click_box(L *lua.LState) int {
+	page := safe_page(L)
+	if page == nil {
+		return 0
+	}
+
+	selector := L.CheckString(1)
+	boxValue := luaValueToGo(L.CheckAny(2))
+	index := 0
+	if L.GetTop() >= 3 && L.Get(3) != lua.LNil {
+		index = int(L.CheckNumber(3))
+	}
+	scaleX := 1.0
+	scaleY := 1.0
+	if L.GetTop() >= 4 && L.Get(4) != lua.LNil {
+		scaleX = float64(L.CheckNumber(4))
+	}
+	if L.GetTop() >= 5 && L.Get(5) != lua.LNil {
+		scaleY = float64(L.CheckNumber(5))
+	}
+
+	box, err := flowDetectionBoxFromValue(boxValue, index)
+	if err != nil {
+		L.RaiseError("Failed to parse detection box: %v", err)
+		return 0
+	}
+	x, y := box.center(scaleX, scaleY)
+	if err := clickElementAtOffset(page, selector, x, y); err != nil {
+		L.RaiseError("Failed to click selector '%s' at box center %.1f, %.1f: %v", selector, x, y, err)
+		return 0
+	}
+
+	fmt.Printf("Successfully clicked selector: %s at box center %.1f, %.1f\n", selector, x, y)
+	return 0
+}
+
+func clickElementAtOffset(page playwright.Page, selector string, x float64, y float64) error {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return fmt.Errorf("selector cannot be empty")
+	}
+	locator := page.Locator(selector)
+	box, err := locator.BoundingBox()
+	if err != nil {
+		return fmt.Errorf("read bounding box: %w", err)
+	}
+	if box == nil {
+		return fmt.Errorf("element has no bounding box")
+	}
+	return page.Mouse().Click(box.X+x, box.Y+y)
+}
+
 func type_text(L *lua.LState) int {
 	page := safe_page(L)
 	if page == nil {

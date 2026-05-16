@@ -6,6 +6,8 @@
 | --- | --- | --- | --- | --- | --- |
 | `navigate` | 是 | 是 | 是 | `action: navigate` + `url` / `navigate(url)` | 打开页面。更适合把超时放在浏览器配置或 MCP 调用层，而不是塞到 step 本身。 |
 | `click` | 是 | 是 | 是 | `action: click` + `selector` / `click(selector)` | 点击元素。适合与 `wait_for_selector`、`retry` 搭配。 |
+| `click_at` | 是 | 是 | 是 | `action: click_at` + `selector,x,y` / `click_at(selector, x, y)` | 点击元素内部相对坐标。适合点选验证码、Canvas、图片热区。 |
+| `click_box` | 是 | 是 | 是 | `action: click_box` + `selector,box` / `click_box(selector, box)` | 点击检测框中心。可直接承接 `ocr_detect` 返回的 `boxes` 或 `[x1,y1,x2,y2]`。 |
 | `reload` | 是 | 是 | 是 | `action: reload` / `reload()` | 刷新当前页。 |
 | `go_back` | 是 | 是 | 是 | `action: go_back` / `go_back()` | 浏览器后退。 |
 | `go_forward` | 是 | 是 | 是 | `action: go_forward` / `go_forward()` | 浏览器前进。 |
@@ -42,6 +44,15 @@ steps:
   - action: click
     selector: "#su"
 
+  - action: click_box
+    selector: "#captcha"
+    with:
+      box:
+        x1: 28
+        y1: 28
+        x2: 76
+        y2: 76
+
   - action: drag
     selector: "#slider-handle"
     with:
@@ -57,12 +68,15 @@ navigate("https://www.baidu.com")
 wait_for_selector("#kw", 5000)
 type_text("#kw", "TSPlay")
 click("#su")
+click_at("#captcha", 52, 52)
+click_box("#captcha", {x1=28, y1=28, x2=76, y2=76})
 drag("#slider-handle", 120, 0, 24)
 ```
 
 ## 使用建议
 
 - 先用 `wait_for_selector` 建页面同步，再点 `click / type_text / select_option`
+- 点选类验证码可以先用 `ocr_detect` 拿 `det_result.boxes`，再用 `click_box` 点击目标框中心
 - 滑块类动作优先把识别出的距离接到 `drag.delta_x`，再用 `move_steps` 控制拖动平滑度
 - 页面容易抖动时，优先 `wait_for_selector + retry`，不要直接堆 `sleep`
 - 新手路线里，这组动作通常是最先需要跑熟的一层

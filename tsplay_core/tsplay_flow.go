@@ -233,6 +233,8 @@ var flowIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var flowActionSpecs = map[string]flowActionSpec{
 	"navigate":              {Args: []flowArgSpec{{Name: "url", Required: true}}},
 	"click":                 {Args: []flowArgSpec{{Name: "selector", Required: true}}},
+	"click_at":              {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "x", Required: true}, {Name: "y", Required: true}, {Name: "timeout"}}},
+	"click_box":             {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "box", Required: true}, {Name: "index"}, {Name: "scale_x"}, {Name: "scale_y"}, {Name: "timeout"}}},
 	"reload":                {},
 	"go_back":               {},
 	"go_forward":            {},
@@ -1842,7 +1844,7 @@ func flowParamType(name string) string {
 		return "bool"
 	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "move_steps", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
-	case "seconds", "delta_x", "delta_y":
+	case "seconds", "x", "y", "delta_x", "delta_y", "scale_x", "scale_y":
 		return "number"
 	case "headers", "query", "form", "multipart_files", "multipart_fields", "row", "smtp":
 		return "object"
@@ -1858,7 +1860,7 @@ func flowParamType(name string) string {
 		return "items"
 	case "condition":
 		return "condition"
-	case "from", "json", "progress_value", "charset_range":
+	case "from", "json", "progress_value", "charset_range", "box":
 		return "any"
 	default:
 		return ""
@@ -3952,6 +3954,10 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowSetVarStep(ctx, step)
 	case "append_var":
 		return runFlowAppendVarStep(ctx, step)
+	case "click_at":
+		return runFlowClickAtStep(L, ctx, step)
+	case "click_box":
+		return runFlowClickBoxStep(L, ctx, step)
 	case "drag":
 		return runFlowDragStep(L, ctx, step)
 	case "http_request":
@@ -4030,6 +4036,264 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return nil, err
 	}
 	return collectReturns(L, top), nil
+}
+
+func runFlowClickAtStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	selector, err := flowStepStringParam(ctx, step, "selector")
+	if err != nil {
+		return nil, err
+	}
+	x, err := flowStepFloatParam(ctx, step, "x")
+	if err != nil {
+		return nil, err
+	}
+	y, err := flowStepFloatParam(ctx, step, "y")
+	if err != nil {
+		return nil, err
+	}
+	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
+	if err != nil {
+		return nil, err
+	}
+	if timeout > 0 {
+		if _, err := runFlowStep(L, ctx, FlowStep{Action: "wait_for_selector", Selector: selector, Timeout: timeout}); err != nil {
+			return nil, err
+		}
+	}
+
+	page, err := pageFromLuaState(L)
+	if err != nil {
+		return nil, err
+	}
+	if err := clickElementAtOffset(page, selector, x, y); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"selector": selector,
+		"x":        x,
+		"y":        y,
+	}, nil
+}
+
+func runFlowClickBoxStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
+	selector, err := flowStepStringParam(ctx, step, "selector")
+	if err != nil {
+		return nil, err
+	}
+	boxValue, ok, err := flowStepResolvedParam(ctx, step, "box")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("action %q requires %q", step.Action, "box")
+	}
+	index, err := flowStepOptionalIntParam(ctx, step, "index")
+	if err != nil {
+		return nil, err
+	}
+	scaleX, err := flowStepOptionalFloatParam(ctx, step, "scale_x")
+	if err != nil {
+		return nil, err
+	}
+	if scaleX == 0 {
+		scaleX = 1
+	}
+	scaleY, err := flowStepOptionalFloatParam(ctx, step, "scale_y")
+	if err != nil {
+		return nil, err
+	}
+	if scaleY == 0 {
+		scaleY = 1
+	}
+	timeout, err := flowStepOptionalIntParam(ctx, step, "timeout")
+	if err != nil {
+		return nil, err
+	}
+	if timeout > 0 {
+		if _, err := runFlowStep(L, ctx, FlowStep{Action: "wait_for_selector", Selector: selector, Timeout: timeout}); err != nil {
+			return nil, err
+		}
+	}
+
+	box, err := flowDetectionBoxFromValue(boxValue, index)
+	if err != nil {
+		return nil, err
+	}
+	x, y := box.center(scaleX, scaleY)
+
+	page, err := pageFromLuaState(L)
+	if err != nil {
+		return nil, err
+	}
+	if err := clickElementAtOffset(page, selector, x, y); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"selector": selector,
+		"box": map[string]any{
+			"x1": box.X1,
+			"y1": box.Y1,
+			"x2": box.X2,
+			"y2": box.Y2,
+		},
+		"index":   index,
+		"scale_x": scaleX,
+		"scale_y": scaleY,
+		"x":       x,
+		"y":       y,
+	}, nil
+}
+
+type flowDetectionBox struct {
+	X1 float64
+	Y1 float64
+	X2 float64
+	Y2 float64
+}
+
+func (box flowDetectionBox) center(scaleX float64, scaleY float64) (float64, float64) {
+	if scaleX == 0 {
+		scaleX = 1
+	}
+	if scaleY == 0 {
+		scaleY = 1
+	}
+	return ((box.X1 + box.X2) / 2) / scaleX, ((box.Y1 + box.Y2) / 2) / scaleY
+}
+
+func flowDetectionBoxFromValue(value any, index int) (flowDetectionBox, error) {
+	if index < 0 {
+		return flowDetectionBox{}, fmt.Errorf("box index must be >= 0")
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return flowDetectionBoxFromMap(typed)
+	case []any:
+		if flowListLooksLikeDetectionBox(typed) {
+			return flowDetectionBoxFromList(typed)
+		}
+		if len(typed) == 0 {
+			return flowDetectionBox{}, fmt.Errorf("box list is empty")
+		}
+		if index >= len(typed) {
+			return flowDetectionBox{}, fmt.Errorf("box index %d out of range for %d boxes", index, len(typed))
+		}
+		return flowDetectionBoxFromValue(typed[index], 0)
+	case []map[string]any:
+		if len(typed) == 0 {
+			return flowDetectionBox{}, fmt.Errorf("box list is empty")
+		}
+		if index >= len(typed) {
+			return flowDetectionBox{}, fmt.Errorf("box index %d out of range for %d boxes", index, len(typed))
+		}
+		return flowDetectionBoxFromMap(typed[index])
+	case []float64:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+		return flowDetectionBoxFromList(items)
+	case []int:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+		return flowDetectionBoxFromList(items)
+	default:
+		return flowDetectionBox{}, fmt.Errorf("box must be an object, [x1,y1,x2,y2], or a list of boxes, got %T", value)
+	}
+}
+
+func flowListLooksLikeDetectionBox(items []any) bool {
+	if len(items) < 4 {
+		return false
+	}
+	for i := 0; i < 4; i++ {
+		if _, err := floatParam(items[i]); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func flowDetectionBoxFromList(items []any) (flowDetectionBox, error) {
+	if len(items) < 4 {
+		return flowDetectionBox{}, fmt.Errorf("box list must contain at least 4 numbers")
+	}
+	values := make([]float64, 4)
+	for i := 0; i < 4; i++ {
+		value, err := floatParam(items[i])
+		if err != nil {
+			return flowDetectionBox{}, fmt.Errorf("box[%d] %w", i, err)
+		}
+		values[i] = value
+	}
+	return flowDetectionBox{X1: values[0], Y1: values[1], X2: values[2], Y2: values[3]}, nil
+}
+
+func flowDetectionBoxFromMap(value map[string]any) (flowDetectionBox, error) {
+	x1, hasX1, err := flowNumberFromMap(value, "x1", "left")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	y1, hasY1, err := flowNumberFromMap(value, "y1", "top")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	x2, hasX2, err := flowNumberFromMap(value, "x2", "right")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	y2, hasY2, err := flowNumberFromMap(value, "y2", "bottom")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	if hasX1 && hasY1 && hasX2 && hasY2 {
+		return flowDetectionBox{X1: x1, Y1: y1, X2: x2, Y2: y2}, nil
+	}
+
+	x, hasX, err := flowNumberFromMap(value, "x")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	y, hasY, err := flowNumberFromMap(value, "y")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	width, hasWidth, err := flowNumberFromMap(value, "width", "w")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	height, hasHeight, err := flowNumberFromMap(value, "height", "h")
+	if err != nil {
+		return flowDetectionBox{}, err
+	}
+	if hasX && hasY && hasWidth && hasHeight {
+		return flowDetectionBox{X1: x, Y1: y, X2: x + width, Y2: y + height}, nil
+	}
+	return flowDetectionBox{}, fmt.Errorf("box object must contain x1/y1/x2/y2 or x/y/width/height")
+}
+
+func flowNumberFromMap(value map[string]any, keys ...string) (float64, bool, error) {
+	for _, key := range keys {
+		if item, ok := value[key]; ok {
+			number, err := floatParam(item)
+			if err != nil {
+				return 0, true, fmt.Errorf("box.%s %w", key, err)
+			}
+			return number, true, nil
+		}
+		for actual, item := range value {
+			if strings.EqualFold(actual, key) {
+				number, err := floatParam(item)
+				if err != nil {
+					return 0, true, fmt.Errorf("box.%s %w", actual, err)
+				}
+				return number, true, nil
+			}
+		}
+	}
+	return 0, false, nil
 }
 
 func runFlowDragStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {

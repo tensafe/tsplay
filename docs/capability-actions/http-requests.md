@@ -84,6 +84,11 @@ steps:
       score_threshold: 0.2
       nms_threshold: 0.45
 
+  - action: click_box
+    selector: "#captcha-image"
+    with:
+      box: "{{det_result.boxes[0]}}"
+
   - action: ocr_slide_match
     url: http://127.0.0.1:8088
     target_file_path: artifacts/captcha/slider.png
@@ -114,7 +119,7 @@ print(open_count)
 - 页面能直接抓 API 时，`http_request` 往往比“继续点页面”更稳定
 - goddddocr 这类本地服务建议先跑 `ocr_ready`，失败时更容易定位是服务问题还是图片识别问题
 - 验证码识别优先用 `ocr_request`，业务 Flow 只处理 `ocr_result.text` 和必要的置信度判断；彩色验证码可先用颜色过滤，完整概率矩阵只在排查准确率时打开
-- 点选类验证码优先用 `ocr_detect` 拿框，再按业务页面坐标体系转换点击点；滑块验证码优先用 `ocr_slide_match`，同尺寸差分图再用 `ocr_slide_comparison`
+- 点选类验证码优先用 `ocr_detect` 拿框，再用 `click_box` 承接 `det_result.boxes[0]`；滑块验证码优先用 `ocr_slide_match`，同尺寸差分图再用 `ocr_slide_comparison`
 - `json_extract` 很适合和 `save_as`、`set_var` 串起来，把响应拆成后续步骤要用的字段
 - `use_browser_cookies=true` 时，意味着这条请求会依赖浏览器上下文
 

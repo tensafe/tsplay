@@ -28,10 +28,25 @@
       align-items: start;
     }
     #captcha-area {
+      position: relative;
       padding: 12px;
       border: 1px solid #d8dee4;
       border-radius: 10px;
       background: #f6f8fa;
+    }
+    #detect-target {
+      position: absolute;
+      left: 28px;
+      top: 28px;
+      z-index: 2;
+      width: 48px;
+      height: 48px;
+      border: 2px solid #1a7f37;
+      border-radius: 8px;
+      background: rgba(46, 160, 67, 0.18);
+      color: #116329;
+      font-weight: 700;
+      cursor: pointer;
     }
     #slider-background {
       position: relative;
@@ -127,6 +142,11 @@
       color: #116329;
       font-weight: 700;
     }
+    #detect-success {
+      margin-top: 12px;
+      color: #116329;
+      font-weight: 700;
+    }
     @media (max-width: 640px) {
       body {
         margin: 16px;
@@ -148,6 +168,7 @@
   </section>
 
   <section class="panel" id="captcha-area">
+    <button id="detect-target" type="button" aria-label="click captcha target">OK</button>
     <div class="captcha-layout">
       <div>
         <div id="slider-background" aria-label="slider captcha background">
@@ -166,6 +187,7 @@
       </div>
     </div>
     <div class="status" id="slider-status">Waiting for slider</div>
+    <div id="detect-success" hidden>Detection target clicked</div>
     <div id="slider-success" hidden>Slider verified</div>
   </section>
 
@@ -176,6 +198,8 @@
     const handle = document.getElementById("slider-handle");
     const status = document.getElementById("slider-status");
     const success = document.getElementById("slider-success");
+    const detectTarget = document.getElementById("detect-target");
+    const detectSuccess = document.getElementById("detect-success");
     let dragging = false;
     let startClientX = 0;
     let startLeft = 0;
@@ -228,6 +252,10 @@
       moveDrag(event.clientX);
     });
     handle.addEventListener("pointerup", endDrag);
+    detectTarget.addEventListener("click", function() {
+      detectSuccess.hidden = false;
+      status.textContent = "Detection target complete";
+    });
   </script>
 </body>
 </html>
