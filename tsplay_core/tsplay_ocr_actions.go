@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -91,6 +92,19 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 		return nil, err
 	} else if ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
 		multipartFields["charset_range"] = value
+	}
+	for _, name := range []string{"color_filter_colors", "color_filter_custom_ranges"} {
+		if value, ok, err := flowStepResolvedParam(ctx, step, name); err != nil {
+			return nil, err
+		} else if ok {
+			fieldValue, err := ocrMultipartFieldString(value)
+			if err != nil {
+				return nil, fmt.Errorf("ocr_request %s %w", name, err)
+			}
+			if fieldValue != "" {
+				multipartFields[name] = fieldValue
+			}
+		}
 	}
 	if value, ok, err := flowStepResolvedParam(ctx, step, "confidence"); err != nil {
 		return nil, err
@@ -194,6 +208,17 @@ func ocrBoolParam(value any) (bool, error) {
 		return parsed, nil
 	}
 	return boolParam(value)
+}
+
+func ocrMultipartFieldString(value any) (string, error) {
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text), nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("must be a string or JSON-serializable value")
+	}
+	return string(encoded), nil
 }
 
 func buildOCRReadyResult(response map[string]any) (map[string]any, bool) {

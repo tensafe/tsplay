@@ -281,7 +281,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
 	"ocr_ready":             {Args: []flowArgSpec{{Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "strict"}}},
-	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "confidence"}, {Name: "probability"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
+	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "color_filter_colors"}, {Name: "color_filter_custom_ranges"}, {Name: "confidence"}, {Name: "probability"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
 	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},

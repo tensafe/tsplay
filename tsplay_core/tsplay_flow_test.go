@@ -3168,6 +3168,12 @@ func TestRunFlowOCRRequest(t *testing.T) {
 		if got := r.FormValue("probability"); got != "true" {
 			t.Fatalf("unexpected probability: %q", got)
 		}
+		if got := r.FormValue("color_filter_colors"); got != `["red","blue"]` {
+			t.Fatalf("unexpected color_filter_colors: %q", got)
+		}
+		if got := r.FormValue("color_filter_custom_ranges"); got != `[[[90,30,30],[110,255,255]]]` {
+			t.Fatalf("unexpected color_filter_custom_ranges: %q", got)
+		}
 		file, _, err := r.FormFile("file")
 		if err != nil {
 			t.Fatalf("read multipart file: %v", err)
@@ -3199,8 +3205,10 @@ func TestRunFlowOCRRequest(t *testing.T) {
 				SaveAs:   "ocr_result",
 				SavePath: "responses/ocr.json",
 				With: map[string]any{
-					"charset_range": "0123456789abcdef",
-					"probability":   true,
+					"charset_range":              "0123456789abcdef",
+					"color_filter_colors":        []any{"red", "blue"},
+					"color_filter_custom_ranges": []any{[]any{[]any{90, 30, 30}, []any{110, 255, 255}}},
+					"probability":                true,
 				},
 			},
 			{
