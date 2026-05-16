@@ -2739,6 +2739,62 @@ func TestHandleRunFlowToolMissingFlow(t *testing.T) {
 	}
 }
 
+func TestHandleRunFlowToolExposesManualReview(t *testing.T) {
+	artifactRoot := t.TempDir()
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"flow": `
+schema_version: "1"
+name: mcp_manual_review
+steps:
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        status: manual_review
+        action: manual_review_required
+        phase: slide_confidence
+        reason: low slide confidence
+        evidence:
+          screenshot_path: artifacts/manual-review/evidence.png
+`,
+			},
+		},
+	}
+
+	result, err := handleRunFlowToolWithOptions(context.Background(), request, TSPlayMCPServerOptions{ArtifactRoot: artifactRoot})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+
+	var payload map[string]any
+	decodeToolText(t, result, &payload)
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	if payload["status"] != FlowRunStatusManualReviewRequired {
+		t.Fatalf("status = %#v", payload["status"])
+	}
+	if payload["requires_manual_review"] != true {
+		t.Fatalf("requires_manual_review = %#v", payload["requires_manual_review"])
+	}
+	review, ok := payload["manual_review"].(map[string]any)
+	if !ok || review["phase"] != "slide_confidence" {
+		t.Fatalf("manual_review = %#v", payload["manual_review"])
+	}
+	runResult, ok := payload["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("result = %#v", payload["result"])
+	}
+	if runResult["status"] != FlowRunStatusManualReviewRequired {
+		t.Fatalf("result status = %#v", runResult["status"])
+	}
+	if _, ok := runResult["manual_review"].(map[string]any); !ok {
+		t.Fatalf("result manual_review = %#v", runResult["manual_review"])
+	}
+}
+
 func TestHandleRunFlowToolRejectsCDPWithoutBrowserStateBeforeRun(t *testing.T) {
 	artifactRoot := t.TempDir()
 	request := mcp.CallToolRequest{

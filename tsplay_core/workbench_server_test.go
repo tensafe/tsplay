@@ -1,6 +1,7 @@
 package tsplay_core
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,77 @@ func TestWorkbenchTaskRunHandlerRunsInlineFlow(t *testing.T) {
 	}
 	if !strings.Contains(body, `"answer": "42"`) {
 		t.Fatalf("expected vars.answer=42, body=%s", body)
+	}
+}
+
+func TestWorkbenchTaskRunHandlerExposesManualReviewArtifacts(t *testing.T) {
+	artifactRoot := t.TempDir()
+	handler := NewWorkbenchAPIHandler(artifactRoot)
+	flowYAML := `
+schema_version: "1"
+name: workbench_manual_review_run
+steps:
+  - action: write_json
+    file_path: artifacts/manual-review/evidence.json
+    with:
+      value:
+        score: 0.42
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        status: manual_review
+        action: manual_review_required
+        phase: detect_score
+        reason: low detection score
+        evidence:
+          result_path: artifacts/manual-review/evidence.json
+`
+	bodyBytes, err := json.Marshal(map[string]any{"flow_yaml": flowYAML})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/workbench/tasks/run", strings.NewReader(string(bodyBytes)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v\n%s", err, rec.Body.String())
+	}
+	if payload["ok"] != true {
+		t.Fatalf("expected ok=true, got %#v", payload)
+	}
+	if payload["status"] != FlowRunStatusManualReviewRequired {
+		t.Fatalf("status = %#v", payload["status"])
+	}
+	if payload["requires_manual_review"] != true {
+		t.Fatalf("requires_manual_review = %#v", payload["requires_manual_review"])
+	}
+	review, ok := payload["manual_review"].(map[string]any)
+	if !ok {
+		t.Fatalf("manual_review = %#v", payload["manual_review"])
+	}
+	if review["phase"] != "detect_score" {
+		t.Fatalf("manual review phase = %#v", review["phase"])
+	}
+	artifacts, ok := review["artifacts"].([]any)
+	if !ok || len(artifacts) != 1 {
+		t.Fatalf("manual review artifacts = %#v", review["artifacts"])
+	}
+	artifact, ok := artifacts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("artifact = %#v", artifacts[0])
+	}
+	if artifact["url_path"] != "/workbench-artifacts/artifacts/manual-review/evidence.json" {
+		t.Fatalf("artifact url_path = %#v", artifact["url_path"])
+	}
+	if artifact["exists"] != true {
+		t.Fatalf("artifact exists = %#v", artifact["exists"])
 	}
 }
 

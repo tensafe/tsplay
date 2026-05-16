@@ -116,15 +116,17 @@ type FlowStep struct {
 }
 
 type FlowResult struct {
-	Name         string           `json:"name"`
-	Vars         map[string]any   `json:"vars,omitempty"`
-	Trace        []FlowStepTrace  `json:"trace"`
-	ArtifactRoot string           `json:"artifact_root,omitempty"`
-	RunID        string           `json:"run_id,omitempty"`
-	RunRoot      string           `json:"run_root,omitempty"`
-	SessionID    string           `json:"session_id,omitempty"`
-	BrowserVideo string           `json:"browser_video,omitempty"`
-	Playwright   *PlaywrightUsage `json:"playwright,omitempty"`
+	Name         string                  `json:"name"`
+	Status       string                  `json:"status,omitempty"`
+	Vars         map[string]any          `json:"vars,omitempty"`
+	Trace        []FlowStepTrace         `json:"trace"`
+	ArtifactRoot string                  `json:"artifact_root,omitempty"`
+	RunID        string                  `json:"run_id,omitempty"`
+	RunRoot      string                  `json:"run_root,omitempty"`
+	SessionID    string                  `json:"session_id,omitempty"`
+	ManualReview *FlowManualReviewResult `json:"manual_review,omitempty"`
+	BrowserVideo string                  `json:"browser_video,omitempty"`
+	Playwright   *PlaywrightUsage        `json:"playwright,omitempty"`
 }
 
 type FlowStepTrace struct {
@@ -2639,11 +2641,14 @@ func RunFlow(flow *Flow, options FlowRunOptions) (*FlowResult, error) {
 		result.BrowserVideo = browserVideoPath
 	}
 	if runErr != nil {
+		FinalizeFlowResult(result, runErr)
 		return result, runErr
 	}
 	if closeErr != nil {
+		FinalizeFlowResult(result, closeErr)
 		return result, closeErr
 	}
+	FinalizeFlowResult(result, nil)
 	return result, nil
 }
 
@@ -3042,15 +3047,18 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	result.Trace = append(result.Trace, traces...)
 	saveErr := saveFlowBrowserStateFromConfig(L, flow, options)
 	if err != nil {
+		FinalizeFlowResult(result, err)
 		if saveErr != nil {
 			return result, fmt.Errorf("%w (also failed to save storage state: %v)", err, saveErr)
 		}
 		return result, err
 	}
 	if saveErr != nil {
+		FinalizeFlowResult(result, saveErr)
 		return result, saveErr
 	}
 
+	FinalizeFlowResult(result, nil)
 	return result, nil
 }
 

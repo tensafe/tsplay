@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -561,13 +563,19 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	status := FlowResultCompletionStatus(result, runErr)
 	response := map[string]any{
 		"ok":        runErr == nil,
+		"status":    status,
 		"site_id":   payload.SiteID,
 		"intent":    payload.Intent,
 		"flow_name": flow.Name,
 		"flow_yaml": flowYAML,
 		"result":    flowResultForTool(result),
+	}
+	if result != nil && result.ManualReview != nil && result.ManualReview.Required {
+		response["requires_manual_review"] = true
+		response["manual_review"] = workbenchManualReviewView(result.ManualReview)
 	}
 	if plan != nil {
 		response["plan"] = plan
@@ -595,6 +603,67 @@ func (s *workbenchServer) handleTaskRun(w http.ResponseWriter, r *http.Request) 
 		runErrorText,
 	)
 	writeWorkbenchResponse(w, http.StatusOK, response)
+}
+
+func workbenchManualReviewView(review *FlowManualReviewResult) map[string]any {
+	if review == nil {
+		return nil
+	}
+	view := map[string]any{
+		"required":    review.Required,
+		"status":      review.Status,
+		"action":      review.Action,
+		"payload_var": review.PayloadVar,
+	}
+	if review.Phase != "" {
+		view["phase"] = review.Phase
+	}
+	if review.Reason != "" {
+		view["reason"] = review.Reason
+	}
+	if review.Evidence != nil {
+		view["evidence"] = review.Evidence
+	}
+	if review.Payload != nil {
+		view["payload"] = review.Payload
+	}
+	if len(review.Artifacts) > 0 {
+		artifacts := make([]map[string]any, 0, len(review.Artifacts))
+		for _, artifact := range review.Artifacts {
+			item := map[string]any{
+				"name":   artifact.Name,
+				"path":   artifact.Path,
+				"exists": artifact.Exists,
+			}
+			if artifact.Kind != "" {
+				item["kind"] = artifact.Kind
+			}
+			if artifact.RelativePath != "" {
+				item["relative_path"] = artifact.RelativePath
+				if urlPath := workbenchArtifactURLPath(artifact.RelativePath); urlPath != "" {
+					item["url_path"] = urlPath
+				}
+			}
+			if artifact.ContentType != "" {
+				item["content_type"] = artifact.ContentType
+			}
+			artifacts = append(artifacts, item)
+		}
+		view["artifacts"] = artifacts
+	}
+	return view
+}
+
+func workbenchArtifactURLPath(relativePath string) string {
+	relativePath = strings.TrimLeft(filepath.ToSlash(filepath.Clean(strings.TrimSpace(relativePath))), "/")
+	if relativePath == "" || relativePath == "." {
+		return ""
+	}
+	parts := strings.Split(relativePath, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return "/workbench-artifacts/" + strings.Join(parts, "/")
 }
 
 func (s *workbenchServer) handleTaskRepair(w http.ResponseWriter, r *http.Request) {

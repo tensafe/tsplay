@@ -1818,23 +1818,35 @@ func handleRunFlowToolWithOptions(
 		if flow.Browser != nil && strings.TrimSpace(flow.Browser.UseSession) != "" {
 			runDetails["requested_saved_session"] = flow.Browser.UseSession
 		}
-		return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+		payload := map[string]any{
 			"ok":       false,
+			"status":   FlowResultCompletionStatus(result, err),
 			"error":    err.Error(),
 			"result":   flowResultForTool(result),
 			"run":      runHandle.finish(err, runDetails),
 			"security": securityResolution,
-		})
+		}
+		if result != nil && result.ManualReview != nil && result.ManualReview.Required {
+			payload["requires_manual_review"] = true
+			payload["manual_review"] = result.ManualReview
+		}
+		return newTSPlayToolResult("tsplay.run_flow", payload)
 	}
-	return newTSPlayToolResult("tsplay.run_flow", map[string]any{
+	payload := map[string]any{
 		"ok":       true,
+		"status":   FlowResultCompletionStatus(result, nil),
 		"result":   flowResultForTool(result),
 		"security": securityResolution,
 		"run": runHandle.finish(nil, map[string]any{
 			"flow_name": flow.Name,
 			"trace_len": len(result.Trace),
 		}),
-	})
+	}
+	if result != nil && result.ManualReview != nil && result.ManualReview.Required {
+		payload["requires_manual_review"] = true
+		payload["manual_review"] = result.ManualReview
+	}
+	return newTSPlayToolResult("tsplay.run_flow", payload)
 }
 
 func flowResultForTool(result *FlowResult) *FlowResult {

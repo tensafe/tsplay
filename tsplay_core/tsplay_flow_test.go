@@ -4061,6 +4061,12 @@ func TestRunGoddddocrDetSlideManualReviewStopsOnLowDetectionScore(t *testing.T) 
 	if got := fmt.Sprint(payload["reason"]); !strings.Contains(got, "detection score") || !strings.Contains(got, "0.42 >= 0.8") {
 		t.Fatalf("payload reason = %#v", got)
 	}
+	if result.Status != FlowRunStatusManualReviewRequired {
+		t.Fatalf("result status = %q", result.Status)
+	}
+	if result.ManualReview == nil || !result.ManualReview.Required {
+		t.Fatalf("expected manual review result, got %#v", result.ManualReview)
+	}
 	assertManualReviewArtifacts(t, root)
 }
 
@@ -4086,7 +4092,74 @@ func TestRunGoddddocrDetSlideManualReviewStopsOnLowSlideConfidence(t *testing.T)
 	if got := payload["drag_result"]; fmt.Sprint(got) != "map[]" {
 		t.Fatalf("drag_result should remain empty when slide confidence is low, got %#v", got)
 	}
+	if result.Status != FlowRunStatusManualReviewRequired {
+		t.Fatalf("result status = %q", result.Status)
+	}
+	if result.ManualReview == nil || result.ManualReview.Phase != "slide_confidence" {
+		t.Fatalf("expected slide manual review result, got %#v", result.ManualReview)
+	}
 	assertManualReviewArtifacts(t, root)
+}
+
+func TestRunFlowExposesManualReviewPayload(t *testing.T) {
+	root := t.TempDir()
+	evidencePath := filepath.Join(root, "artifacts", "manual-review", "evidence.json")
+	if err := os.MkdirAll(filepath.Dir(evidencePath), 0755); err != nil {
+		t.Fatalf("create evidence dir: %v", err)
+	}
+	if err := os.WriteFile(evidencePath, []byte(`{"score":0.42}`), 0644); err != nil {
+		t.Fatalf("write evidence: %v", err)
+	}
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "manual_review_payload",
+		Vars: map[string]any{
+			"evidence_path": "artifacts/manual-review/evidence.json",
+		},
+		Steps: []FlowStep{
+			{
+				Action: "set_var",
+				SaveAs: "payload",
+				With: map[string]any{
+					"value": map[string]any{
+						"status": "manual_review",
+						"action": "manual_review_required",
+						"phase":  "detect_score",
+						"reason": "detection score is below threshold",
+						"evidence": map[string]any{
+							"result_path": "{{evidence_path}}",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := RunFlow(flow, FlowRunOptions{ArtifactRoot: root})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	if result.Status != FlowRunStatusManualReviewRequired {
+		t.Fatalf("status = %q", result.Status)
+	}
+	review := result.ManualReview
+	if review == nil || !review.Required {
+		t.Fatalf("manual review = %#v", review)
+	}
+	if review.PayloadVar != "payload" || review.Action != FlowManualReviewAction || review.Phase != "detect_score" {
+		t.Fatalf("unexpected manual review summary: %#v", review)
+	}
+	if len(review.Artifacts) != 1 {
+		t.Fatalf("artifacts = %#v", review.Artifacts)
+	}
+	artifact := review.Artifacts[0]
+	if artifact.RelativePath != "artifacts/manual-review/evidence.json" {
+		t.Fatalf("relative path = %q", artifact.RelativePath)
+	}
+	if artifact.ContentType != "application/json" || !artifact.Exists {
+		t.Fatalf("artifact metadata = %#v", artifact)
+	}
 }
 
 func runGoddddocrDetSlideManualReviewTutorial(t *testing.T, detScore float64, slideConfidence float64) (*FlowResult, string, int, int) {
