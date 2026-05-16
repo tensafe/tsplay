@@ -1,0 +1,251 @@
+schema_version: "1"
+name: webguard_formula_login_flow
+description: Log in to a WebGuard/RuoYi-style page by OCRing the math captcha, calculating the answer, and submitting the form.
+vars:
+  page_url: http://localhost:8081/login?redirect=%2Findex
+  goddddocr_url: http://127.0.0.1:8088
+  username: admin
+  password: admin123
+  captcha_confidence_threshold: "0.65"
+  captcha_image_path: artifacts/goddddocr/webguard-formula-captcha.png
+  ready_response_path: artifacts/goddddocr/webguard-formula-ready-response.json
+  ocr_response_path: artifacts/goddddocr/webguard-formula-ocr-response.json
+  result_path: artifacts/goddddocr/webguard-formula-login-result.json
+  failure_screenshot_path: artifacts/goddddocr/webguard-formula-login-failure.png
+  failure_html_path: artifacts/goddddocr/webguard-formula-login-failure.html
+  final_url: ""
+  ocr_result: "{}"
+  captcha_formula: "{}"
+  captcha_answer: ""
+  login_retry: "{}"
+  login_status: not_started
+  manual_review_required: false
+steps:
+  - action: navigate
+    url: "{{page_url}}"
+
+  - action: wait_for_selector
+    selector: input[placeholder="账号"]
+    timeout: 10000
+
+  - action: ocr_ready
+    url: "{{goddddocr_url}}"
+    save_as: ocr_service
+    save_path: "{{ready_response_path}}"
+    with:
+      timeout: 3000
+
+  - action: on_error
+    steps:
+      - action: retry
+        times: 4
+        interval_ms: 500
+        save_as: login_retry
+        steps:
+          - action: wait_until
+            timeout: 8000
+            interval_ms: 300
+            condition:
+              action: is_visible
+              selector: img.login-code-img
+
+          - action: screenshot_element
+            selector: img.login-code-img
+            path: "{{captcha_image_path}}"
+
+          - action: ocr_request
+            url: "{{goddddocr_url}}"
+            file_path: "{{captcha_image_path}}"
+            save_as: ocr_result
+            save_path: "{{ocr_response_path}}"
+            with:
+              confidence: true
+              timeout: 10000
+
+          - action: execute_script
+            save_as: captcha_formula
+            script: |
+              (() => {
+                const raw = "{{ocr_result.text}}";
+                const threshold = Number("{{captcha_confidence_threshold}}");
+                const confidence = Number("{{ocr_result.confidence}}");
+                if (!Number.isFinite(confidence) || confidence < threshold) {
+                  throw new Error(`low captcha OCR confidence: ${confidence}, threshold: ${threshold}, raw: ${raw}`);
+                }
+
+                const chars = Array.from(String(raw).replace(/\s+/g, ""));
+                const digitMap = {
+                  o: "0", O: "0", Q: "0",
+                  l: "1", I: "1", i: "1",
+                  z: "2", Z: "2",
+                  s: "5", S: "5",
+                  b: "6",
+                  j: "7", J: "7", T: "7",
+                  g: "9", q: "9"
+                };
+                const digitOf = (ch) => /^\d$/.test(ch) ? ch : (digitMap[ch] || "");
+                const operatorOf = (ch) => {
+                  if ("+＋kKtT".includes(ch)) return "+";
+                  if ("-−—_~一".includes(ch)) return "-";
+                  if ("*xX×".includes(ch)) return "*";
+                  if ("/÷".includes(ch)) return "/";
+                  return "";
+                };
+
+                const firstIndex = chars.findIndex((ch) => digitOf(ch) !== "");
+                if (firstIndex < 0) {
+                  throw new Error(`captcha formula has no left operand: ${raw}`);
+                }
+
+                let left = digitOf(chars[firstIndex]);
+                let operator = "";
+                let operatorIndex = -1;
+                for (let i = firstIndex + 1; i < chars.length; i += 1) {
+                  const candidate = operatorOf(chars[i]);
+                  if (candidate) {
+                    operator = candidate;
+                    operatorIndex = i;
+                    break;
+                  }
+                }
+
+                let right = "";
+                let heuristic = "explicit_operator";
+                if (operator) {
+                  for (let i = operatorIndex + 1; i < chars.length; i += 1) {
+                    const candidate = digitOf(chars[i]);
+                    if (candidate) {
+                      right = candidate;
+                      break;
+                    }
+                  }
+                } else {
+                  const digits = chars.map(digitOf).filter(Boolean);
+                  if (digits.length >= 2) {
+                    left = digits[0];
+                    right = digits[1];
+                    operator = "-";
+                    heuristic = "missing_operator_assumed_minus";
+                  }
+                }
+
+                if (!left || !operator || !right) {
+                  throw new Error(`unrecognized captcha formula: ${raw}`);
+                }
+
+                const a = Number(left);
+                const b = Number(right);
+                let answer;
+                switch (operator) {
+                  case "+": answer = a + b; break;
+                  case "-": answer = a - b; break;
+                  case "*": answer = a * b; break;
+                  case "/":
+                    if (b === 0) throw new Error(`captcha formula divides by zero: ${raw}`);
+                    answer = Math.trunc(a / b);
+                    break;
+                  default:
+                    throw new Error(`unsupported captcha operator: ${operator}`);
+                }
+
+                return JSON.stringify({
+                  raw,
+                  expression: `${left}${operator}${right}`,
+                  left: a,
+                  operator,
+                  right: b,
+                  answer: String(answer),
+                  confidence,
+                  threshold,
+                  heuristic
+                });
+              })()
+
+          - action: json_extract
+            from: "{{captcha_formula}}"
+            path: "$.answer"
+            save_as: captcha_answer
+
+          - action: set_value
+            selector: input[placeholder="账号"]
+            value: "{{username}}"
+
+          - action: set_value
+            selector: input[placeholder="密码"]
+            value: "{{password}}"
+
+          - action: set_value
+            selector: input[placeholder="验证码"]
+            value: "{{captcha_answer}}"
+
+          - action: click
+            selector: role=button[name="登 录"]
+
+          - action: wait_until
+            timeout: 5000
+            interval_ms: 300
+            condition:
+              action: execute_script
+              script: |
+                if (location.pathname.includes("/login")) {
+                  throw new Error(`still on login page: ${location.href}`);
+                }
+                true
+
+      - action: set_var
+        save_as: login_status
+        with:
+          value: success
+
+      - action: set_var
+        save_as: manual_review_required
+        with:
+          value: false
+
+    on_error:
+      - action: screenshot
+        path: "{{failure_screenshot_path}}"
+        continue_on_error: true
+
+      - action: save_html
+        path: "{{failure_html_path}}"
+        continue_on_error: true
+
+      - action: set_var
+        save_as: login_status
+        with:
+          value: manual_review_required
+
+      - action: set_var
+        save_as: manual_review_required
+        with:
+          value: true
+
+  - action: execute_script
+    save_as: final_url
+    script: |
+      location.href
+
+  - action: set_var
+    save_as: payload
+    with:
+      value:
+        page_url: "{{page_url}}"
+        final_url: "{{final_url}}"
+        login_status: "{{login_status}}"
+        manual_review_required: "{{manual_review_required}}"
+        captcha_formula: "{{captcha_formula}}"
+        captcha_answer: "{{captcha_answer}}"
+        retry_result: "{{login_retry}}"
+        service_model: "{{ocr_service.model}}"
+        ocr_result: "{{ocr_result}}"
+        evidence:
+          captcha_image_path: "{{captcha_image_path}}"
+          ready_response_path: "{{ready_response_path}}"
+          ocr_response_path: "{{ocr_response_path}}"
+          failure_screenshot_path: "{{failure_screenshot_path}}"
+          failure_html_path: "{{failure_html_path}}"
+
+  - action: write_json
+    file_path: "{{result_path}}"
+    value: "{{payload}}"
