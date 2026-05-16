@@ -31,7 +31,7 @@
 | Redis 操作 | `redis_get`、`redis_set`、`redis_del`、`redis_incr` | 是 | 是 | 是 | 保持强同步；Lua 在 Flow / MCP 上下文里也遵守 `allow_redis` | [Redis 操作](redis-operations.md) |
 | 数据库操作 | `db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction` | 是 | 是 | 是 | 保持强同步；`db_transaction` 自动提交或回滚 | [数据库操作](database-operations.md) |
 | 浏览器状态 | `get_storage_state`、`get_cookies_string`、`browser.use_session`、`browser.cdp_*` | 是 | 是 | 是 | 保持强同步；MCP 下受 `allow_browser_state` 约束 | [浏览器状态](browser-state.md) |
-| Flow 便捷动作 | `extract_text`、`assert_visible`、`assert_text`、`set_var`、`append_var` | 是 | 是 | 是 | 已对齐；更适合作为编排语义糖 | [Flow 便捷动作](flow-convenience.md) |
+| Flow 便捷动作 | `extract_text`、`assert_visible`、`assert_text`、`assert_number`、`set_var`、`append_var` | 是 | 部分 | 是 | 更适合作为编排语义糖 | [Flow 便捷动作](flow-convenience.md) |
 | Flow 控制流 | `retry`、`if`、`foreach`、`on_error`、`wait_until` | 是 | 否 | 是 | 不需要硬同步到 Lua | [Flow 控制流](flow-control.md) |
 | Lua 回调型能力 | `intercept_request` | 否 | 是 | 否 | 保持 Lua 专属更自然 | [Lua 回调型能力](lua-callbacks.md) |
 
@@ -44,7 +44,7 @@
 - Redis 操作：`redis_get`、`redis_set`、`redis_del`、`redis_incr`
 - 数据库操作：`db_insert`、`db_insert_many`、`db_upsert`、`db_query`、`db_query_one`、`db_execute`、`db_transaction`
 - 浏览器状态：`get_storage_state`、`get_cookies_string`、`browser.use_session`、`browser.cdp_launch`、`browser.cdp_endpoint`、`browser.cdp_port`
-- Flow 便捷动作：`extract_text`、`assert_visible`、`assert_text`、`set_var`、`append_var`
+- Flow 便捷动作：`extract_text`、`assert_visible`、`assert_text`、`assert_number`、`set_var`、`append_var`
 - Flow 控制流：`retry`、`if`、`foreach`、`on_error`、`wait_until`
 - Lua 专属能力：`intercept_request`
 - 其他常用浏览器动作：`get_text`、`get_attribute`、`get_html`、`get_all_links`、`capture_table`、`upload_file`、`upload_multiple_files`、`download_file`、`download_url`、`accept_alert`、`dismiss_alert`、`set_alert_text`、`execute_script`、`evaluate`、`new_tab`、`close_tab`、`switch_to_tab`、`find_element`、`find_elements`、`is_visible`、`is_enabled`、`block_request`、`get_response`

@@ -263,6 +263,7 @@ func buildFlowActionCapabilitiesRegistry() map[string]FlowActionCapabilities {
 	register(FlowActionCapabilities{}, "sleep",
 		"set_var",
 		"append_var",
+		"assert_number",
 		"retry",
 		"if",
 		"foreach",

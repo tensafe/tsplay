@@ -1943,6 +1943,7 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["append_var"] = "Append one resolved value to a list variable. Initializes the list when save_as does not exist yet."
 	descriptions["assert_visible"] = "Fail the flow unless the selector is visible. Optional timeout waits before asserting."
 	descriptions["assert_text"] = "Fail the flow unless the selected element text contains the expected text. Optional timeout polls before asserting."
+	descriptions["assert_number"] = "Fail the flow unless a resolved numeric value satisfies a comparison such as >= expected, useful for confidence gates."
 	descriptions["retry"] = "Retry nested Flow steps until they succeed or the retry count is exhausted."
 	descriptions["if"] = "Run then or else nested Flow steps based on a condition step output."
 	descriptions["foreach"] = "Run nested Flow steps once for each item in a list."

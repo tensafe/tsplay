@@ -23,6 +23,8 @@ go run . -flow script/tutorials/goddddocr_det_slide.flow.yaml -headless
 
 如果要处理识别失败、点选偏移或滑块未验证后的自动重试，看恢复版：
 [goddddocr 点选与滑块失败恢复模板](goddddocr-det-slide-recovery.md)。
+如果要在低置信度时停止自动点击/拖动并交给人工处理，看人工接管版：
+[goddddocr 低置信度人工接管模板](goddddocr-det-slide-manual-review.md)。
 
 接入真实站点时，把 Flow 里的 `page_url` 和选择器替换成目标页面。
 

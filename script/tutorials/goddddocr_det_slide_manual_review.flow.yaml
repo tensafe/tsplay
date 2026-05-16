@@ -1,0 +1,217 @@
+schema_version: "1"
+name: goddddocr_det_slide_manual_review_flow
+description: Gate goddddocr detection score and slide confidence before clicking or dragging, and return a structured manual-review result when confidence is low.
+vars:
+  page_url: http://127.0.0.1:8000/demo/slider_login.html
+  goddddocr_url: http://127.0.0.1:8088
+  min_det_score: 0.8
+  min_slide_confidence: 0.8
+  detect_image_path: artifacts/goddddocr/manual-review-det-source.png
+  slide_target_path: artifacts/goddddocr/manual-review-slide-target.png
+  slide_background_path: artifacts/goddddocr/manual-review-slide-background.png
+  ready_response_path: artifacts/goddddocr/manual-review-ready-response.json
+  det_response_path: artifacts/goddddocr/manual-review-det-response.json
+  slide_response_path: artifacts/goddddocr/manual-review-slide-response.json
+  result_path: artifacts/goddddocr/manual-review-result.json
+  evidence_screenshot_path: artifacts/goddddocr/manual-review-evidence.png
+  evidence_html_path: artifacts/goddddocr/manual-review-evidence.html
+  detect_source_selector: "#captcha-area"
+  detect_success_selector: "#detect-success"
+  slide_target_selector: "#slider-piece"
+  slide_background_selector: "#slider-background"
+  slider_handle_selector: "#slider-handle"
+  slide_success_selector: "#slider-success"
+  current_phase: starting
+  ocr_service: {}
+  det_result: {}
+  det_score_gate: {}
+  detect_click_result: {}
+  slide_result: {}
+  slide_confidence_gate: {}
+  drag_result: {}
+  payload: {}
+steps:
+  - action: on_error
+    save_as: manual_review_guard
+    steps:
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: ready
+
+      - action: ocr_ready
+        url: "{{goddddocr_url}}"
+        save_as: ocr_service
+        save_path: "{{ready_response_path}}"
+        with:
+          timeout: 3000
+
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: capture
+
+      - action: navigate
+        url: "{{page_url}}"
+
+      - action: wait_for_selector
+        selector: "{{detect_source_selector}}"
+        timeout: 5000
+
+      - action: screenshot_element
+        selector: "{{detect_source_selector}}"
+        path: "{{detect_image_path}}"
+
+      - action: screenshot_element
+        selector: "{{slide_target_selector}}"
+        path: "{{slide_target_path}}"
+
+      - action: screenshot_element
+        selector: "{{slide_background_selector}}"
+        path: "{{slide_background_path}}"
+
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: detect_score
+
+      - action: ocr_detect
+        url: "{{goddddocr_url}}"
+        file_path: "{{detect_image_path}}"
+        save_as: det_result
+        save_path: "{{det_response_path}}"
+        with:
+          detailed: true
+          score_threshold: 0.2
+          nms_threshold: 0.45
+          timeout: 10000
+
+      - action: assert_number
+        save_as: det_score_gate
+        with:
+          value: "{{det_result.boxes[0].score}}"
+          op: ">="
+          expected: "{{min_det_score}}"
+          label: detection score
+
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: click
+
+      - action: click_box
+        selector: "{{detect_source_selector}}"
+        save_as: detect_click_result
+        with:
+          box: "{{det_result.boxes[0]}}"
+          image_path: "{{detect_image_path}}"
+          timeout: 5000
+
+      - action: assert_visible
+        selector: "{{detect_success_selector}}"
+        timeout: 5000
+
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: slide_confidence
+
+      - action: ocr_slide_match
+        url: "{{goddddocr_url}}"
+        target_file_path: "{{slide_target_path}}"
+        background_file_path: "{{slide_background_path}}"
+        save_as: slide_result
+        save_path: "{{slide_response_path}}"
+        with:
+          simple_target: true
+          timeout: 10000
+
+      - action: assert_number
+        save_as: slide_confidence_gate
+        with:
+          value: "{{slide_result.confidence}}"
+          op: ">="
+          expected: "{{min_slide_confidence}}"
+          label: slide confidence
+
+      - action: set_var
+        save_as: current_phase
+        with:
+          value: drag
+
+      - action: drag
+        selector: "{{slider_handle_selector}}"
+        save_as: drag_result
+        with:
+          delta_x: "{{slide_result.target_x}}"
+          delta_y: 0
+          move_steps: 30
+          timeout: 5000
+
+      - action: assert_visible
+        selector: "{{slide_success_selector}}"
+        timeout: 5000
+
+      - action: set_var
+        save_as: payload
+        with:
+          value:
+            status: success
+            action: automated
+            page_url: "{{page_url}}"
+            service_detection: "{{ocr_service.detection}}"
+            service_slide_match: "{{ocr_service.slide_match}}"
+            thresholds:
+              min_det_score: "{{min_det_score}}"
+              min_slide_confidence: "{{min_slide_confidence}}"
+            det_score_gate: "{{det_score_gate}}"
+            slide_confidence_gate: "{{slide_confidence_gate}}"
+            det_boxes: "{{det_result.boxes}}"
+            detect_click_result: "{{detect_click_result}}"
+            slide_target: "{{slide_result.target}}"
+            slide_target_x: "{{slide_result.target_x}}"
+            slide_confidence: "{{slide_result.confidence}}"
+            drag_result: "{{drag_result}}"
+
+      - action: write_json
+        file_path: "{{result_path}}"
+        value: "{{payload}}"
+    on_error:
+      - action: screenshot
+        path: "{{evidence_screenshot_path}}"
+        continue_on_error: true
+
+      - action: save_html
+        path: "{{evidence_html_path}}"
+        continue_on_error: true
+
+      - action: set_var
+        save_as: payload
+        with:
+          value:
+            status: manual_review
+            action: manual_review_required
+            page_url: "{{page_url}}"
+            phase: "{{current_phase}}"
+            reason: "{{last_error}}"
+            thresholds:
+              min_det_score: "{{min_det_score}}"
+              min_slide_confidence: "{{min_slide_confidence}}"
+            evidence:
+              detect_image_path: "{{detect_image_path}}"
+              slide_target_path: "{{slide_target_path}}"
+              slide_background_path: "{{slide_background_path}}"
+              screenshot_path: "{{evidence_screenshot_path}}"
+              html_path: "{{evidence_html_path}}"
+              det_response_path: "{{det_response_path}}"
+              slide_response_path: "{{slide_response_path}}"
+            det_result: "{{det_result}}"
+            det_score_gate: "{{det_score_gate}}"
+            detect_click_result: "{{detect_click_result}}"
+            slide_result: "{{slide_result}}"
+            slide_confidence_gate: "{{slide_confidence_gate}}"
+            drag_result: "{{drag_result}}"
+
+      - action: write_json
+        file_path: "{{result_path}}"
+        value: "{{payload}}"

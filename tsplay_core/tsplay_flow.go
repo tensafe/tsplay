@@ -258,6 +258,7 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"sleep":                 {Args: []flowArgSpec{{Name: "seconds", Required: true}}},
 	"assert_visible":        {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "timeout"}}},
 	"assert_text":           {Args: []flowArgSpec{{Name: "selector", Required: true}, {Name: "text", Required: true}, {Name: "timeout"}}},
+	"assert_number":         {Args: []flowArgSpec{{Name: "value", Required: true}, {Name: "op", Required: true}, {Name: "expected", Required: true}, {Name: "label"}}},
 	"retry":                 {},
 	"if":                    {},
 	"foreach":               {},
@@ -413,6 +414,15 @@ func validateFlowStepSequence(steps []FlowStep, knownVars map[string]any, parent
 				return err
 			}
 			knownVars[step.SaveAs] = nil
+			continue
+		}
+		if step.Action == "assert_number" {
+			if err := validateAssertNumberFlowStep(stepPath, step, spec, knownVars); err != nil {
+				return err
+			}
+			if step.SaveAs != "" {
+				knownVars[step.SaveAs] = nil
+			}
 			continue
 		}
 		if step.Action == "http_request" {
@@ -920,6 +930,82 @@ func validateAppendVarFlowStep(stepPath string, step FlowStep, knownVars map[str
 		return fmt.Errorf("step %s action %q requires value", stepPath, step.Action)
 	}
 	return nil
+}
+
+func validateAssertNumberFlowStep(stepPath string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
+	if len(step.Args) > 0 {
+		requiredCount := requiredArgCount(spec)
+		if len(step.Args) < requiredCount {
+			return fmt.Errorf("step %s action %q expects at least %d args, got %d", stepPath, step.Action, requiredCount, len(step.Args))
+		}
+		if len(step.Args) > len(spec.Args) {
+			return fmt.Errorf("step %s action %q expects at most %d args, got %d", stepPath, step.Action, len(spec.Args), len(step.Args))
+		}
+		for i, value := range step.Args {
+			if err := validateAssertNumberParam(stepPath, step.Action, spec.Args[i].Name, value, knownVars); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	present := step.presentNamedParams()
+	allowed := allowedFlowParamNames(spec)
+	for name, value := range present {
+		if !allowed[name] {
+			return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, step.Action, name)
+		}
+		if err := validateAssertNumberParam(stepPath, step.Action, name, value, knownVars); err != nil {
+			return err
+		}
+	}
+	for _, arg := range spec.Args {
+		if !arg.Required {
+			continue
+		}
+		if _, ok := present[arg.Name]; !ok {
+			return fmt.Errorf("step %s action %q requires %q", stepPath, step.Action, arg.Name)
+		}
+	}
+	return nil
+}
+
+func validateAssertNumberParam(stepPath string, action string, name string, value any, knownVars map[string]any) error {
+	if err := validateFlowReferences(stepPath, action, name, value, knownVars); err != nil {
+		return err
+	}
+	switch name {
+	case "value", "expected":
+		if resolved, ok := resolveKnownPlaceholderValue(value, knownVars); ok {
+			value = resolved
+		} else if _, ok := fullPlaceholderExpression(value); ok {
+			return nil
+		}
+		if _, err := floatParam(value); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, action, name, err)
+		}
+		return nil
+	case "op":
+		if err := validateFlowParamType(name, value, knownVars); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, action, name, err)
+		}
+		if _, ok := fullPlaceholderExpression(value); ok {
+			return nil
+		}
+		if text, ok := value.(string); ok {
+			if _, _, err := compareFlowNumber(0, text, 0); err != nil {
+				return fmt.Errorf("step %s %w", stepPath, err)
+			}
+		}
+		return nil
+	case "label":
+		if err := validateFlowParamType(name, value, knownVars); err != nil {
+			return fmt.Errorf("step %s action %q parameter %q %w", stepPath, action, name, err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("step %s action %q does not accept parameter %q", stepPath, action, name)
+	}
 }
 
 func validateHTTPRequestFlowStep(stepPath string, step FlowStep, spec flowActionSpec, knownVars map[string]any) error {
@@ -1842,13 +1928,13 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "image_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "image_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name", "op", "label":
 		return "string"
 	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict", "auto_scale":
 		return "bool"
 	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "move_steps", "start_row", "limit", "timeout_ms", "timeout_seconds":
 		return "int"
-	case "seconds", "x", "y", "delta_x", "delta_y", "scale_x", "scale_y":
+	case "seconds", "x", "y", "delta_x", "delta_y", "scale_x", "scale_y", "expected":
 		return "number"
 	case "headers", "query", "form", "multipart_files", "multipart_fields", "row", "smtp":
 		return "object"
@@ -4006,6 +4092,8 @@ func runFlowStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
 		return runFlowAssertVisibleStep(L, ctx, step)
 	case "assert_text":
 		return runFlowAssertTextStep(L, ctx, step)
+	case "assert_number":
+		return runFlowAssertNumberStep(ctx, step)
 	case "retry", "if", "foreach", "on_error", "wait_until", "db_transaction":
 		return nil, fmt.Errorf("control action %q can only be executed by the flow step runner", step.Action)
 	}
@@ -4517,6 +4605,73 @@ func runFlowAssertTextStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 			return nil, fmt.Errorf("assert_text failed: selector %q text does not contain %q; actual=%s", selector, expectedText, summarizeTraceValue(actual))
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func runFlowAssertNumberStep(ctx *FlowContext, step FlowStep) (any, error) {
+	value, ok, err := flowStepResolvedParam(ctx, step, "value")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("action %q requires %q", step.Action, "value")
+	}
+	actual, err := floatParam(value)
+	if err != nil {
+		return nil, fmt.Errorf("action %q value %w", step.Action, err)
+	}
+	expected, err := flowStepFloatParam(ctx, step, "expected")
+	if err != nil {
+		return nil, err
+	}
+	op, err := flowStepStringParam(ctx, step, "op")
+	if err != nil {
+		return nil, err
+	}
+	label, err := flowStepOptionalStringParam(ctx, step, "label")
+	if err != nil {
+		return nil, err
+	}
+	matched, normalizedOp, err := compareFlowNumber(actual, op, expected)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{
+		"value":    actual,
+		"op":       normalizedOp,
+		"expected": expected,
+		"passed":   matched,
+	}
+	if strings.TrimSpace(label) != "" {
+		result["label"] = strings.TrimSpace(label)
+	}
+	if !matched {
+		prefix := "assert_number failed"
+		if strings.TrimSpace(label) != "" {
+			prefix = fmt.Sprintf("%s for %s", prefix, strings.TrimSpace(label))
+		}
+		return result, fmt.Errorf("%s: %.6g %s %.6g", prefix, actual, normalizedOp, expected)
+	}
+	return result, nil
+}
+
+func compareFlowNumber(actual float64, op string, expected float64) (bool, string, error) {
+	normalized := strings.TrimSpace(strings.ToLower(op))
+	switch normalized {
+	case ">=", "gte", "min", "at_least":
+		return actual >= expected, ">=", nil
+	case ">", "gt":
+		return actual > expected, ">", nil
+	case "<=", "lte", "max", "at_most":
+		return actual <= expected, "<=", nil
+	case "<", "lt":
+		return actual < expected, "<", nil
+	case "==", "=", "eq":
+		return actual == expected, "==", nil
+	case "!=", "<>", "ne":
+		return actual != expected, "!=", nil
+	default:
+		return false, "", fmt.Errorf("action %q op must be one of >=, >, <=, <, ==, !=; got %q", "assert_number", op)
 	}
 }
 

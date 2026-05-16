@@ -1583,6 +1583,9 @@ func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 	flow := &Flow{
 		SchemaVersion: "1",
 		Name:          "retry_asserts",
+		Vars: map[string]any{
+			"score": 0.91,
+		},
 		Steps: []FlowStep{
 			{
 				Action:     "retry",
@@ -1595,6 +1598,16 @@ func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 				},
 			},
 			{Action: "set_var", SaveAs: "message_copy", Value: "{{message}}"},
+			{
+				Action: "assert_number",
+				SaveAs: "score_gate",
+				With: map[string]any{
+					"value":    "{{score}}",
+					"op":       ">=",
+					"expected": 0.8,
+					"label":    "score",
+				},
+			},
 			{
 				Action:    "if",
 				Condition: &FlowStep{Action: "is_visible", Selector: "#optional"},
@@ -1630,6 +1643,38 @@ func TestValidateFlowStrictAcceptsRetryAndAsserts(t *testing.T) {
 
 	if err := ValidateFlowStrict(flow); err != nil {
 		t.Fatalf("validate flow: %v", err)
+	}
+}
+
+func TestRunFlowAssertNumberFailsWithLabel(t *testing.T) {
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "number_gate",
+		Vars: map[string]any{
+			"confidence": 0.42,
+		},
+		Steps: []FlowStep{
+			{
+				Action: "assert_number",
+				With: map[string]any{
+					"value":    "{{confidence}}",
+					"op":       ">=",
+					"expected": 0.8,
+					"label":    "OCR confidence",
+				},
+			},
+		},
+	}
+
+	_, err := RunFlowInState(L, flow)
+	if err == nil {
+		t.Fatalf("expected assert_number failure")
+	}
+	if !strings.Contains(err.Error(), "OCR confidence") || !strings.Contains(err.Error(), "0.42 >= 0.8") {
+		t.Fatalf("unexpected assert_number error: %v", err)
 	}
 }
 
@@ -3721,6 +3766,19 @@ func TestGoddddocrDetSlideRecoveryTutorialFlowValidates(t *testing.T) {
 	}
 }
 
+func TestGoddddocrDetSlideManualReviewTutorialFlowValidates(t *testing.T) {
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_det_slide_manual_review.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load det slide manual review tutorial flow: %v", err)
+	}
+	if err := ValidateFlowStrict(flow); err != nil {
+		t.Fatalf("validate det slide manual review tutorial flow: %v", err)
+	}
+	if err := ValidateFlowSecurity(flow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true}); err != nil {
+		t.Fatalf("validate det slide manual review tutorial flow security: %v", err)
+	}
+}
+
 func TestRunGoddddocrDetSlideTutorialFlowWithDemo(t *testing.T) {
 	root := t.TempDir()
 
@@ -3977,6 +4035,160 @@ func TestRunGoddddocrDetSlideRecoveryTutorialFlowRetriesAndWritesDiagnostics(t *
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected recovery artifact %s: %v", path, err)
+		}
+	}
+}
+
+func TestRunGoddddocrDetSlideManualReviewStopsOnLowDetectionScore(t *testing.T) {
+	result, root, detCalls, slideCalls := runGoddddocrDetSlideManualReviewTutorial(t, 0.42, 0.96)
+	if detCalls != 1 {
+		t.Fatalf("det calls = %d", detCalls)
+	}
+	if slideCalls != 0 {
+		t.Fatalf("slide calls = %d", slideCalls)
+	}
+
+	payload := requireFlowPayload(t, result)
+	if got := payload["status"]; got != "manual_review" {
+		t.Fatalf("payload status = %#v", got)
+	}
+	if got := payload["action"]; got != "manual_review_required" {
+		t.Fatalf("payload action = %#v", got)
+	}
+	if got := payload["phase"]; got != "detect_score" {
+		t.Fatalf("payload phase = %#v", got)
+	}
+	if got := fmt.Sprint(payload["reason"]); !strings.Contains(got, "detection score") || !strings.Contains(got, "0.42 >= 0.8") {
+		t.Fatalf("payload reason = %#v", got)
+	}
+	assertManualReviewArtifacts(t, root)
+}
+
+func TestRunGoddddocrDetSlideManualReviewStopsOnLowSlideConfidence(t *testing.T) {
+	result, root, detCalls, slideCalls := runGoddddocrDetSlideManualReviewTutorial(t, 0.93, 0.44)
+	if detCalls != 1 {
+		t.Fatalf("det calls = %d", detCalls)
+	}
+	if slideCalls != 1 {
+		t.Fatalf("slide calls = %d", slideCalls)
+	}
+
+	payload := requireFlowPayload(t, result)
+	if got := payload["status"]; got != "manual_review" {
+		t.Fatalf("payload status = %#v", got)
+	}
+	if got := payload["phase"]; got != "slide_confidence" {
+		t.Fatalf("payload phase = %#v", got)
+	}
+	if got := fmt.Sprint(payload["reason"]); !strings.Contains(got, "slide confidence") || !strings.Contains(got, "0.44 >= 0.8") {
+		t.Fatalf("payload reason = %#v", got)
+	}
+	if got := payload["drag_result"]; fmt.Sprint(got) != "map[]" {
+		t.Fatalf("drag_result should remain empty when slide confidence is low, got %#v", got)
+	}
+	assertManualReviewArtifacts(t, root)
+}
+
+func runGoddddocrDetSlideManualReviewTutorial(t *testing.T, detScore float64, slideConfidence float64) (*FlowResult, string, int, int) {
+	t.Helper()
+	root := t.TempDir()
+
+	demoServer := httptest.NewServer(http.FileServer(http.Dir("..")))
+	t.Cleanup(demoServer.Close)
+
+	var detCalls int
+	var slideCalls int
+	ocrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ready":
+			fmt.Fprint(w, `{"status":"ready","model":"old","detection":true,"slide_match":true,"slide_comparison":true}`)
+		case "/det/file":
+			detCalls++
+			if err := r.ParseMultipartForm(4 << 20); err != nil {
+				t.Fatalf("parse det multipart form: %v", err)
+			}
+			file, _, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("read det multipart file: %v", err)
+			}
+			content, err := io.ReadAll(file)
+			file.Close()
+			if err != nil {
+				t.Fatalf("read det multipart content: %v", err)
+			}
+			if len(content) == 0 {
+				t.Fatalf("expected det screenshot content")
+			}
+			fmt.Fprintf(w, `{"result":[[28,28,76,76]],"boxes":[{"x1":28,"y1":28,"x2":76,"y2":76,"score":%.2f,"label":0}],"request_id":"det-gate","processing_time_ms":3.2}`, detScore)
+		case "/slide_match/file":
+			slideCalls++
+			if err := r.ParseMultipartForm(4 << 20); err != nil {
+				t.Fatalf("parse slide multipart form: %v", err)
+			}
+			for _, field := range []string{"target_file", "background_file"} {
+				file, _, err := r.FormFile(field)
+				if err != nil {
+					t.Fatalf("read slide multipart file %s: %v", field, err)
+				}
+				content, err := io.ReadAll(file)
+				file.Close()
+				if err != nil {
+					t.Fatalf("read slide multipart content %s: %v", field, err)
+				}
+				if len(content) == 0 {
+					t.Fatalf("expected slide screenshot content for %s", field)
+				}
+			}
+			fmt.Fprintf(w, `{"result":{"target":[126,82],"target_x":126,"target_y":82,"confidence":%.2f},"request_id":"slide-gate","processing_time_ms":4.8}`, slideConfidence)
+		default:
+			t.Fatalf("unexpected OCR path: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(ocrServer.Close)
+
+	flow, err := LoadFlowFile(filepath.Join("..", "script", "tutorials", "goddddocr_det_slide_manual_review.flow.yaml"))
+	if err != nil {
+		t.Fatalf("load det slide manual review tutorial flow: %v", err)
+	}
+	flow.Vars["page_url"] = demoServer.URL + "/demo/slider_login.html"
+	flow.Vars["goddddocr_url"] = ocrServer.URL
+
+	result, err := RunFlow(flow, FlowRunOptions{
+		Headless:     true,
+		ArtifactRoot: root,
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run det slide manual review tutorial flow: %v", err)
+	}
+	return result, root, detCalls, slideCalls
+}
+
+func requireFlowPayload(t *testing.T, result *FlowResult) map[string]any {
+	t.Helper()
+	payload, ok := result.Vars["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v", result.Vars["payload"])
+	}
+	return payload
+}
+
+func assertManualReviewArtifacts(t *testing.T, root string) {
+	t.Helper()
+	for _, path := range []string{
+		filepath.Join(root, "artifacts", "goddddocr", "manual-review-result.json"),
+		filepath.Join(root, "artifacts", "goddddocr", "manual-review-evidence.png"),
+		filepath.Join(root, "artifacts", "goddddocr", "manual-review-evidence.html"),
+		filepath.Join(root, "artifacts", "goddddocr", "manual-review-det-response.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected manual review artifact %s: %v", path, err)
 		}
 	}
 }
