@@ -2,10 +2,13 @@ schema_version: "1"
 name: webguard_formula_login_flow
 description: Log in to a WebGuard/RuoYi-style page by OCRing the math captcha, calculating the answer, and submitting the form.
 vars:
-  page_url: http://localhost:8081/login?redirect=%2Findex
+  base_url: http://localhost:8081/
+  page_url: http://localhost:8081/login?redirect=%2Fweknora%2Fentry
+  target_url: http://localhost:8081/weknora/entry
+  success_path: /weknora/entry
   goddddocr_url: http://127.0.0.1:8088
   username: admin
-  password: admin123
+  password: "123456"
   captcha_confidence_threshold: "0.65"
   captcha_image_path: artifacts/goddddocr/webguard-formula-captcha.png
   ready_response_path: artifacts/goddddocr/webguard-formula-ready-response.json
@@ -21,6 +24,20 @@ vars:
   login_status: not_started
   manual_review_required: false
 steps:
+  - action: navigate
+    url: "{{base_url}}"
+
+  - action: execute_script
+    script: |
+      localStorage.clear();
+      sessionStorage.clear();
+      document.cookie.split(";").forEach((cookie) => {
+        const name = cookie.split("=")[0].trim();
+        if (name) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+        }
+      });
+
   - action: navigate
     url: "{{page_url}}"
 
@@ -192,6 +209,23 @@ steps:
                 }
                 true
 
+          - action: navigate
+            url: "{{target_url}}"
+
+          - action: wait_until
+            timeout: 5000
+            interval_ms: 300
+            condition:
+              action: execute_script
+              script: |
+                if (location.pathname.includes("/login")) {
+                  throw new Error(`still on login page after target navigation: ${location.href}`);
+                }
+                if ("{{success_path}}" && !location.pathname.includes("{{success_path}}")) {
+                  throw new Error(`not at expected path {{success_path}}: ${location.href}`);
+                }
+                true
+
       - action: set_var
         save_as: login_status
         with:
@@ -230,7 +264,10 @@ steps:
     save_as: payload
     with:
       value:
+        base_url: "{{base_url}}"
         page_url: "{{page_url}}"
+        target_url: "{{target_url}}"
+        success_path: "{{success_path}}"
         final_url: "{{final_url}}"
         login_status: "{{login_status}}"
         manual_review_required: "{{manual_review_required}}"
