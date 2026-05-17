@@ -5,6 +5,8 @@
 - `goddddocr` 以独立 Go HTTP 服务运行，tsplay 不嵌入 Python，也不直接加载 ONNX Runtime。
 - tsplay 新增 `ocr_ready` Flow action，负责在识别前检查 goddddocr `/ready`。
 - tsplay 新增 `ocr_request` Flow action，负责上传本地图片到 goddddocr 兼容服务。
+- tsplay 新增 managed sidecar 模式：没有显式 `url/GODDDDOCR_URL` 且本地进程授权可用时，自动启动 `goddddocr-server`，自动选择 `127.0.0.1` 空闲端口，等待 `/ready` 后继续复用原有 `ocr_request` 结果结构。
+- tsplay 新增 direct CLI 模式：`ocr_request` 可设置 `mode: cli`，执行 `ocrdoctor -image <file> -json`，或通过 `cli_args` 执行 `goddddocr ocr --file {file} --json --confidence` 这类命令模板，并读取 stdout JSON。
 - tsplay 新增 `ocr_detect`、`ocr_slide_comparison`、`ocr_slide_match` Flow action，分别对接 goddddocr 的目标检测、滑块差分、滑块模板匹配能力。
 - tsplay 新增 `drag` Flow/Lua action，滑块识别得到 `target_x` 后可以直接拖动页面手柄。
 - tsplay 新增验证码登录 demo 与端到端 Flow，覆盖截图、OCR、填表和断言链路。
@@ -15,7 +17,7 @@
 - Flow 运行结果会统一暴露 `status=manual_review_required` 和 `manual_review.artifacts[]`；Workbench 会给 evidence artifact 补 `/workbench-artifacts/...` 预览路径，方便业务系统或操作台接人工处理。
 - `goddddocr` 支持外部 ONNX 模型和 charset JSON，服务可通过 `GODDDDOCR_MODEL_PATH` / `GODDDDOCR_CHARSET_PATH` 挂载项目私有验证码模型，tsplay 侧仍按同一个 HTTP action 调用。
 - `goddddocr` 提供 `ocrdoctor` 本地诊断命令，部署到 Windows、macOS、Linux 后可先验证 ONNX Runtime、模型、charset 和样本识别，再接入 tsplay Flow。
-- 安全边界沿用 tsplay 现有策略：需要 `allow_http=true`，读图片和保存响应时需要 `allow_file_access=true`。
+- 安全边界沿用 tsplay 策略：HTTP 服务模式需要 `allow_http=true`；managed sidecar 需要 `allow_http=true + allow_process=true`；direct CLI 需要 `allow_process=true`；读图片和保存响应时仍需要 `allow_file_access=true`。
 
 ## 自定义模型启动示例
 
@@ -35,11 +37,23 @@ goddddocr-server -addr :8088
 ocrdoctor -image /opt/models/smoke.png -expect abcd -json
 ```
 
-只有 `ocrdoctor` 返回 `ok: true` 后，再启动服务并让 Flow 使用 `ocr_ready` / `ocr_request`。如果需要目标检测，启动服务时加 `-det` 并确认 `/ready` 返回 `detection: true`。
+只有 `ocrdoctor` 返回 `ok: true` 后，再让 Flow 使用 `ocr_ready` / `ocr_request`。如果用 managed sidecar，Flow 可直接写：
+
+```yaml
+- action: ocr_request
+  file_path: artifacts/captcha/captcha.png
+  save_as: ocr_result
+  with:
+    mode: sidecar
+    server_args: [-model, beta]
+    confidence: true
+```
+
+如果需要目标检测，`ocr_detect` 的 sidecar 模式会自动追加 `-det`；外部服务模式仍需要启动服务时加 `-det` 并确认 `/ready` 返回 `detection: true`。
 
 ## 待办
 
 - 扩充 Python ddddocr 与 Go goddddocr 的 golden fixtures 对比集，记录更多真实验证码样本的准确率和耗时差异。
-- 给 tsplay 文档补一套部署说明：Windows、macOS、Linux 下安装 ONNX Runtime、运行 `ocrdoctor`、启动 goddddocr 服务并配置 `GODDDDOCR_URL`。
+- 给 tsplay 文档补一套部署说明：Windows、macOS、Linux 下安装 ONNX Runtime、运行 `ocrdoctor`、managed sidecar / 外部服务 / direct CLI 三种模式的推荐配置。
 - 增加真实站点适配模板：验证码元素定位、刷新验证码、人工接管后的业务回填。
 - 评估是否需要把 `ocr_request` 扩展为多引擎接口，预留将来接云 OCR 或项目内私有 OCR 服务。

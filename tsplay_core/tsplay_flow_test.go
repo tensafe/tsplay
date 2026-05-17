@@ -3471,6 +3471,125 @@ func TestRunFlowOCRRequest(t *testing.T) {
 	}
 }
 
+func TestRunFlowOCRRequestManagedSidecar(t *testing.T) {
+	t.Setenv("TSPLAY_TEST_GODDDDOCR_SIDECAR", "1")
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.png"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_sidecar",
+		Steps: []FlowStep{
+			{
+				Action:   "ocr_request",
+				FilePath: "captcha.png",
+				SaveAs:   "ocr_result",
+				With: map[string]any{
+					"mode":            "sidecar",
+					"executable":      os.Args[0],
+					"server_args":     []any{"-test.run=TestGoddddocrSidecarHelperProcess", "--"},
+					"startup_timeout": 5000,
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowHTTP:       true,
+			AllowProcess:    true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	ocrResult, ok := result.Vars["ocr_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("ocr_result = %#v", result.Vars["ocr_result"])
+	}
+	if got := ocrResult["text"]; got != "sidecar-42" {
+		t.Fatalf("text = %#v", got)
+	}
+	if got := ocrResult["service_mode"]; got != goddddocrModeSidecar {
+		t.Fatalf("service_mode = %#v", got)
+	}
+	sidecar, ok := ocrResult["sidecar"].(map[string]any)
+	if !ok || sidecar["managed"] != true || strings.TrimSpace(fmt.Sprint(sidecar["url"])) == "" {
+		t.Fatalf("sidecar metadata = %#v", ocrResult["sidecar"])
+	}
+}
+
+func TestRunFlowOCRRequestDirectCLI(t *testing.T) {
+	t.Setenv("TSPLAY_TEST_GODDDDOCR_CLI", "1")
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "captcha.png"), []byte("captcha-image"), 0600); err != nil {
+		t.Fatalf("write captcha file: %v", err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	flow := &Flow{
+		SchemaVersion: "1",
+		Name:          "goddddocr_cli",
+		Steps: []FlowStep{
+			{
+				Action:   "ocr_request",
+				FilePath: "captcha.png",
+				SaveAs:   "ocr_result",
+				SavePath: "responses/cli.json",
+				With: map[string]any{
+					"mode":       "cli",
+					"executable": os.Args[0],
+					"cli_args":   []any{"-test.run=TestGoddddocrCLIHelperProcess", "--"},
+					"confidence": true,
+					"timeout":    5000,
+				},
+			},
+		},
+	}
+
+	result, err := RunFlowInStateWithOptions(L, flow, FlowRunOptions{
+		Security: &FlowSecurityPolicy{
+			AllowProcess:    true,
+			AllowFileAccess: true,
+			FileInputRoot:   root,
+			FileOutputRoot:  root,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run flow: %v", err)
+	}
+	ocrResult, ok := result.Vars["ocr_result"].(map[string]any)
+	if !ok {
+		t.Fatalf("ocr_result = %#v", result.Vars["ocr_result"])
+	}
+	if got := ocrResult["text"]; got != "cli-84" {
+		t.Fatalf("text = %#v", got)
+	}
+	if got := ocrResult["service_mode"]; got != goddddocrModeCLI {
+		t.Fatalf("service_mode = %#v", got)
+	}
+	if got := ocrResult["confidence"]; got != 0.88 {
+		t.Fatalf("confidence = %#v", got)
+	}
+	savedBody, err := os.ReadFile(filepath.Join(root, "responses", "cli.json"))
+	if err != nil {
+		t.Fatalf("read saved response: %v", err)
+	}
+	if !strings.Contains(string(savedBody), `"result":"cli-84"`) {
+		t.Fatalf("unexpected saved response: %s", string(savedBody))
+	}
+}
+
 func TestRunFlowOCRDetect(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "captcha.png"), []byte("captcha-image"), 0600); err != nil {
@@ -3712,6 +3831,102 @@ func TestRunFlowOCRSlideMatch(t *testing.T) {
 	if got := result.Vars["match_confidence"]; got != 0.88 {
 		t.Fatalf("match_confidence = %#v", got)
 	}
+}
+
+func TestValidateFlowOCRProcessModesRequireAllowProcess(t *testing.T) {
+	cliFlow := &Flow{
+		SchemaVersion: "1",
+		Name:          "ocr_cli_security",
+		Steps: []FlowStep{{
+			Action:   "ocr_request",
+			FilePath: "captcha.png",
+			With:     map[string]any{"mode": "cli"},
+		}},
+	}
+	if err := ValidateFlowSecurity(cliFlow, FlowSecurityPolicy{AllowFileAccess: true}); err == nil || !strings.Contains(err.Error(), "allow_process") {
+		t.Fatalf("expected cli allow_process error, got %v", err)
+	}
+	if err := ValidateFlowSecurity(cliFlow, FlowSecurityPolicy{AllowFileAccess: true, AllowProcess: true}); err != nil {
+		t.Fatalf("validate cli with allow_process and without allow_http: %v", err)
+	}
+
+	sidecarFlow := &Flow{
+		SchemaVersion: "1",
+		Name:          "ocr_sidecar_security",
+		Steps: []FlowStep{{
+			Action:   "ocr_request",
+			FilePath: "captcha.png",
+			With:     map[string]any{"mode": "sidecar"},
+		}},
+	}
+	err := ValidateFlowSecurity(sidecarFlow, FlowSecurityPolicy{AllowHTTP: true, AllowFileAccess: true})
+	if err == nil || !strings.Contains(err.Error(), "allow_process") {
+		t.Fatalf("expected sidecar allow_process error, got %v", err)
+	}
+}
+
+func TestGoddddocrSidecarHelperProcess(t *testing.T) {
+	if os.Getenv("TSPLAY_TEST_GODDDDOCR_SIDECAR") != "1" {
+		return
+	}
+	addr := "127.0.0.1:0"
+	for i, arg := range os.Args {
+		if arg == "-addr" && i+1 < len(os.Args) {
+			addr = os.Args[i+1]
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ready","ready":true,"model":"test","detection":true,"slide_comparison":true,"slide_match":true}`)
+	})
+	mux.HandleFunc("/ocr/file", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		content, _ := io.ReadAll(file)
+		if string(content) != "captcha-image" {
+			http.Error(w, "unexpected image", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"result":"sidecar-42","confidence":0.97,"request_id":"sidecar-test"}`)
+	})
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func TestGoddddocrCLIHelperProcess(t *testing.T) {
+	if os.Getenv("TSPLAY_TEST_GODDDDOCR_CLI") != "1" {
+		return
+	}
+	imagePath := ""
+	for i, arg := range os.Args {
+		if (arg == "-image" || arg == "--file") && i+1 < len(os.Args) {
+			imagePath = os.Args[i+1]
+		}
+	}
+	content, err := os.ReadFile(imagePath)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, `{"ok":false,"error":"%s"}`+"\n", err.Error())
+		os.Exit(1)
+	}
+	if string(content) != "captcha-image" {
+		fmt.Fprint(os.Stdout, `{"ok":false,"error":"unexpected image"}`+"\n")
+		os.Exit(1)
+	}
+	fmt.Fprint(os.Stdout, `{"ok":true,"result":"cli-84","confidence":0.88,"elapsed_ms":1.5}`+"\n")
+	os.Exit(0)
 }
 
 func TestGoddddocrOCRTutorialFlowValidates(t *testing.T) {

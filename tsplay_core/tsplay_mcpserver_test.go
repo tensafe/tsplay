@@ -2430,7 +2430,7 @@ func TestFlowSecurityPolicyResolutionFromToolRequestSupportsPresetOverrides(t *t
 	if resolution.Preset != "full_automation" {
 		t.Fatalf("unexpected preset: %#v", resolution.Preset)
 	}
-	if resolution.Policy.AllowLua != true || resolution.Policy.AllowJavaScript != true || resolution.Policy.AllowDatabase != true {
+	if resolution.Policy.AllowLua != true || resolution.Policy.AllowJavaScript != true || resolution.Policy.AllowDatabase != true || resolution.Policy.AllowProcess != true {
 		t.Fatalf("expected full automation grants, got %#v", resolution.Policy)
 	}
 	if resolution.Policy.AllowHTTP != false {

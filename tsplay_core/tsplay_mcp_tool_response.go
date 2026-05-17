@@ -54,6 +54,9 @@ func flowSecurityPolicyResolutionFromToolRequest(
 	if _, present := request.GetArguments()["allow_http"]; present {
 		policy.AllowHTTP = request.GetBool("allow_http", false)
 	}
+	if _, present := request.GetArguments()["allow_process"]; present {
+		policy.AllowProcess = request.GetBool("allow_process", false)
+	}
 	if _, present := request.GetArguments()["allow_email"]; present {
 		policy.AllowEmail = request.GetBool("allow_email", false)
 	}
@@ -89,6 +92,7 @@ func flowSecurityPolicyPreset(name string) (FlowSecurityPolicy, bool) {
 			AllowFileAccess:   true,
 			AllowBrowserState: true,
 			AllowHTTP:         true,
+			AllowProcess:      true,
 			AllowEmail:        true,
 			AllowRedis:        true,
 			AllowDatabase:     true,

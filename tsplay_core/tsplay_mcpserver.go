@@ -608,6 +608,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
 		),
+		mcp.WithBoolean("allow_process",
+			mcp.Description("Allow trusted local process execution such as managed goddddocr sidecars during the auto validation pass."),
+		),
 		mcp.WithBoolean("allow_email",
 			mcp.Description("Allow outbound email delivery during the auto validation pass."),
 		),
@@ -678,6 +681,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests during the auto validation pass."),
+		),
+		mcp.WithBoolean("allow_process",
+			mcp.Description("Allow trusted local process execution such as managed goddddocr sidecars during the auto validation pass."),
 		),
 		mcp.WithBoolean("allow_email",
 			mcp.Description("Allow outbound email delivery during the auto validation pass."),
@@ -827,6 +833,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
 		),
+		mcp.WithBoolean("allow_process",
+			mcp.Description("Allow trusted local process execution such as managed goddddocr sidecars for this request. Defaults to false."),
+		),
 		mcp.WithBoolean("allow_email",
 			mcp.Description("Allow outbound email delivery for this request. Defaults to false."),
 		),
@@ -887,6 +896,9 @@ func registerTSPlayFlowTools(mcpServer *server.MCPServer, options TSPlayMCPServe
 		),
 		mcp.WithBoolean("allow_http",
 			mcp.Description("Allow outbound HTTP requests for this request. Defaults to false."),
+		),
+		mcp.WithBoolean("allow_process",
+			mcp.Description("Allow trusted local process execution such as managed goddddocr sidecars for this request. Defaults to false."),
 		),
 		mcp.WithBoolean("allow_email",
 			mcp.Description("Allow outbound email delivery for this request. Defaults to false."),
@@ -1962,11 +1974,11 @@ func buildFlowActionManifest() []map[string]any {
 	descriptions["on_error"] = "Run nested Flow steps and execute an error handler block if they fail."
 	descriptions["wait_until"] = "Poll a condition step until it returns a truthy result or times out."
 	descriptions["http_request"] = "Send an outbound HTTP request, optionally reuse browser cookies or user agent, and return structured response metadata."
-	descriptions["ocr_ready"] = "Check a goddddocr-compatible OCR HTTP service readiness endpoint before running OCR steps."
-	descriptions["ocr_request"] = "Send an image file to a goddddocr-compatible OCR HTTP service and return text, confidence, optional color filtering, probability details, and response metadata."
-	descriptions["ocr_detect"] = "Send an image file to a goddddocr-compatible detection endpoint and return bounding boxes, optional detailed box metadata, and response metadata."
-	descriptions["ocr_slide_comparison"] = "Send target and background images to a goddddocr-compatible slide comparison endpoint and return the detected gap center."
-	descriptions["ocr_slide_match"] = "Send target and background images to a goddddocr-compatible slide match endpoint and return the matched center plus confidence."
+	descriptions["ocr_ready"] = "Check a goddddocr-compatible OCR service readiness endpoint. With mode=sidecar, TSPlay starts goddddocr-server automatically and waits for /ready."
+	descriptions["ocr_request"] = "Recognize an image with goddddocr over HTTP, managed sidecar, or direct CLI mode, returning text, confidence, optional filtering/probability details, and metadata."
+	descriptions["ocr_detect"] = "Send an image file to a goddddocr-compatible detection endpoint and return bounding boxes. With mode=sidecar, TSPlay starts goddddocr-server with -det."
+	descriptions["ocr_slide_comparison"] = "Send target and background images to a goddddocr-compatible slide comparison endpoint and return the detected gap center; managed sidecar is supported."
+	descriptions["ocr_slide_match"] = "Send target and background images to a goddddocr-compatible slide match endpoint and return the matched center plus confidence; managed sidecar is supported."
 	descriptions["send_email"] = "Send an outbound email through an SMTP connection resolved from environment variables or provided inline in Flow."
 	descriptions["json_extract"] = "Extract a value from JSON-like data using a path such as $.body.text or $.items[0]."
 	descriptions["read_json"] = "Read any local JSON file and return its decoded value."

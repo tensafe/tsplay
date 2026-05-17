@@ -182,6 +182,7 @@ type FlowContext struct {
 	SessionID     string
 	ClientName    string
 	ClientVersion string
+	OCRSidecars   map[string]*goddddocrSidecar
 }
 
 type FlowRunOptions struct {
@@ -211,6 +212,7 @@ type FlowSecurityPolicy struct {
 	AllowFileAccess   bool   `json:"allow_file_access"`
 	AllowBrowserState bool   `json:"allow_browser_state"`
 	AllowHTTP         bool   `json:"allow_http"`
+	AllowProcess      bool   `json:"allow_process"`
 	AllowEmail        bool   `json:"allow_email"`
 	AllowRedis        bool   `json:"allow_redis"`
 	AllowDatabase     bool   `json:"allow_database"`
@@ -292,11 +294,11 @@ var flowActionSpecs = map[string]flowActionSpec{
 	"get_all_links":         {Args: []flowArgSpec{{Name: "selector"}}},
 	"capture_table":         {Args: []flowArgSpec{{Name: "selector", Required: true}}},
 	"http_request":          {Args: []flowArgSpec{{Name: "url", Required: true}, {Name: "method"}, {Name: "headers"}, {Name: "query"}, {Name: "body"}, {Name: "json"}, {Name: "form"}, {Name: "multipart_files"}, {Name: "multipart_fields"}, {Name: "timeout"}, {Name: "response_as"}, {Name: "use_browser_cookies"}, {Name: "use_browser_referer"}, {Name: "use_browser_user_agent"}, {Name: "save_path"}}},
-	"ocr_ready":             {Args: []flowArgSpec{{Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "strict"}}},
-	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "color_filter_colors"}, {Name: "color_filter_custom_ranges"}, {Name: "confidence"}, {Name: "probability"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
-	"ocr_detect":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "detailed"}, {Name: "score_threshold"}, {Name: "nms_threshold"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}}},
-	"ocr_slide_comparison":  {Args: []flowArgSpec{{Name: "target_file_path", Required: true}, {Name: "background_file_path", Required: true}, {Name: "url"}, {Name: "timeout"}, {Name: "save_path"}}},
-	"ocr_slide_match":       {Args: []flowArgSpec{{Name: "target_file_path", Required: true}, {Name: "background_file_path", Required: true}, {Name: "url"}, {Name: "simple_target"}, {Name: "timeout"}, {Name: "save_path"}}},
+	"ocr_ready":             {Args: []flowArgSpec{{Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "strict"}, {Name: "mode"}, {Name: "executable"}, {Name: "server_args"}, {Name: "startup_timeout"}, {Name: "det"}}},
+	"ocr_request":           {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "charset_range"}, {Name: "color_filter_colors"}, {Name: "color_filter_custom_ranges"}, {Name: "confidence"}, {Name: "probability"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}, {Name: "mode"}, {Name: "executable"}, {Name: "server_args"}, {Name: "cli_args"}, {Name: "startup_timeout"}}},
+	"ocr_detect":            {Args: []flowArgSpec{{Name: "file_path", Required: true}, {Name: "url"}, {Name: "detailed"}, {Name: "score_threshold"}, {Name: "nms_threshold"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "field_name"}, {Name: "mode"}, {Name: "executable"}, {Name: "server_args"}, {Name: "startup_timeout"}}},
+	"ocr_slide_comparison":  {Args: []flowArgSpec{{Name: "target_file_path", Required: true}, {Name: "background_file_path", Required: true}, {Name: "url"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "mode"}, {Name: "executable"}, {Name: "server_args"}, {Name: "startup_timeout"}}},
+	"ocr_slide_match":       {Args: []flowArgSpec{{Name: "target_file_path", Required: true}, {Name: "background_file_path", Required: true}, {Name: "url"}, {Name: "simple_target"}, {Name: "timeout"}, {Name: "save_path"}, {Name: "mode"}, {Name: "executable"}, {Name: "server_args"}, {Name: "startup_timeout"}}},
 	"send_email":            {},
 	"json_extract":          {Args: []flowArgSpec{{Name: "from", Required: true}, {Name: "path", Required: true}}},
 	"redis_get":             {Args: []flowArgSpec{{Name: "key", Required: true}, {Name: "connection"}}},
@@ -337,6 +339,7 @@ func TrustedFlowSecurityPolicy() FlowSecurityPolicy {
 		AllowFileAccess:   true,
 		AllowBrowserState: true,
 		AllowHTTP:         true,
+		AllowProcess:      true,
 		AllowEmail:        true,
 		AllowRedis:        true,
 		AllowDatabase:     true,
@@ -1930,17 +1933,17 @@ func validateFlowParamType(name string, value any, knownVars map[string]any) err
 
 func flowParamType(name string) string {
 	switch name {
-	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "image_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name", "op", "label":
+	case "url", "selector", "text", "value", "path", "range", "script", "code", "attribute", "sheet", "key", "connection", "file_path", "image_path", "source_path", "folder", "folder_path", "archive_path", "output_path", "save_path", "output_dir", "dest_dir", "destination", "password", "base_dir", "pattern", "item_var", "index_var", "method", "response_as", "body", "row_number_field", "progress_key", "progress_connection", "table", "driver", "sql", "subject", "html", "reply_to", "from_email", "field_name", "op", "label", "mode", "executable":
 		return "string"
-	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict", "auto_scale":
+	case "use_browser_cookies", "use_browser_referer", "use_browser_user_agent", "do_nothing", "overwrite", "confidence", "probability", "strict", "auto_scale", "det":
 		return "bool"
-	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "move_steps", "start_row", "limit", "timeout_ms", "timeout_seconds":
+	case "timeout", "index", "context_index", "delta", "ttl_seconds", "times", "interval_ms", "move_steps", "start_row", "limit", "timeout_ms", "timeout_seconds", "startup_timeout":
 		return "int"
 	case "seconds", "x", "y", "delta_x", "delta_y", "scale_x", "scale_y", "expected":
 		return "number"
 	case "headers", "query", "form", "multipart_files", "multipart_fields", "row", "smtp":
 		return "object"
-	case "files", "folders", "paths", "sources", "columns", "returning", "key_columns", "update_columns":
+	case "files", "folders", "paths", "sources", "columns", "returning", "key_columns", "update_columns", "server_args", "cli_args":
 		return "string_list"
 	case "to", "cc", "bcc":
 		return "email_recipients"
@@ -1994,9 +1997,15 @@ func validateFlowStepSequenceSecurity(steps []FlowStep, policy FlowSecurityPolic
 	for i, step := range steps {
 		stepPath := flowStepPath(parentPath, i+1)
 		group := flowActionSecurityGroup(step.Action)
+		if isGoddddocrAction(step.Action) && staticGoddddocrMode(step) == goddddocrModeCLI {
+			group = ""
+		}
 		if group != "" && !flowSecurityPolicyAllows(group, policy) {
 			option := flowActionSecurityOption(group)
 			return fmt.Errorf("step %s action %q is disabled by security policy; set %s=true only for trusted flows", stepPath, step.Action, option)
+		}
+		if stepRequiresProcessAccess(step) && !policy.AllowProcess {
+			return fmt.Errorf("step %s action %q is disabled by security policy; set allow_process=true only for trusted local processes", stepPath, step.Action)
 		}
 		if stepUsesRedisCheckpoint(step) && !policy.AllowRedis {
 			return fmt.Errorf("step %s action %q progress checkpoint is disabled by security policy; set allow_redis=true only for trusted flows", stepPath, step.Action)
@@ -2048,6 +2057,8 @@ func flowActionSecurityOption(group string) string {
 		return "allow_browser_state"
 	case "http":
 		return "allow_http"
+	case "process":
+		return "allow_process"
 	case "email":
 		return "allow_email"
 	case "redis":
@@ -2071,6 +2082,8 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 		return policy.AllowBrowserState
 	case "http":
 		return policy.AllowHTTP
+	case "process":
+		return policy.AllowProcess
 	case "email":
 		return policy.AllowEmail
 	case "redis":
@@ -2080,6 +2093,22 @@ func flowSecurityPolicyAllows(group string, policy FlowSecurityPolicy) bool {
 	default:
 		return true
 	}
+}
+
+func stepRequiresProcessAccess(step FlowStep) bool {
+	if !isGoddddocrAction(step.Action) {
+		return false
+	}
+	mode := staticGoddddocrMode(step)
+	if mode == goddddocrModeCLI || mode == goddddocrModeSidecar {
+		return true
+	}
+	for _, name := range []string{"executable", "server_args", "cli_args"} {
+		if _, ok := step.param(name); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func stepUsesRedisCheckpoint(step FlowStep) bool {
@@ -3025,6 +3054,7 @@ func runFlowInState(L *lua.LState, flow *Flow, options FlowRunOptions) (*FlowRes
 	}
 	restoreFlowContext := setFlowContextState(L, ctx)
 	defer restoreFlowContext()
+	defer ctx.closeOCRSidecars()
 	for key, value := range flow.Vars {
 		ctx.Vars[key] = value
 		L.SetGlobal(key, goValueToLua(L, value))

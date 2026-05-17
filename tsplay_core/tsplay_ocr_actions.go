@@ -21,11 +21,10 @@ const (
 )
 
 func runFlowOCRReadyStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
-	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
+	endpoint, sidecar, err := goddddocrEndpointForAction(ctx, step, normalizeGoddddocrReadyEndpoint, false)
 	if err != nil {
 		return nil, err
 	}
-	endpoint = normalizeGoddddocrReadyEndpoint(endpoint)
 
 	with := map[string]any{"response_as": "json"}
 	if value, ok, err := flowStepResolvedParam(ctx, step, "timeout"); err != nil {
@@ -66,6 +65,11 @@ func runFlowOCRReadyStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, e
 	if strict && !ready {
 		return nil, fmt.Errorf("ocr_ready failed with HTTP status %v: %s", response["status"], describeOCRResponseBody(response["body"]))
 	}
+	if sidecar != nil {
+		annotateGoddddocrResult(result, goddddocrModeSidecar, sidecar.BaseURL, sidecar)
+	} else {
+		annotateGoddddocrResult(result, goddddocrModeHTTP, "", nil)
+	}
 	return result, nil
 }
 
@@ -74,12 +78,6 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 	if err != nil {
 		return nil, err
 	}
-
-	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
-	if err != nil {
-		return nil, err
-	}
-	endpoint = normalizeGoddddocrEndpoint(endpoint)
 
 	fieldName, err := flowStepOptionalStringParam(ctx, step, "field_name")
 	if err != nil {
@@ -128,6 +126,18 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 		multipartFields["probability"] = probability
 	}
 
+	mode, err := goddddocrActionMode(ctx, step, true)
+	if err != nil {
+		return nil, err
+	}
+	if mode == goddddocrModeCLI {
+		return runGoddddocrCLIRequest(ctx, step, filePath, multipartFields)
+	}
+	endpoint, sidecar, err := goddddocrEndpointForAction(ctx, step, normalizeGoddddocrEndpoint, false)
+	if err != nil {
+		return nil, err
+	}
+
 	with := map[string]any{
 		"multipart_files":  map[string]any{fieldName: filePath},
 		"multipart_fields": multipartFields,
@@ -157,7 +167,16 @@ func runFlowOCRRequestStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any,
 	if !ok {
 		return nil, fmt.Errorf("ocr_request expected http response object, got %T", responseValue)
 	}
-	return buildOCRRequestResult(response)
+	result, err := buildOCRRequestResult(response)
+	if err != nil {
+		return nil, err
+	}
+	if sidecar != nil {
+		annotateGoddddocrResult(result, goddddocrModeSidecar, sidecar.BaseURL, sidecar)
+	} else {
+		annotateGoddddocrResult(result, goddddocrModeHTTP, "", nil)
+	}
+	return result, nil
 }
 
 func runFlowOCRDetectStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
@@ -166,11 +185,10 @@ func runFlowOCRDetectStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, 
 		return nil, err
 	}
 
-	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
+	endpoint, sidecar, err := goddddocrEndpointForAction(ctx, step, normalizeGoddddocrDetectEndpoint, true)
 	if err != nil {
 		return nil, err
 	}
-	endpoint = normalizeGoddddocrDetectEndpoint(endpoint)
 
 	fieldName, err := flowStepOptionalStringParam(ctx, step, "field_name")
 	if err != nil {
@@ -232,7 +250,16 @@ func runFlowOCRDetectStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, 
 	if !ok {
 		return nil, fmt.Errorf("ocr_detect expected http response object, got %T", responseValue)
 	}
-	return buildOCRDetectResult(response)
+	result, err := buildOCRDetectResult(response)
+	if err != nil {
+		return nil, err
+	}
+	if sidecar != nil {
+		annotateGoddddocrResult(result, goddddocrModeSidecar, sidecar.BaseURL, sidecar)
+	} else {
+		annotateGoddddocrResult(result, goddddocrModeHTTP, "", nil)
+	}
+	return result, nil
 }
 
 func runFlowOCRSlideComparisonStep(L *lua.LState, ctx *FlowContext, step FlowStep) (any, error) {
@@ -253,11 +280,10 @@ func runFlowOCRSlideStep(L *lua.LState, ctx *FlowContext, step FlowStep, actionN
 		return nil, err
 	}
 
-	endpoint, err := flowStepOptionalStringParam(ctx, step, "url")
+	endpoint, sidecar, err := goddddocrEndpointForAction(ctx, step, normalizeEndpoint, false)
 	if err != nil {
 		return nil, err
 	}
-	endpoint = normalizeEndpoint(endpoint)
 
 	multipartFields := map[string]any{}
 	if includeSimpleTarget {
@@ -306,7 +332,16 @@ func runFlowOCRSlideStep(L *lua.LState, ctx *FlowContext, step FlowStep, actionN
 	if !ok {
 		return nil, fmt.Errorf("%s expected http response object, got %T", actionName, responseValue)
 	}
-	return buildOCRSlideResult(response, actionName)
+	result, err := buildOCRSlideResult(response, actionName)
+	if err != nil {
+		return nil, err
+	}
+	if sidecar != nil {
+		annotateGoddddocrResult(result, goddddocrModeSidecar, sidecar.BaseURL, sidecar)
+	} else {
+		annotateGoddddocrResult(result, goddddocrModeHTTP, "", nil)
+	}
+	return result, nil
 }
 
 func goddddocrEndpointValue(value string) string {
