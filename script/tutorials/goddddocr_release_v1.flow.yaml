@@ -1,0 +1,60 @@
+schema_version: "1"
+name: goddddocr_release_v1_flow
+description: Exercise a goddddocr v1.0.0 release package through TSPlay managed sidecar and direct CLI OCR modes.
+vars:
+  release_root: ../goddddocr/dist/goddddocr-v1.0.0-darwin-arm64
+  captcha_path: ../goddddocr/dist/goddddocr-v1.0.0-darwin-arm64/samples/yzm1.png
+  sidecar_result_path: artifacts/goddddocr-release-v1/sidecar-ocr-response.json
+  cli_result_path: artifacts/goddddocr-release-v1/cli-ocr-response.json
+  summary_path: artifacts/goddddocr-release-v1/summary.json
+steps:
+  - action: ocr_request
+    file_path: "{{captcha_path}}"
+    save_as: sidecar_ocr
+    save_path: "{{sidecar_result_path}}"
+    with:
+      mode: sidecar
+      executable: "{{release_root}}/goddddocr-server"
+      startup_timeout: 15000
+      confidence: true
+
+  - action: assert_number
+    with:
+      value: "{{sidecar_ocr.confidence}}"
+      op: ">="
+      expected: 0.9
+      label: sidecar confidence
+
+  - action: ocr_request
+    file_path: "{{captcha_path}}"
+    save_as: cli_ocr
+    save_path: "{{cli_result_path}}"
+    with:
+      mode: cli
+      executable: "{{release_root}}/ocrdoctor"
+      confidence: true
+      timeout: 30000
+
+  - action: assert_number
+    with:
+      value: "{{cli_ocr.confidence}}"
+      op: ">="
+      expected: 0.9
+      label: direct CLI confidence
+
+  - action: set_var
+    save_as: release_v1_summary
+    with:
+      value:
+        release_root: "{{release_root}}"
+        captcha_path: "{{captcha_path}}"
+        sidecar_text: "{{sidecar_ocr.text}}"
+        sidecar_confidence: "{{sidecar_ocr.confidence}}"
+        sidecar_mode: "{{sidecar_ocr.service_mode}}"
+        cli_text: "{{cli_ocr.text}}"
+        cli_confidence: "{{cli_ocr.confidence}}"
+        cli_mode: "{{cli_ocr.service_mode}}"
+
+  - action: write_json
+    file_path: "{{summary_path}}"
+    value: "{{release_v1_summary}}"
